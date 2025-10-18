@@ -1171,7 +1171,6 @@ local function logMessage(prefix, extra, message)
 end
 --@endregion
 
--- print changelog
 logMessage("[noctua]", "", update)
 
 --@region: logging with arguments
@@ -2012,7 +2011,7 @@ resolver = {} do
         local lean_direction = mathematic.sign(lean_amount)
         
         local walk_to_run = animstate.flWalkToRunTransition or 0
-        local transition_factor = walk_to_run * (1 - walk_to_run) * 4  -- peak at 0.5
+        local transition_factor = walk_to_run * (1 - walk_to_run) * 4
         
         local static_yaw = lby_delta * 0.6 + goal_delta * 0.4
         local dynamic_yaw = move_delta * 0.7 + feet_delta * 0.3
@@ -3497,7 +3496,7 @@ local aimHandlers = {
                     me,
                     eye_pos.x, eye_pos.y, eye_pos.z,   -- from position (eye pos)
                     impact.x, impact.y, impact.z,      -- to position (impact)
-                    false                              -- don't skip players
+                    false                              -- dont skip players
                 )
                 
                 if hit_ent == player and hit_dmg > 0 then
@@ -4639,7 +4638,7 @@ local native_IsWeapon = vtable_thunk(166, 'bool(__thiscall*)(void*)')
 local native_GetInaccuracy = vtable_thunk(483, 'float(__thiscall*)(void*)')
 
 dormant_aim = {} do
-    dormant_aim.color = {255, 255, 255}
+    dormant_aim.color = {214, 214, 214}
     
     local roundStarted = 0
     local dormant_players = {}
@@ -4701,7 +4700,7 @@ dormant_aim = {} do
         }
     end
     
-    dormant_aim.setup = function(cmd)
+    dormant_aim.prepare = function(cmd)
         if not (interface.aimbot.enabled_aimbot:get() and interface.aimbot.dormant_aimbot:get()) then
             can_hit_targets = {}
             return
@@ -4850,7 +4849,7 @@ dormant_aim = {} do
         if not me then return end
         
         if interface.aimbot.enabled_aimbot:get() and interface.aimbot.dormant_aimbot:get() and interface.aimbot.dormant_indicator:get() then
-            local color = {255, 255, 255, 200} -- Default white
+            local color = {255, 255, 255, 200}
             
             local has_targets = false
             for _ in pairs(can_hit_targets) do
@@ -4860,12 +4859,12 @@ dormant_aim = {} do
             
             if interface.aimbot.dormant_aimbot.hotkey:get() then
                 if has_targets then
-                    color = {143, 194, 21, 255} -- Green when can hit
+                    color = {143, 194, 21, 255}
                 elseif #get_dormant_enemies() > 0 then
                     local r, g, b, a = interface.visuals.accent:get()
-                    color = {r, g, b, a} -- Accent color when dormant enemies exist
+                    color = {r, g, b, a}
                 else
-                    color = {255, 0, 50, 255} -- Red when no dormant enemies
+                    color = {255, 0, 50, 255}
                 end
             end
             
@@ -4884,7 +4883,6 @@ dormant_aim = {} do
         client.delay_call(0.03, function()
             local local_player = entity.get_local_player()
             if client.userid_to_entindex(e.userid) == local_player and shot_fired and not hit_registered then
-                -- miss event
                 if interface.visuals.enabled_visuals:get() and interface.visuals.logging:get() then
                     local unknown = "unknown"
                     local target_name = entity.get_player_name(last_shot_data.target_id)
@@ -4960,7 +4958,7 @@ dormant_aim = {} do
     end)
 end
 
-dormant_aim.esp_setup = function()
+dormant_aim.setup = function()
     local dormant_esp = ui.reference('visuals', 'player esp', 'dormant')
     if dormant_esp then
         if interface.aimbot.dormant_aimbot:get() then
@@ -4974,12 +4972,12 @@ end
 
 client.set_event_callback('setup_command', function(cmd)
     if interface.aimbot.enabled_aimbot:get() and interface.aimbot.dormant_aimbot:get() then
-        dormant_aim.setup(cmd)
+        dormant_aim.prepare(cmd)
     end
 end)
 
 client.set_event_callback('paint', function()
-    dormant_aim.esp_setup()
+    dormant_aim.setup()
     
     if interface.aimbot.enabled_aimbot:get() and interface.aimbot.dormant_aimbot:get() then
         dormant_aim.paint()
