@@ -13,8 +13,10 @@ local _version = '1.3'
 local update = [[
 changelog 1.3 (18/10/2025):
  - added 'on death' to balabolka (killsay) mode
+ - added zoom animation
  - added hitsound 
  - added buybot
+ - reworked smart safety
  - improved 'resolver tweaks' logic
 
 changelog 1.2 (18/03/2025):
@@ -604,7 +606,7 @@ interface = {} do
         viewmodel_z = interface.header.general:slider('z', -1000, 1000, cvar.viewmodel_offset_z:get_float(), true, '', 0.01),
         zoom_animation = interface.header.general:checkbox('zoom animation'),
         zoom_animation_speed = interface.header.general:slider('speed', 10, 100, 60, true, '%'),
-        zoom_animation_value = interface.header.general:slider('value', 1, 100, 5, true, '%'),
+        zoom_animation_value = interface.header.general:slider('strength', 1, 100, 5, true, '%'),
         stickman = interface.header.general:checkbox('stickman', {255, 255, 255, 140})
     }
 
@@ -4628,8 +4630,9 @@ end
 --@region: lethal_shot_handler
 lethal_shot_handler = {} do
     lethal_shot_handler.cache = {}
-    lethal_shot_handler.lethal_threshold = 92
-    lethal_shot_handler.settings_persist_time = 3.0
+    lethal_shot_handler.lethal_threshold = 75
+    lethal_shot_handler.settings_persist_time = 2.0
+    lethal_shot_handler.min_misses_for_safety = 2
     
     lethal_shot_handler.is_lethal = function(self, idx)
         if not idx or not entity.is_alive(idx) then
@@ -4676,7 +4679,7 @@ lethal_shot_handler = {} do
             max_damage = has_armor and weapon_damage * 0.8 or weapon_damage
         end
         
-        return health <= max_damage and health <= self.lethal_threshold
+        return health <= max_damage and health <= self.lethal_threshold and max_damage >= health * 0.9
     end
     
     lethal_shot_handler.get_weapon_damage = function(self, local_player)
@@ -4740,15 +4743,9 @@ lethal_shot_handler = {} do
         local curtime = globals.curtime()
 
         local should_persist = cache.was_lethal and (curtime - cache.last_visible_time < self.settings_persist_time)
-
+        
         if cache.is_lethal or should_persist then
-            if cache.misses > 1 and cache.hits == 0 then
-                return true, 1.0
-            elseif cache.misses > 0 then
-                return true, 0.8
-            else
-                return true, 0.6
-            end
+            return true, 1.0
         end
         
         return false, 0.0
@@ -4772,10 +4769,16 @@ lethal_shot_handler = {} do
         self.cache[idx].misses = self.cache[idx].misses + 1
         
         local safe_point_status = plist.get(idx, 'Override safe point')
+        local body_aim_status = plist.get(idx, 'Override prefer body aim')
+        
         if safe_point_status == "On" then
             self.cache[idx].safe_point_misses = self.cache[idx].safe_point_misses + 1
             
-            plist.set(idx, 'Override prefer body aim', "Force")
+            if body_aim_status == "-" or body_aim_status == "" then
+                plist.set(idx, 'Override prefer body aim', "On")
+            elseif body_aim_status == "On" then
+                plist.set(idx, 'Override prefer body aim', "Force")
+            end
         end
     end
     
@@ -4852,13 +4855,7 @@ lethal_shot_handler = {} do
                     local health = entity.get_prop(target, "m_iHealth") or 0
                     local reason = ""
                     
-                    if self.cache[target].misses > 1 then
-                        reason = "multiple misses"
-                    elseif self.cache[target].safe_point_misses > 0 then
-                        reason = "safe point miss"
-                    else
-                        reason = "low health"
-                    end
+                        reason = "lethal target"
                     
                     local msg = string.format("forced safe point for %s / hp: %d - reason: %s", playerName, health, reason)
                     
@@ -4878,16 +4875,6 @@ lethal_shot_handler = {} do
                     end
                     
                     self.cache[target].logged_safe_point = true
-                end
-
-                if self.cache[target].safe_point_misses > 0 then
-                    plist.set(target, 'Override prefer body aim', "Force")
-                elseif self.cache[target].misses > 0 then
-                    plist.set(target, 'Override prefer body aim', "On")
-                    
-                    if self.cache[target].misses > 1 then
-                        plist.set(target, 'Override prefer body aim', "Force")
-                    end
                 end
             end
         else
@@ -4963,13 +4950,7 @@ lethal_shot_handler = {} do
                         local health = entity.get_prop(idx, "m_iHealth") or 0
                         local reason = ""
                         
-                        if self.cache[idx].misses > 1 then
-                            reason = "multiple misses"
-                        elseif self.cache[idx].safe_point_misses > 0 then
-                            reason = "safe point miss"
-                        else
-                            reason = "low health"
-                        end
+                        reason = "lethal target"
                         
                         local msg = string.format("forced safe point for %s / hp: %d - reason: %s", playerName, health, reason)
                         
@@ -4989,97 +4970,6 @@ lethal_shot_handler = {} do
                         end
                         
                         self.cache[idx].logged_safe_point = true
-                    end
-
-                    if self.cache[idx].safe_point_misses > 0 then
-                        local current_body_aim = plist.get(idx, 'Override prefer body aim')
-                        
-                        plist.set(idx, 'Override prefer body aim', "Force")
-                        
-                        if not self.cache[idx].logged_body_aim and interface.visuals.logging:get() then
-                            local playerName = entity.get_player_name(idx)
-                            local health = entity.get_prop(idx, "m_iHealth") or 0
-                            local reason = "safe point miss"
-                            local force = "force"
-                            
-                            local msg = string.format("forced body aim for %s to %s / hp: %d - reason: %s", playerName, force, health, reason)
-                            
-                            local logOptions = interface.visuals.logging_options:get()
-                            local consoleOptions = interface.visuals.logging_options_console:get()
-                            local screenOptions = interface.visuals.logging_options_screen:get()
-                            
-                            local doConsole = utils.contains(logOptions, "console") and utils.contains(consoleOptions, "aimbot")
-                            local doScreen = utils.contains(logOptions, "screen") and utils.contains(screenOptions, "aimbot")
-                            
-                            if doConsole then
-                                argLog("forced body aim for %s to %s / hp: %d - reason: %s", playerName, force, health, reason)
-                            end
-                            
-                            if doScreen then
-                                logging:push(msg)
-                            end
-                            
-                            self.cache[idx].logged_body_aim = true
-                        end
-                    elseif self.cache[idx].misses > 0 then
-                        local current_body_aim = plist.get(idx, 'Override prefer body aim')
-                        
-                        plist.set(idx, 'Override prefer body aim', "On")
-                        
-                        if not self.cache[idx].logged_body_aim and interface.visuals.logging:get() then
-                            local playerName = entity.get_player_name(idx)
-                            local health = entity.get_prop(idx, "m_iHealth") or 0
-                            local reason = "missed shot"
-                            local on = "On"
-                            
-                            local msg = string.format("forced body aim for %s to %s / hp: %d - reason: %s", playerName, on, health, reason)
-                            
-                            local logOptions = interface.visuals.logging_options:get()
-                            local consoleOptions = interface.visuals.logging_options_console:get()
-                            local screenOptions = interface.visuals.logging_options_screen:get()
-                            
-                            local doConsole = utils.contains(logOptions, "console") and utils.contains(consoleOptions, "aimbot")
-                            local doScreen = utils.contains(logOptions, "screen") and utils.contains(screenOptions, "aimbot")
-                            
-                            if doConsole then
-                                argLog("forced body aim for %s to %s / hp: %d - reason: %s", playerName, on, health, reason)
-                            end
-                            
-                            if doScreen then
-                                logging:push(msg)
-                            end
-                            
-                            self.cache[idx].logged_body_aim = true
-                        end
-                        
-                        if self.cache[idx].misses > 2 then
-                            plist.set(idx, 'Override prefer body aim', "Force")
-                            
-                            if current_body_aim == "On" and not self.cache[idx].logged_body_aim and interface.visuals.logging:get() then
-                                local playerName = entity.get_player_name(idx)
-                                local health = entity.get_prop(idx, "m_iHealth") or 0
-                                local reason = "multiple misses"
-                                
-                                local msg = string.format("forced body aim for %s / hp: %d - reason: %s", playerName, health, reason)
-                                
-                                local logOptions = interface.visuals.logging_options:get()
-                                local consoleOptions = interface.visuals.logging_options_console:get()
-                                local screenOptions = interface.visuals.logging_options_screen:get()
-                                
-                                local doConsole = utils.contains(logOptions, "console") and utils.contains(consoleOptions, "aimbot")
-                                local doScreen = utils.contains(logOptions, "screen") and utils.contains(screenOptions, "aimbot")
-                                
-                                if doConsole then
-                                    argLog("forced body aim for %s / hp: %d - reason: %s", playerName, health, reason)
-                                end
-                                
-                                if doScreen then
-                                    logging:push(msg)
-                                end
-                                
-                                self.cache[idx].logged_body_aim = true
-                            end
-                        end
                     end
                 else
                     local curtime = globals.curtime()
@@ -5150,7 +5040,7 @@ lethal_shot_handler = {} do
             self.cache[idx].last_visible_time = globals.curtime()
             
             local curtime = globals.curtime()
-            if curtime - self.cache[idx].last_check > 0.5 then
+            if curtime - self.cache[idx].last_check > 1.0 then
                 self.cache[idx].last_check = curtime
                 self.cache[idx].is_lethal = self:is_lethal(idx)
                 
