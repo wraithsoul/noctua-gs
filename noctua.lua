@@ -426,10 +426,72 @@ viewmodel = {} do
     end
 end
 
+--@region: zoom animation
+zoom_animation = {} do
+    zoom_animation.lerp_storage = {}
+    
+    zoom_animation.lerp = function(name, target, speed, tolerance, easing)
+        if zoom_animation.lerp_storage[name] == nil then
+            zoom_animation.lerp_storage[name] = target
+        end
+        
+        speed = speed or 8
+        tolerance = tolerance or 0.001
+        easing = easing or 'ease_out'
+        
+        local current = zoom_animation.lerp_storage[name]
+        local delta = globals.frametime() * speed
+        local new_value
+        
+        if easing == 'linear' then
+            new_value = current + (target - current) * delta
+        elseif easing == 'ease_out' then
+            local progress = 1 - (1 - delta) * (1 - delta)
+            new_value = current + (target - current) * progress
+        else
+            new_value = current + (target - current) * delta
+        end
+        
+        if math.abs(target - new_value) <= tolerance then
+            zoom_animation.lerp_storage[name] = target
+        else
+            zoom_animation.lerp_storage[name] = new_value
+        end
+        
+        return zoom_animation.lerp_storage[name]
+    end
+    
+    zoom_animation.setup = function(ctx)
+        if not (interface.visuals.enabled_visuals:get() and interface.visuals.zoom_animation:get()) then
+            pui.reference('misc', 'miscellaneous', 'override zoom fov'):override()
+            return
+        end
+        
+        pui.reference('misc', 'miscellaneous', 'override zoom fov'):override(0)
+        
+        local me = entity.get_local_player()
+        if not me or not entity.is_alive(me) then
+            return
+        end
+        
+        local fov = interface.visuals.zoom_animation_value:get()
+        local speed = interface.visuals.zoom_animation_speed:get()
+        local is_scoped = entity.get_prop(me, 'm_bIsScoped') == 1
+        
+        local animate = zoom_animation.lerp('zoom', is_scoped and fov or 0, speed / 10, 0.001, 'ease_out')
+        ctx.fov = ctx.fov - animate
+    end
+end
+--@endregion
+
 client.set_event_callback('paint', function()
     aspect_ratio.setup()
     thirdperson.setup()
     viewmodel.setup()
+end)
+
+client.set_event_callback('override_view', function(ctx)
+    zoom_animation.setup(ctx)
 end)
 --@endregion
 
@@ -540,6 +602,9 @@ interface = {} do
         viewmodel_x = interface.header.general:slider('x', -1000, 1000, cvar.viewmodel_offset_x:get_float(), true, '', 0.01),
         viewmodel_y = interface.header.general:slider('y', -1000, 1000, cvar.viewmodel_offset_y:get_float(), true, '', 0.01),
         viewmodel_z = interface.header.general:slider('z', -1000, 1000, cvar.viewmodel_offset_z:get_float(), true, '', 0.01),
+        zoom_animation = interface.header.general:checkbox('zoom animation'),
+        zoom_animation_speed = interface.header.general:slider('speed', 10, 100, 60, true, '%'),
+        zoom_animation_value = interface.header.general:slider('value', 1, 100, 5, true, '%'),
         stickman = interface.header.general:checkbox('stickman', {255, 255, 255, 140})
     }
 
@@ -671,6 +736,9 @@ interface = {} do
                         viewmodel_x = true,
                         viewmodel_y = true,
                         viewmodel_z = true,
+                        zoom_animation = true,
+                        zoom_animation_speed = true,
+                        zoom_animation_value = true,
                         logging_options = true,
                         logging_options_console = true,
                         logging_options_screen = true
@@ -745,6 +813,14 @@ interface = {} do
                         interface.visuals.viewmodel_x:set_visible(show_viewmodel_settings)
                         interface.visuals.viewmodel_y:set_visible(show_viewmodel_settings)
                         interface.visuals.viewmodel_z:set_visible(show_viewmodel_settings)
+                    end
+
+                    if interface.visuals.zoom_animation then
+                        local show_zoom = interface.visuals.group:get() == 'other' and visuals_enabled
+                        interface.visuals.zoom_animation:set_visible(show_zoom)
+                        local show_zoom_settings = show_zoom and interface.visuals.zoom_animation:get()
+                        interface.visuals.zoom_animation_speed:set_visible(show_zoom_settings)
+                        interface.visuals.zoom_animation_value:set_visible(show_zoom_settings)
                     end
                 end
             },
@@ -5617,6 +5693,12 @@ killsay = {} do
         {
             "!admin",
             "ливай шлюха у тя 5 сек"
+        },
+        {
+            "разъебу вас в шахматы писать сюда @mirai_network"
+        },
+        {
+            "все девочки хотят эту #noctua"
         }
     }
     
@@ -5641,7 +5723,7 @@ killsay = {} do
     end
     
     killsay.send_phrases = function(phrase_type)
-        local initial_delay = 0.15 + math.random() * 0.30
+        local initial_delay = 0.20 + math.random() * 0.40
         
         if phrase_type == "death" then
             initial_delay = initial_delay + 1.00
@@ -5660,10 +5742,10 @@ killsay = {} do
         for i = 1, phrase_count do
             local phrase_delay = killsay.calculate_delay(phrases[i])
             
-            local min_between_delay = 0.50
+            local min_between_delay = 0.70
             
             if string.len(phrases[i]) < 10 then
-                min_between_delay = 0.70
+                min_between_delay = 1.00
             end
             
             if phrase_type == "death" then
