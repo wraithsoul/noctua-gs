@@ -3549,6 +3549,7 @@ end
 --@region: hitsound
 hitsound = {} do
     local native_Surface_PlaySound = vtable_bind("vguimatsurface.dll", "VGUI_Surface031", 82, "void(__thiscall*)(void*, const char*)")
+    local hitsound_original = ui.reference("Visuals", "Player ESP", "Hit marker sound")
     
     hitsound.on_player_hurt = function(e)
         if not interface.utility.hitsound:get() then return end
@@ -3557,12 +3558,21 @@ hitsound = {} do
         local local_player = entity.get_local_player()
         
         if attacker == local_player then
-            -- Play wood plank impact sound at minimum volume (1 time)
             native_Surface_PlaySound("physics/wood/wood_plank_impact_hard4.wav")
         end
     end
     
+    hitsound.setup = function()
+        if interface.utility.hitsound:get() then
+            ui.set(hitsound_original, false)
+            ui.set_enabled(hitsound_original, false)
+        else
+            ui.set_enabled(hitsound_original, true)
+        end
+    end
+    
     client.set_event_callback("player_hurt", hitsound.on_player_hurt)
+    client.set_event_callback("paint", hitsound.setup)
 end
 --@endregion
 
@@ -5572,6 +5582,13 @@ killsay = {} do
         },
         {
             "сорян мужик"
+        },
+        {
+            "нокта чек оформлен"
+        },
+        {
+            "да ну нахуй",
+            "лил пип за окном выступает"
         }
     }
 
