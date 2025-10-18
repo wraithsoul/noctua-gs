@@ -545,6 +545,9 @@ interface = {} do
         silent_shot = interface.header.general:checkbox('silent shot'),
         force_recharge = interface.header.general:checkbox('allow force recharge'),
         quick_stop = interface.header.general:checkbox('air stop', 0x00),
+        dormant_aimbot = interface.header.general:checkbox('dormant aimbot', 0x00),
+        dormant_mindmg = interface.header.general:slider('minimum damage', 1, 100, 10),
+        dormant_indicator = interface.header.general:checkbox('indicator'),
     }
     
     interface.builder = {
@@ -705,6 +708,10 @@ interface = {} do
                         element:set_visible(interface.aimbot.enabled_aimbot:get() and interface.aimbot.enabled_resolver_tweaks:get())
                     elseif key == 'smart_safety' then
                         element:set_visible(interface.aimbot.enabled_aimbot:get() and interface.aimbot.enabled_resolver_tweaks:get())
+                    elseif key == 'dormant_mindmg' then
+                        element:set_visible(interface.aimbot.enabled_aimbot:get() and interface.aimbot.dormant_aimbot:get())
+                    elseif key == 'dormant_indicator' then
+                        element:set_visible(interface.aimbot.enabled_aimbot:get() and interface.aimbot.dormant_aimbot:get())
                     else
                         element:set_visible(interface.aimbot.enabled_aimbot:get() == true)
                     end
@@ -4627,6 +4634,179 @@ end
 -- end
 --@endregion
 
+--@region: dormant aimbot
+local native_GetClientEntity = vtable_bind('client.dll', 'VClientEntityList003', 3, 'void*(__thiscall*)(void*, int)')
+local native_IsWeapon = vtable_thunk(165, 'bool(__thiscall*)(void*)')
+local native_GetInaccuracy = vtable_thunk(482, 'float(__thiscall*)(void*)')
+
+dormant_aim = {} do
+    dormant_aim.color = {255, 255, 255}
+    
+    local player_info_prev = {}
+    local in_dormant = false
+    local roundStarted = 0
+    
+    local function modify_velocity(e, goalspeed)
+        local minspeed = math.sqrt((e.forwardmove * e.forwardmove) + (e.sidemove * e.sidemove))
+        if goalspeed <= 0 or minspeed <= 0 then
+            return
+        end
+    
+        if e.in_duck == 1 then
+            goalspeed = goalspeed * 2.94117647
+        end
+    
+        if minspeed <= goalspeed then
+            return
+        end
+    
+        local speedfactor = goalspeed / minspeed
+        e.forwardmove = e.forwardmove * speedfactor
+        e.sidemove = e.sidemove * speedfactor
+    end
+    
+    dormant_aim.setup = function(cmd)
+        if not (interface.aimbot.enabled_aimbot:get() and interface.aimbot.dormant_aimbot:get()) then
+            return
+        end
+    
+        local me = entity.get_local_player()
+        if not me then return end
+    
+        local my_weapon = entity.get_player_weapon(me)
+        if not my_weapon then
+            return
+        end
+    
+        local ent = native_GetClientEntity(my_weapon)
+        if ent == nil or native_IsWeapon(ent) == true then
+            return
+        end
+    
+        local inaccuracy = native_GetInaccuracy(ent)
+        if inaccuracy == nil then
+            return
+        end
+    
+        local tickcount = globals.tickcount()
+        local player_resource = entity.get_player_resource()
+        local eyepos = vector(client.eye_position())
+        local simtime = entity.get_prop(me, 'm_flSimulationTime')
+        local weapon_id = entity.get_prop(my_weapon, 'm_iItemDefinitionIndex')
+        local weapon = {
+            is_revolver = (weapon_id == 64),
+            is_melee_weapon = (weapon_id == 42 or weapon_id == 59 or weapon_id == 500 or weapon_id == 505 or weapon_id == 506 or weapon_id == 507 or weapon_id == 508 or weapon_id == 509 or weapon_id == 512 or weapon_id == 514 or weapon_id == 515 or weapon_id == 516),
+            type = (weapon_id == 9 or weapon_id == 11 or weapon_id == 38 or weapon_id == 40) and 'sniperrifle' or 'other',
+            max_player_speed = entity.get_prop(my_weapon, 'm_flMaxSpeed') or 250,
+            max_player_speed_alt = entity.get_prop(my_weapon, 'm_flMaxSpeed2') or 200
+        }
+        local scoped = entity.get_prop(me, 'm_bIsScoped') == 1
+        local onground = bit.band(entity.get_prop(me, 'm_fFlags'), bit.lshift(1, 0))
+        if tickcount < roundStarted then return end
+    
+        local can_shoot
+        if weapon.is_revolver then
+            can_shoot = simtime > entity.get_prop(my_weapon, 'm_flNextPrimaryAttack')
+        elseif weapon.is_melee_weapon then
+            can_shoot = false
+        else
+            can_shoot = simtime > math.max(entity.get_prop(me, 'm_flNextAttack'), entity.get_prop(my_weapon, 'm_flNextPrimaryAttack'), entity.get_prop(my_weapon, 'm_flNextSecondaryAttack'))
+        end
+    
+        local player_info = {}
+    
+        for player = 1, globals.maxplayers() do
+            if entity.get_prop(player_resource, 'm_bConnected', player) == 1 then
+                if plist.get(player, 'Add to whitelist') then goto skip end
+                if entity.is_dormant(player) and entity.is_enemy(player) then
+                    local can_hit
+    
+                    local origin = vector(entity.get_origin(player))
+                    local x1, y1, x2, y2, alpha_multiplier = entity.get_bounding_box(player)
+    
+                    if player_info_prev[player] ~= nil and origin.x ~= 0 and alpha_multiplier > 0 then
+                        local dormant_accurate = alpha_multiplier > 0.795
+    
+                        if dormant_accurate then
+                            local target = origin + vector(0, 0, 40)
+                            local pitch, yaw = eyepos:to(target):angles()
+                            local ent, dmg = client.trace_bullet(me, eyepos.x, eyepos.y, eyepos.z, target.x, target.y, target.z, true)
+    
+                            can_hit = (dmg > interface.aimbot.dormant_mindmg:get()) and (not client.visible(target.x, target.y, target.z))
+                            if can_shoot and can_hit and interface.aimbot.dormant_aimbot.hotkey:get() then
+                                modify_velocity(cmd, (scoped and weapon.max_player_speed_alt or weapon.max_player_speed) * 0.33)
+    
+                                if not scoped and weapon.type == 'sniperrifle' and cmd.in_jump == 0 and onground == 1 then
+                                    cmd.in_attack2 = 1
+                                end
+    
+                                if inaccuracy < 0.009 and cmd.chokedcommands == 0 then
+                                    cmd.pitch = pitch
+                                    cmd.yaw = yaw
+                                    cmd.in_attack = 1
+                                    can_shoot = false
+                                end
+                            end
+                        end
+                    end
+                    player_info[player] = {origin, alpha_multiplier, can_hit}
+                end
+                in_dormant = entity.is_dormant(player) and entity.is_enemy(player)
+            end
+            ::skip::
+        end
+        player_info_prev = player_info
+    end
+    
+    dormant_aim.paint = function()
+        if not (interface.aimbot.enabled_aimbot:get() and interface.aimbot.dormant_aimbot:get() and interface.aimbot.dormant_indicator:get()) then
+            return
+        end
+        
+        local me = entity.get_local_player()
+        if not me then return end
+        
+        local can_hit = false
+        for _, info in pairs(player_info_prev) do
+            if info[3] then
+                can_hit = true
+                break
+            end
+        end
+        
+        local r, g, b, a = interface.visuals.accent:get()
+        
+        if interface.aimbot.dormant_aimbot.hotkey:get() then
+            if can_hit then
+                dormant_aim.color = {132, 196, 20, 245}
+            elseif in_dormant then
+                dormant_aim.color = {r, g, b, a}
+            else
+                dormant_aim.color = {255, 25, 25, 230}
+            end
+        else
+            dormant_aim.color = {180, 180, 180, 180}
+        end
+        
+        renderer.indicator(dormant_aim.color[1], dormant_aim.color[2], dormant_aim.color[3], dormant_aim.color[4], 'DA')
+    end
+    
+    dormant_aim.reset = function()
+        local freezetime = (cvar.mp_freezetime:get_float() + 1) / globals.tickinterval()
+        roundStarted = globals.tickcount() + freezetime
+    end
+    
+    client.register_esp_flag('DA', 255, 255, 255, function(player)
+        local me = entity.get_local_player()
+        if not me then return end
+        if interface.aimbot.enabled_aimbot:get() and interface.aimbot.dormant_aimbot:get() and entity.is_enemy(player) and player_info_prev[player] ~= nil then
+            local _, _, can_hit = unpack(player_info_prev[player])
+            return can_hit
+        end
+    end)
+end
+--@endregion
+
 --@region: lethal_shot_handler
 lethal_shot_handler = {} do
     lethal_shot_handler.cache = {}
@@ -4748,6 +4928,11 @@ lethal_shot_handler = {} do
             return true, 1.0
         end
         
+        -- If too many misses (3+), force safe point due to aim struggle
+        if cache.misses > 2 then
+            return true, 0.8
+        end
+        
         return false, 0.0
     end
     
@@ -4855,7 +5040,16 @@ lethal_shot_handler = {} do
                     local health = entity.get_prop(target, "m_iHealth") or 0
                     local reason = ""
                     
-                        reason = "lethal target"
+                        local curtime = globals.curtime()
+                        local should_persist = cache.was_lethal and (curtime - cache.last_visible_time < self.settings_persist_time)
+                        
+                        if cache.is_lethal or should_persist then
+                            reason = "lethal target"
+                        elseif cache.misses > 2 then
+                            reason = "aim struggle"
+                        else
+                            reason = "unknown"
+                        end
                     
                     local msg = string.format("forced safe point for %s / hp: %d - reason: %s", playerName, health, reason)
                     
@@ -4950,7 +5144,16 @@ lethal_shot_handler = {} do
                         local health = entity.get_prop(idx, "m_iHealth") or 0
                         local reason = ""
                         
-                        reason = "lethal target"
+                        local curtime = globals.curtime()
+                        local should_persist = self.cache[idx].was_lethal and (curtime - self.cache[idx].last_visible_time < self.settings_persist_time)
+                        
+                        if self.cache[idx].is_lethal or should_persist then
+                            reason = "lethal target"
+                        elseif self.cache[idx].misses > 2 then
+                            reason = "aim struggle"
+                        else
+                            reason = "unknown"
+                        end
                         
                         local msg = string.format("forced safe point for %s / hp: %d - reason: %s", playerName, health, reason)
                         
@@ -5684,3 +5887,22 @@ killsay = {} do
     client.set_event_callback("paint", killsay.setup)
 end
 --@endregion
+
+-- Dormant aimbot callbacks
+client.set_event_callback('setup_command', function(cmd)
+    if interface.aimbot.enabled_aimbot:get() and interface.aimbot.dormant_aimbot:get() then
+        dormant_aim.setup(cmd)
+    end
+end)
+
+client.set_event_callback('paint', function()
+    if interface.aimbot.enabled_aimbot:get() and interface.aimbot.dormant_aimbot:get() and interface.aimbot.dormant_indicator:get() then
+        dormant_aim.paint()
+    end
+end)
+
+client.set_event_callback('round_prestart', function()
+    if interface.aimbot.enabled_aimbot:get() and interface.aimbot.dormant_aimbot:get() then
+        dormant_aim.reset()
+    end
+end)
