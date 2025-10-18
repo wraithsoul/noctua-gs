@@ -547,6 +547,7 @@ interface = {} do
         quick_stop = interface.header.general:checkbox('air stop', 0x00),
         dormant_aimbot = interface.header.general:checkbox('dormant aimbot', 0x00),
         dormant_mindmg = interface.header.general:slider('minimum damage', 1, 100, 10),
+        dormant_accuracy = interface.header.general:slider('accuracy', 50, 100, 90, true, '%'),
         dormant_indicator = interface.header.general:checkbox('indicator'),
     }
     
@@ -708,9 +709,7 @@ interface = {} do
                         element:set_visible(interface.aimbot.enabled_aimbot:get() and interface.aimbot.enabled_resolver_tweaks:get())
                     elseif key == 'smart_safety' then
                         element:set_visible(interface.aimbot.enabled_aimbot:get() and interface.aimbot.enabled_resolver_tweaks:get())
-                    elseif key == 'dormant_mindmg' then
-                        element:set_visible(interface.aimbot.enabled_aimbot:get() and interface.aimbot.dormant_aimbot:get())
-                    elseif key == 'dormant_indicator' then
+                    elseif key == 'dormant_mindmg' or key == 'dormant_accuracy' or key == 'dormant_indicator' then
                         element:set_visible(interface.aimbot.enabled_aimbot:get() and interface.aimbot.dormant_aimbot:get())
                     else
                         element:set_visible(interface.aimbot.enabled_aimbot:get() == true)
@@ -4635,24 +4634,34 @@ end
 --@endregion
 
 --@region: dormant aimbot
-local native_GetClientEntity = vtable_bind('client.dll', 'VClientEntityList003', 3, 'void*(__thiscall*)(void*, int)')
-local native_IsWeapon = vtable_thunk(165, 'bool(__thiscall*)(void*)')
-local native_GetInaccuracy = vtable_thunk(482, 'float(__thiscall*)(void*)')
+local native_GetClientEntity = vtable_bind('client_panorama.dll', 'VClientEntityList003', 3, 'void*(__thiscall*)(void*,int)')
+local native_IsWeapon = vtable_thunk(166, 'bool(__thiscall*)(void*)')
+local native_GetInaccuracy = vtable_thunk(483, 'float(__thiscall*)(void*)')
 
 dormant_aim = {} do
     dormant_aim.color = {255, 255, 255}
     
-    local player_info_prev = {}
-    local in_dormant = false
     local roundStarted = 0
+    local dormant_players = {}
+    local last_shot_data = {}
+    local can_hit_targets = {}
+    local shot_fired = false
+    local hit_registered = false
     
-    local function modify_velocity(e, goalspeed)
-        local minspeed = math.sqrt((e.forwardmove * e.forwardmove) + (e.sidemove * e.sidemove))
+    local hitbox_positions = {
+        {scale = 5, hitbox = "stomach", vec = vector(0, 0, 40)},
+        {scale = 6, hitbox = "chest", vec = vector(0, 0, 50)},
+        {scale = 3, hitbox = "head", vec = vector(0, 0, 58)},
+        {scale = 4, hitbox = "leg", vec = vector(0, 0, 20)}
+    }
+    
+    local function modify_velocity(cmd, goalspeed)
+        local minspeed = math.sqrt((cmd.forwardmove * cmd.forwardmove) + (cmd.sidemove * cmd.sidemove))
         if goalspeed <= 0 or minspeed <= 0 then
             return
         end
     
-        if e.in_duck == 1 then
+        if cmd.in_duck == 1 then
             goalspeed = goalspeed * 2.94117647
         end
     
@@ -4661,12 +4670,45 @@ dormant_aim = {} do
         end
     
         local speedfactor = goalspeed / minspeed
-        e.forwardmove = e.forwardmove * speedfactor
-        e.sidemove = e.sidemove * speedfactor
+        cmd.forwardmove = cmd.forwardmove * speedfactor
+        cmd.sidemove = cmd.sidemove * speedfactor
+    end
+    
+    local function get_dormant_enemies()
+        local enemies = {}
+        local player_resource = entity.get_player_resource()
+        
+        for i = 1, globals.maxplayers() do
+            if entity.get_prop(player_resource, 'm_bConnected', i) == 1 and not plist.get(i, 'Add to whitelist') then
+                if entity.is_dormant(i) and entity.is_enemy(i) then
+                    enemies[#enemies + 1] = i
+                end
+            end
+        end
+        
+        return enemies
+    end
+    
+    local function get_target_points(eye_pos, target_pos, scale)
+        local _, yaw = eye_pos:to(target_pos):angles()
+        local rad = math.rad(yaw + 90)
+        local offset = vector(math.cos(rad), math.sin(rad), 0) * scale
+        
+        return {
+            {text = "Middle", vec = target_pos},
+            {text = "Left", vec = target_pos + offset},
+            {text = "Right", vec = target_pos - offset}
+        }
     end
     
     dormant_aim.setup = function(cmd)
         if not (interface.aimbot.enabled_aimbot:get() and interface.aimbot.dormant_aimbot:get()) then
+            can_hit_targets = {}
+            return
+        end
+    
+        if not interface.aimbot.dormant_aimbot.hotkey:get() then
+            can_hit_targets = {}
             return
         end
     
@@ -4674,137 +4716,293 @@ dormant_aim = {} do
         if not me then return end
     
         local my_weapon = entity.get_player_weapon(me)
-        if not my_weapon then
-            return
-        end
+        if not my_weapon then return end
     
         local ent = native_GetClientEntity(my_weapon)
-        if ent == nil or native_IsWeapon(ent) == true then
-            return
-        end
+        if not ent or not native_IsWeapon(ent) then return end
     
         local inaccuracy = native_GetInaccuracy(ent)
-        if inaccuracy == nil then
+        if not inaccuracy then return end
+    
+        local tickcount = globals.tickcount()
+        if tickcount < roundStarted then 
+            can_hit_targets = {}
+            return 
+        end
+    
+        local eye_pos = vector(client.eye_position())
+        local simtime = entity.get_prop(me, 'm_flSimulationTime')
+        local weapon_id = entity.get_prop(my_weapon, 'm_iItemDefinitionIndex')
+        local weapon_info = {
+            is_revolver = (weapon_id == 64),
+            is_melee = (weapon_id == 42 or weapon_id == 59),
+            type = ((weapon_id == 9 or weapon_id == 11 or weapon_id == 38 or weapon_id == 40) and 'sniperrifle' or 'other'),
+            max_speed = entity.get_prop(my_weapon, 'm_flMaxSpeed') or 250,
+            max_speed_alt = entity.get_prop(my_weapon, 'm_flMaxSpeed2') or 200
+        }
+        local scoped = entity.get_prop(me, 'm_bIsScoped') == 1
+        local onground = bit.band(entity.get_prop(me, 'm_fFlags'), 1)
+    
+        if weapon_info.type == 'grenade' or weapon_info.is_melee then
+            can_hit_targets = {}
             return
         end
     
-        local tickcount = globals.tickcount()
-        local player_resource = entity.get_player_resource()
-        local eyepos = vector(client.eye_position())
-        local simtime = entity.get_prop(me, 'm_flSimulationTime')
-        local weapon_id = entity.get_prop(my_weapon, 'm_iItemDefinitionIndex')
-        local weapon = {
-            is_revolver = (weapon_id == 64),
-            is_melee_weapon = (weapon_id == 42 or weapon_id == 59 or weapon_id == 500 or weapon_id == 505 or weapon_id == 506 or weapon_id == 507 or weapon_id == 508 or weapon_id == 509 or weapon_id == 512 or weapon_id == 514 or weapon_id == 515 or weapon_id == 516),
-            type = (weapon_id == 9 or weapon_id == 11 or weapon_id == 38 or weapon_id == 40) and 'sniperrifle' or 'other',
-            max_player_speed = entity.get_prop(my_weapon, 'm_flMaxSpeed') or 250,
-            max_player_speed_alt = entity.get_prop(my_weapon, 'm_flMaxSpeed2') or 200
-        }
-        local scoped = entity.get_prop(me, 'm_bIsScoped') == 1
-        local onground = bit.band(entity.get_prop(me, 'm_fFlags'), bit.lshift(1, 0))
-        if tickcount < roundStarted then return end
-    
-        local can_shoot
-        if weapon.is_revolver then
-            can_shoot = simtime > entity.get_prop(my_weapon, 'm_flNextPrimaryAttack')
-        elseif weapon.is_melee_weapon then
-            can_shoot = false
-        else
-            can_shoot = simtime > math.max(entity.get_prop(me, 'm_flNextAttack'), entity.get_prop(my_weapon, 'm_flNextPrimaryAttack'), entity.get_prop(my_weapon, 'm_flNextSecondaryAttack'))
+        if cmd.in_jump == 1 and onground == 0 then
+            can_hit_targets = {}
+            return
         end
     
-        local player_info = {}
+        local can_shoot
+        if weapon_info.is_revolver then
+            can_shoot = simtime > entity.get_prop(my_weapon, 'm_flNextPrimaryAttack')
+        else
+            can_shoot = simtime > math.max(
+                entity.get_prop(me, 'm_flNextAttack'),
+                entity.get_prop(my_weapon, 'm_flNextPrimaryAttack'),
+                entity.get_prop(my_weapon, 'm_flNextSecondaryAttack')
+            )
+        end
     
-        for player = 1, globals.maxplayers() do
-            if entity.get_prop(player_resource, 'm_bConnected', player) == 1 then
-                if plist.get(player, 'Add to whitelist') then goto skip end
-                if entity.is_dormant(player) and entity.is_enemy(player) then
-                    local can_hit
+        if not can_shoot then return end
     
-                    local origin = vector(entity.get_origin(player))
-                    local x1, y1, x2, y2, alpha_multiplier = entity.get_bounding_box(player)
-    
-                    if player_info_prev[player] ~= nil and origin.x ~= 0 and alpha_multiplier > 0 then
-                        local dormant_accurate = alpha_multiplier > 0.795
-    
-                        if dormant_accurate then
-                            local target = origin + vector(0, 0, 40)
-                            local pitch, yaw = eyepos:to(target):angles()
-                            local ent, dmg = client.trace_bullet(me, eyepos.x, eyepos.y, eyepos.z, target.x, target.y, target.z, true)
-    
-                            can_hit = (dmg > interface.aimbot.dormant_mindmg:get()) and (not client.visible(target.x, target.y, target.z))
-                            if can_shoot and can_hit and interface.aimbot.dormant_aimbot.hotkey:get() then
-                                modify_velocity(cmd, (scoped and weapon.max_player_speed_alt or weapon.max_player_speed) * 0.33)
-    
-                                if not scoped and weapon.type == 'sniperrifle' and cmd.in_jump == 0 and onground == 1 then
-                                    cmd.in_attack2 = 1
-                                end
-    
-                                if inaccuracy < 0.009 and cmd.chokedcommands == 0 then
-                                    cmd.pitch = pitch
-                                    cmd.yaw = yaw
-                                    cmd.in_attack = 1
-                                    can_shoot = false
+        local dormant_enemies = get_dormant_enemies()
+        can_hit_targets = {}
+        
+        for _, player_id in ipairs(dormant_enemies) do
+            local player_origin = vector(entity.get_origin(player_id))
+            local x1, y1, x2, y2, alpha = entity.get_bounding_box(player_id)
+            
+            if alpha > 0 and player_origin.x ~= 0 then
+                local accuracy_threshold = (interface.aimbot.dormant_accuracy and interface.aimbot.dormant_accuracy:get() or 90) / 100
+                
+                if alpha >= accuracy_threshold then
+                    local min_damage = interface.aimbot.dormant_mindmg:get()
+                    local duck_amount = entity.get_prop(player_id, 'm_flDuckAmount') or 0
+                    
+                    local best_target = nil
+                    local best_damage = 0
+                    
+                    for _, pos_data in ipairs(hitbox_positions) do
+                        local target_pos = player_origin + pos_data.vec
+                        
+                        if pos_data.hitbox == "Head" then
+                            target_pos = target_pos - vector(0, 0, duck_amount * 10)
+                        elseif pos_data.hitbox == "Chest" then
+                            target_pos = target_pos - vector(0, 0, duck_amount * 4)
+                        end
+                        
+                        local target_points = get_target_points(eye_pos, target_pos, pos_data.scale)
+                        
+                        for _, point in ipairs(target_points) do
+                            local hit_ent, damage = client.trace_bullet(me, 
+                                eye_pos.x, eye_pos.y, eye_pos.z,
+                                point.vec.x, point.vec.y, point.vec.z, true)
+                            
+                            if damage > min_damage and damage > best_damage then
+                                if not client.visible(point.vec.x, point.vec.y, point.vec.z) then
+                                    best_target = {
+                                        pos = point.vec,
+                                        damage = damage,
+                                        hitbox = pos_data.hitbox,
+                                        point_name = point.text,
+                                        player_id = player_id,
+                                        alpha = alpha
+                                    }
+                                    best_damage = damage
                                 end
                             end
                         end
                     end
-                    player_info[player] = {origin, alpha_multiplier, can_hit}
+                    
+                    if best_target then
+                        can_hit_targets[player_id] = best_target
+                        
+                        modify_velocity(cmd, (scoped and weapon_info.max_speed_alt or weapon_info.max_speed) * 0.33)
+                        
+                        local pitch, yaw = eye_pos:to(best_target.pos):angles()
+                        
+                        if not scoped and weapon_info.type == 'sniperrifle' and cmd.in_jump == 0 and onground == 1 then
+                            cmd.in_attack2 = 1
+                        end
+                        
+                        if inaccuracy < 0.01 and cmd.chokedcommands == 0 then
+                            cmd.pitch = pitch
+                            cmd.yaw = yaw
+                            cmd.in_attack = 1
+                            shot_fired = true
+                            last_shot_data = {
+                                target_id = player_id,
+                                hitbox = best_target.hitbox,
+                                point = best_target.point_name,
+                                alpha = alpha
+                            }
+                            break
+                        end
+                    end
                 end
-                in_dormant = entity.is_dormant(player) and entity.is_enemy(player)
             end
-            ::skip::
         end
-        player_info_prev = player_info
     end
     
     dormant_aim.paint = function()
-        if not (interface.aimbot.enabled_aimbot:get() and interface.aimbot.dormant_aimbot:get() and interface.aimbot.dormant_indicator:get()) then
-            return
-        end
-        
         local me = entity.get_local_player()
         if not me then return end
         
-        local can_hit = false
-        for _, info in pairs(player_info_prev) do
-            if info[3] then
-                can_hit = true
+        if interface.aimbot.enabled_aimbot:get() and interface.aimbot.dormant_aimbot:get() and interface.aimbot.dormant_indicator:get() then
+            local color = {255, 255, 255, 200} -- Default white
+            
+            local has_targets = false
+            for _ in pairs(can_hit_targets) do
+                has_targets = true
                 break
             end
-        end
-        
-        local r, g, b, a = interface.visuals.accent:get()
-        
-        if interface.aimbot.dormant_aimbot.hotkey:get() then
-            if can_hit then
-                dormant_aim.color = {132, 196, 20, 245}
-            elseif in_dormant then
-                dormant_aim.color = {r, g, b, a}
-            else
-                dormant_aim.color = {255, 25, 25, 230}
+            
+            if interface.aimbot.dormant_aimbot.hotkey:get() then
+                if has_targets then
+                    color = {143, 194, 21, 255} -- Green when can hit
+                elseif #get_dormant_enemies() > 0 then
+                    local r, g, b, a = interface.visuals.accent:get()
+                    color = {r, g, b, a} -- Accent color when dormant enemies exist
+                else
+                    color = {255, 0, 50, 255} -- Red when no dormant enemies
+                end
             end
-        else
-            dormant_aim.color = {180, 180, 180, 180}
+            
+            renderer.indicator(color[1], color[2], color[3], color[4], 'DA')
         end
-        
-        renderer.indicator(dormant_aim.color[1], dormant_aim.color[2], dormant_aim.color[3], dormant_aim.color[4], 'DA')
     end
     
     dormant_aim.reset = function()
         local freezetime = (cvar.mp_freezetime:get_float() + 1) / globals.tickinterval()
         roundStarted = globals.tickcount() + freezetime
+        can_hit_targets = {}
+        dormant_players = {}
     end
     
-    client.register_esp_flag('DA', 255, 255, 255, function(player)
-        local me = entity.get_local_player()
-        if not me then return end
-        if interface.aimbot.enabled_aimbot:get() and interface.aimbot.dormant_aimbot:get() and entity.is_enemy(player) and player_info_prev[player] ~= nil then
-            local _, _, can_hit = unpack(player_info_prev[player])
-            return can_hit
+    dormant_aim.on_weapon_fire = function(e)
+        client.delay_call(0.03, function()
+            local local_player = entity.get_local_player()
+            if client.userid_to_entindex(e.userid) == local_player and shot_fired and not hit_registered then
+                -- miss event
+                if interface.visuals.enabled_visuals:get() and interface.visuals.logging:get() then
+                    local unknown = "unknown"
+                    local target_name = entity.get_player_name(last_shot_data.target_id)
+                    local accuracy_str = string.format("%.0f", last_shot_data.alpha * 100) .. "%"
+                    
+                    local msg = string.format("missed %s's %s / reason: %s - accuracy: %s", 
+                        target_name, last_shot_data.hitbox, unknown, accuracy_str)
+                    
+                    local logOptions = interface.visuals.logging_options:get()
+                    local consoleOptions = interface.visuals.logging_options_console:get()
+                    local screenOptions = interface.visuals.logging_options_screen:get()
+                    
+                    local doConsole = utils.contains(logOptions, "console") and utils.contains(consoleOptions, "miss")
+                    local doScreen = utils.contains(logOptions, "screen") and utils.contains(screenOptions, "miss")
+                    
+                    if doConsole then
+                        argLog("missed %s's %s / reason: %s - accuracy: %s", target_name, last_shot_data.hitbox, unknown, accuracy_str)
+                    end
+                    
+                    if doScreen then
+                        logging:push(msg)
+                    end
+                end
+            end
+            
+            hit_registered = false
+            shot_fired = false
+            last_shot_data = {}
+        end)
+    end
+    
+    dormant_aim.on_player_hurt = function(e)
+        local attacker = client.userid_to_entindex(e.attacker)
+        local victim = client.userid_to_entindex(e.userid)
+        
+        if attacker == entity.get_local_player() and victim and shot_fired then
+            hit_registered = true
+            
+            if interface.visuals.enabled_visuals:get() and interface.visuals.logging:get() then
+                local unknown = "unknown"
+                local victim_name = entity.get_player_name(victim)
+                local hitgroup_names = {"generic", "head", "chest", "stomach", "left arm", "right arm", "left leg", "right leg", "neck", "?", "gear"}
+                
+                local hitgroup_name = hitgroup_names[e.hitgroup + 1] or "unknown"
+                local accuracy_str = string.format("%.0f", (last_shot_data.alpha or 1) * 100) .. "%"
+                
+                local msg = string.format("hit %s's %s for %d / lc: %s - yaw: %s - accuracy: %s", 
+                    victim_name, hitgroup_name, e.dmg_health, unknown, unknown, accuracy_str)
+                
+                local logOptions = interface.visuals.logging_options:get()
+                local consoleOptions = interface.visuals.logging_options_console:get()
+                local screenOptions = interface.visuals.logging_options_screen:get()
+                
+                local doConsole = utils.contains(logOptions, "console") and utils.contains(consoleOptions, "hit")
+                local doScreen = utils.contains(logOptions, "screen") and utils.contains(screenOptions, "hit")
+                
+                if doConsole then
+                    argLog("hit %s's %s for %d / lc: %s - yaw: %s - accuracy: %s", 
+                        victim_name, hitgroup_name, e.dmg_health, unknown, unknown, accuracy_str)
+                end
+                
+                if doScreen then
+                    logging:push(msg)
+                end
+            end
+        end
+    end
+    
+    client.register_esp_flag('DA', 255, 255, 255, function(player_id)
+        if interface.aimbot.enabled_aimbot:get() and interface.aimbot.dormant_aimbot:get() then
+            return can_hit_targets[player_id] ~= nil
         end
     end)
 end
+
+dormant_aim.esp_setup = function()
+    local dormant_esp = ui.reference('visuals', 'player esp', 'dormant')
+    if dormant_esp then
+        if interface.aimbot.dormant_aimbot:get() then
+            ui.set(dormant_esp, true)
+            ui.set_enabled(dormant_esp, false)
+        else
+            ui.set_enabled(dormant_esp, true)
+        end
+    end
+end
+
+client.set_event_callback('setup_command', function(cmd)
+    if interface.aimbot.enabled_aimbot:get() and interface.aimbot.dormant_aimbot:get() then
+        dormant_aim.setup(cmd)
+    end
+end)
+
+client.set_event_callback('paint', function()
+    dormant_aim.esp_setup()
+    
+    if interface.aimbot.enabled_aimbot:get() and interface.aimbot.dormant_aimbot:get() then
+        dormant_aim.paint()
+    end
+end)
+
+client.set_event_callback('round_prestart', function()
+    if interface.aimbot.enabled_aimbot:get() and interface.aimbot.dormant_aimbot:get() then
+        dormant_aim.reset()
+    end
+end)
+
+client.set_event_callback('weapon_fire', function(e)
+    if interface.aimbot.enabled_aimbot:get() and interface.aimbot.dormant_aimbot:get() then
+        dormant_aim.on_weapon_fire(e)
+    end
+end)
+
+client.set_event_callback('player_hurt', function(e)
+    if interface.aimbot.enabled_aimbot:get() and interface.aimbot.dormant_aimbot:get() then
+        dormant_aim.on_player_hurt(e)
+    end
+end)
 --@endregion
 
 --@region: lethal_shot_handler
@@ -4928,7 +5126,6 @@ lethal_shot_handler = {} do
             return true, 1.0
         end
         
-        -- If too many misses (3+), force safe point due to aim struggle
         if cache.misses > 2 then
             return true, 0.8
         end
@@ -5887,22 +6084,3 @@ killsay = {} do
     client.set_event_callback("paint", killsay.setup)
 end
 --@endregion
-
--- Dormant aimbot callbacks
-client.set_event_callback('setup_command', function(cmd)
-    if interface.aimbot.enabled_aimbot:get() and interface.aimbot.dormant_aimbot:get() then
-        dormant_aim.setup(cmd)
-    end
-end)
-
-client.set_event_callback('paint', function()
-    if interface.aimbot.enabled_aimbot:get() and interface.aimbot.dormant_aimbot:get() and interface.aimbot.dormant_indicator:get() then
-        dormant_aim.paint()
-    end
-end)
-
-client.set_event_callback('round_prestart', function()
-    if interface.aimbot.enabled_aimbot:get() and interface.aimbot.dormant_aimbot:get() then
-        dormant_aim.reset()
-    end
-end)
