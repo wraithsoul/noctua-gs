@@ -17,6 +17,7 @@ changelog 1.3 (18/10/2025):
  - added hitsound 
  - added buybot
  - reworked smart safety
+ - fixed game crashes
  - improved 'resolver tweaks' logic
 
 changelog 1.2 (18/03/2025):
@@ -391,13 +392,7 @@ aspect_ratio.init()
 
 --@region: thirdperson
 thirdperson = {} do
-    thirdperson.current_distance = 0
-    thirdperson.setup = function()
-        if not (interface.visuals.enabled_visuals:get() and interface.visuals.thirdperson:get()) then return end
-        local target_distance = interface.visuals.thirdperson_slider:get()
-        thirdperson.current_distance = mathematic.lerp(thirdperson.current_distance, target_distance, globals.frametime() * 8)
-        client.exec("cam_idealdist " .. thirdperson.current_distance)
-    end
+    thirdperson.setup = function() end
 end
 --@endregion
 
@@ -1092,6 +1087,11 @@ client.set_event_callback('paint_ui', function()
 end)
 
 client.set_event_callback('shutdown', interface.show)
+
+-- 1:1 thirdperson distance: apply only on slider change
+interface.visuals.thirdperson_slider:set_callback(function()
+    client.exec("cam_idealdist " .. interface.visuals.thirdperson_slider:get())
+end)
 --@endregion
 
 --@region: vgui
@@ -2854,19 +2854,15 @@ stickman = {} do
                                 basemapalphaphongmask = 1
                             }
                         end
-                        
-                        local entity_index = entity.get_prop(mat, "m_nEntityIndex")
-                        if not entity_index or entity_index == local_player then
-                            mat:set_shader_param("$alpha", 0)
-                            mat:set_shader_param("$envmaptint", vector(0,0,0))
-                            mat:set_shader_param("$envmapfresnelminmaxexp", vector(0,0,0))
-                            mat:set_shader_param("$envmaplightscale", 0)
-                            mat:set_shader_param("$phongboost", 0)
-                            mat:set_shader_param("$rimlightexponent", 0)
-                            mat:set_shader_param("$rimlightboost", 0)
-                            mat:set_shader_param("$pearlescent", 0)
-                            mat:set_shader_param("$basemapalphaphongmask", 0)
-                        end
+                        mat:set_shader_param("$alpha", 0)
+                        mat:set_shader_param("$envmaptint", vector(0,0,0))
+                        mat:set_shader_param("$envmapfresnelminmaxexp", vector(0,0,0))
+                        mat:set_shader_param("$envmaplightscale", 0)
+                        mat:set_shader_param("$phongboost", 0)
+                        mat:set_shader_param("$rimlightexponent", 0)
+                        mat:set_shader_param("$rimlightboost", 0)
+                        mat:set_shader_param("$pearlescent", 0)
+                        mat:set_shader_param("$basemapalphaphongmask", 0)
                     end
                 end
             end
@@ -2888,29 +2884,26 @@ stickman = {} do
         if mats then
             for i, mat in ipairs(mats) do
                 if mat and mat.set_shader_param then
-                    local entity_index = entity.get_prop(mat, "m_nEntityIndex")
-                    if not entity_index or entity_index == local_player then
-                        if self.original_values then
-                            mat:set_shader_param("$alpha", self.original_values.alpha)
-                            mat:set_shader_param("$envmaptint", self.original_values.envmaptint)
-                            mat:set_shader_param("$envmapfresnelminmaxexp", self.original_values.envmapfresnelminmaxexp)
-                            mat:set_shader_param("$envmaplightscale", self.original_values.envmaplightscale)
-                            mat:set_shader_param("$phongboost", self.original_values.phongboost)
-                            mat:set_shader_param("$rimlightexponent", self.original_values.rimlightexponent)
-                            mat:set_shader_param("$rimlightboost", self.original_values.rimlightboost)
-                            mat:set_shader_param("$pearlescent", self.original_values.pearlescent)
-                            mat:set_shader_param("$basemapalphaphongmask", self.original_values.basemapalphaphongmask)
-                        else
-                            mat:set_shader_param("$alpha", 1)
-                            mat:set_shader_param("$envmaptint", vector(1,1,1))
-                            mat:set_shader_param("$envmapfresnelminmaxexp", vector(0,1,2))
-                            mat:set_shader_param("$envmaplightscale", 1)
-                            mat:set_shader_param("$phongboost", 1)
-                            mat:set_shader_param("$rimlightexponent", 4)
-                            mat:set_shader_param("$rimlightboost", 1)
-                            mat:set_shader_param("$pearlescent", 0.5)
-                            mat:set_shader_param("$basemapalphaphongmask", 1)
-                        end
+                    if self.original_values then
+                        mat:set_shader_param("$alpha", self.original_values.alpha)
+                        mat:set_shader_param("$envmaptint", self.original_values.envmaptint)
+                        mat:set_shader_param("$envmapfresnelminmaxexp", self.original_values.envmapfresnelminmaxexp)
+                        mat:set_shader_param("$envmaplightscale", self.original_values.envmaplightscale)
+                        mat:set_shader_param("$phongboost", self.original_values.phongboost)
+                        mat:set_shader_param("$rimlightexponent", self.original_values.rimlightexponent)
+                        mat:set_shader_param("$rimlightboost", self.original_values.rimlightboost)
+                        mat:set_shader_param("$pearlescent", self.original_values.pearlescent)
+                        mat:set_shader_param("$basemapalphaphongmask", self.original_values.basemapalphaphongmask)
+                    else
+                        mat:set_shader_param("$alpha", 1)
+                        mat:set_shader_param("$envmaptint", vector(1,1,1))
+                        mat:set_shader_param("$envmapfresnelminmaxexp", vector(0,1,2))
+                        mat:set_shader_param("$envmaplightscale", 1)
+                        mat:set_shader_param("$phongboost", 1)
+                        mat:set_shader_param("$rimlightexponent", 4)
+                        mat:set_shader_param("$rimlightboost", 1)
+                        mat:set_shader_param("$pearlescent", 0.5)
+                        mat:set_shader_param("$basemapalphaphongmask", 1)
                     end
                 end
             end
@@ -2935,10 +2928,7 @@ stickman = {} do
                 if mats then
                     for i, mat in ipairs(mats) do
                         if mat and mat.set_shader_param then
-                            local entity_index = entity.get_prop(mat, "m_nEntityIndex")
-                            if not entity_index or entity_index == player_idx then
-                                mat:set_shader_param("$alpha", 0)
-                            end
+                            mat:set_shader_param("$alpha", 0)
                         end
                     end
                 end
@@ -2948,6 +2938,14 @@ stickman = {} do
                 stickman:reset_materials()
             end
         end
+    end)
+
+    client.set_event_callback("game_newmap", function()
+        stickman:reset_materials()
+    end)
+
+    client.set_event_callback("cs_game_disconnected", function()
+        stickman:reset_materials()
     end)
 
     client.set_event_callback("shutdown", function()
