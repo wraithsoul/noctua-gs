@@ -596,7 +596,7 @@ interface = {} do
         -- shared = interface.header.general:checkbox('shared identity (wip)'),
         logging = interface.header.general:checkbox('logging'),
         logging_options = interface.header.general:multiselect('options', 'console', 'screen'),
-        logging_options_console = interface.header.general:multiselect('console', 'aimbot', 'fire', 'hit', 'miss'),
+        logging_options_console = interface.header.general:multiselect('console', 'aimbot', 'fire', 'hit', 'miss', 'buy'),
         logging_options_screen = interface.header.general:multiselect('screen', 'aimbot', 'fire', 'hit', 'miss'),
         logging_slider = interface.header.general:slider('slider', 40, 450, 240),
         aspect_ratio = interface.header.general:checkbox('override aspect ratio'),
@@ -3412,6 +3412,24 @@ logging = {} do
         if doScreen then self:push(msg) end
     end
     
+    logging.on_item_purchase = function(e)
+        if not interface.visuals.logging:get() then return end
+        
+        local logOptions = interface.visuals.logging_options:get()
+        local consoleOptions = interface.visuals.logging_options_console:get()
+        
+        local doConsole = utils.contains(logOptions, "console") and utils.contains(consoleOptions, "buy")
+        if not doConsole then return end
+        
+        local player_idx = client.userid_to_entindex(e.userid)
+        if not player_idx or not entity.is_enemy(player_idx) then return end
+        
+        local playerName = entity.get_player_name(player_idx) or "unknown"
+        local weapon = e.weapon or "unknown item"
+        
+        argLog("%s bought %s", playerName, weapon)
+    end
+    
     logging.on_round_prestart = function(e)
         if not interface.visuals.logging:get() then return end
         
@@ -3436,6 +3454,7 @@ logging = {} do
 end
 
 client.set_event_callback("round_prestart", logging.on_round_prestart)
+client.set_event_callback("item_purchase", logging.on_item_purchase)
 
 client.set_event_callback("paint", function()
     logging.drag:handle_release()
