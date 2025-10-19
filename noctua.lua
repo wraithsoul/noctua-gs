@@ -3429,7 +3429,7 @@ logging = {} do
         
         if not is_warmup then
             logging.round_counter = logging.round_counter + 1
-            client.exec("clear")
+            client.color_log(255, 255, 255, "\n\0")
             argLog("round %d", logging.round_counter)
         end
     end
