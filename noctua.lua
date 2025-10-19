@@ -626,7 +626,7 @@ interface = {} do
     }
 
     interface.utility = {
-        item_anti_crash = interface.header.general:checkbox('\aa5ab55ffchat filter (crash & noise)'),
+        -- item_anti_crash = interface.header.general:checkbox('\aa5ab55ffchat filter (crash & noise)'),
         clantag = interface.header.general:checkbox('clantag'),
         killsay = interface.header.general:checkbox('balabolka'),
         killsay_modes = interface.header.general:multiselect('modes', 'on kill', 'on death'),
@@ -645,7 +645,7 @@ interface = {} do
         -- default_config = interface.header.general:button('default config'),
     }
 
-    interface.utility.item_anti_crash:override(true)
+    -- interface.utility.item_anti_crash:override(true) -- uncomment later
 
     interface.hide_references = {
         pui.reference('players', 'adjustments', 'add to whitelist'),
@@ -3556,77 +3556,77 @@ end)
 --@endregion
 
 --@region: item anti-crash
-anti_crash = {} do
-    local hooked = false
-    local original_dispatch = nil
-    local hooked_vtable = nil
-    local pointer = nil
-    local vtable = nil
+-- anti_crash = {} do
+--     local hooked = false
+--     local original_dispatch = nil
+--     local hooked_vtable = nil
+--     local pointer = nil
+--     local vtable = nil
 
-    local CS_UM_SendPlayerItemFound = 63
+--     local CS_UM_SendPlayerItemFound = 63
 
-    local DispatchUserMessage_t = ffi.typeof [[
-        bool(__thiscall*)(void*, int msg_type, int nFlags, int size, const void* msg)
-    ]]
+--     local DispatchUserMessage_t = ffi.typeof [[
+--         bool(__thiscall*)(void*, int msg_type, int nFlags, int size, const void* msg)
+--     ]]
 
-    local function apply_hook()
-        local VClient018 = client.create_interface("client.dll", "VClient018")
-        if not VClient018 then return end
+--     local function apply_hook()
+--         local VClient018 = client.create_interface("client.dll", "VClient018")
+--         if not VClient018 then return end
 
-        pointer = ffi.cast("uintptr_t**", VClient018)
-        vtable = ffi.cast("uintptr_t*", pointer[0])
+--         pointer = ffi.cast("uintptr_t**", VClient018)
+--         vtable = ffi.cast("uintptr_t*", pointer[0])
 
-        local size = 0
-        while vtable[size] ~= 0x0 do
-           size = size + 1
-        end
+--         local size = 0
+--         while vtable[size] ~= 0x0 do
+--            size = size + 1
+--         end
 
-        hooked_vtable = ffi.new("uintptr_t[?]", size)
-        for i = 0, size - 1 do
-            hooked_vtable[i] = vtable[i]
-        end
-        pointer[0] = hooked_vtable
+--         hooked_vtable = ffi.new("uintptr_t[?]", size)
+--         for i = 0, size - 1 do
+--             hooked_vtable[i] = vtable[i]
+--         end
+--         pointer[0] = hooked_vtable
 
-        original_dispatch = ffi.cast(DispatchUserMessage_t, vtable[38])
+--         original_dispatch = ffi.cast(DispatchUserMessage_t, vtable[38])
 
-        local function hkDispatch(thisptr, msg_type, nFlags, size, msg)
-            if msg_type == CS_UM_SendPlayerItemFound or 
-               (msg_type == 6 and ffi.string(msg, size):find("#Cstrike_Name_Change")) then
-                return false
-            end
-            return original_dispatch(thisptr, msg_type, nFlags, size, msg)
-        end
+--         local function hkDispatch(thisptr, msg_type, nFlags, size, msg)
+--             if msg_type == CS_UM_SendPlayerItemFound or 
+--                (msg_type == 6 and ffi.string(msg, size):find("#Cstrike_Name_Change")) then
+--                 return false
+--             end
+--             return original_dispatch(thisptr, msg_type, nFlags, size, msg)
+--         end
         
-        hooked_vtable[38] = ffi.cast("uintptr_t", ffi.cast(DispatchUserMessage_t, hkDispatch))
-        hooked = true
-    end
+--         hooked_vtable[38] = ffi.cast("uintptr_t", ffi.cast(DispatchUserMessage_t, hkDispatch))
+--         hooked = true
+--     end
 
-    local function remove_hook()
-        if hooked_vtable and vtable and pointer then
-            hooked_vtable[38] = vtable[38]
-            pointer[0] = vtable
-        end
-        hooked = false
-    end
+--     local function remove_hook()
+--         if hooked_vtable and vtable and pointer then
+--             hooked_vtable[38] = vtable[38]
+--             pointer[0] = vtable
+--         end
+--         hooked = false
+--     end
 
-    function anti_crash.toggle()
-        local should_enable = interface.utility.item_anti_crash:get()
+--     function anti_crash.toggle()
+--         local should_enable = interface.utility.item_anti_crash:get()
         
-        if should_enable and not hooked then
-            apply_hook()
-        elseif not should_enable and hooked then
-            remove_hook()
-        end
-    end
+--         if should_enable and not hooked then
+--             apply_hook()
+--         elseif not should_enable and hooked then
+--             remove_hook()
+--         end
+--     end
 
-    client.set_event_callback("paint_ui", function()
-        anti_crash.toggle()
-    end)
+--     client.set_event_callback("paint_ui", function()
+--         anti_crash.toggle()
+--     end)
     
-    client.set_event_callback("shutdown", function()
-        if hooked then remove_hook() end
-    end)
-end
+--     client.set_event_callback("shutdown", function()
+--         if hooked then remove_hook() end
+--     end)
+-- end
 --@endregion
 
 --@region: hitsound
