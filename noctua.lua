@@ -13,6 +13,7 @@ local _version = '1.3'
 local update = [[
 changelog 1.3 (18/10/2025):
  - added 'on death' to balabolka (killsay) mode
+ - added round counter
  - added zoom animation
  - added hitsound 
  - added buybot
@@ -5653,6 +5654,9 @@ end
 
 --@region: killsay
 killsay = {} do
+    killsay.last_say_time = 0
+    killsay.cooldown = 2.0
+    
     killsay.multi_phrases_kill = {
         {
             "1"
@@ -5976,6 +5980,21 @@ killsay = {} do
         },
         {
             "разъебу вас в шахматы писать сюда @mirai_network"
+        },
+        {
+            "наратан найтли не проблема для #noctua"
+        },
+        {
+            "где лучшие тусовки? у нас в #noctua"
+        },
+        {
+            "1",
+            "?",
+            "ты че такой тупой ребенок бляди"
+        },
+        {
+            "скачать нокту можно здесь:",
+            "а хуй тебе"
         }
     }
 
@@ -6004,6 +6023,25 @@ killsay = {} do
         {
             "!admin",
             "ливай шлюха у тя 5 сек"
+        },
+        {
+            "свинокта опять мисснула пиздец"
+        },
+        {
+            "ХАХАХА",
+            "да ебаный",
+            "дегенерат",
+            "я реально мать тебе выебу",
+            "сын шалаыв",
+            "никчемной"
+        },
+        {
+            "ну опять не выбил",
+            "сын бабки ебаной"
+        },
+        {
+            "я щас админку байну и забаню тебя хуесос",
+            "ходи оглядывайся"
         }
     }
     
@@ -6031,7 +6069,7 @@ killsay = {} do
         local initial_delay = 0.20 + math.random() * 0.40
         
         if phrase_type == "death" then
-            initial_delay = initial_delay + 1.00
+            initial_delay = initial_delay + 1.50
         end
         
         local phrases = killsay.get_random_phrase(phrase_type)
@@ -6054,7 +6092,7 @@ killsay = {} do
             end
             
             if phrase_type == "death" then
-                min_between_delay = min_between_delay + 0.70
+                min_between_delay = min_between_delay + 1.20
             end
             
             if i > 1 then
@@ -6072,6 +6110,11 @@ killsay = {} do
     killsay.on_player_death = function(e)
         if not interface.utility.killsay:get() then return end
         
+        local now = globals.realtime()
+        if now - killsay.last_say_time < killsay.cooldown then
+            return
+        end
+        
         local attacker = client.userid_to_entindex(e.attacker)
         local victim = client.userid_to_entindex(e.userid)
         local local_player = entity.get_local_player()
@@ -6079,10 +6122,12 @@ killsay = {} do
         
         if attacker == local_player and victim ~= local_player then
             if utils.contains(modes, "on kill") then
+                killsay.last_say_time = now
                 killsay.send_phrases("kill")
             end
         elseif victim == local_player and attacker ~= local_player then
             if utils.contains(modes, "on death") then
+                killsay.last_say_time = now
                 killsay.send_phrases("death")
             end
         end
