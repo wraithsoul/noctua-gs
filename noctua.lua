@@ -3412,7 +3412,9 @@ logging = {} do
         end
         
         if edit_mode and real_count == 0 and not self.preview_active then
+            self:push("hit keus's head for 208 / lc: 3 - yaw: -23°", 999999, true)
             self:push("missed racen's head / lc: 12 - reason: bad code", 999999, true)
+            self:push("forced safe point for Axsiimov / hp: 26 - reason: cs_assault", 999999, true)
             self.preview_active = true
         end
         if (not edit_mode or real_count > 0) and self.preview_active then
