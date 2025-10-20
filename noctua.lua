@@ -584,6 +584,7 @@ interface = {} do
         secondary = interface.header.general:label('secondary color', {215, 240, 255}),
         vgui = interface.header.general:label('vgui color', {255, 255, 255}), -- 140, 140, 140
         crosshair_indicators = interface.header.general:checkbox('crosshair indicators'),
+        crosshair_style = interface.header.general:combobox('style', {'default', 'center'}),
         window = interface.header.general:checkbox('debug window'),
         -- shared = interface.header.general:checkbox('shared identity (wip)'),
         logging = interface.header.general:checkbox('logging'),
@@ -754,6 +755,11 @@ interface = {} do
 
                     if key == 'logging' or key:find('logging_') then
                         element:set_visible(not is_other_selected)
+                        return
+                    end
+
+                    if key == 'crosshair_style' then
+                        element:set_visible((not is_other_selected) and interface.visuals.crosshair_indicators:get())
                         return
                     end
 
@@ -2652,6 +2658,10 @@ visuals = {} do
         local isDT = ui.get(ui_references.double_tap[1]) and ui.get(ui_references.double_tap[2])
         local isDMG = ui.get(ui_references.minimum_damage_override[1]) and ui.get(ui_references.minimum_damage_override[2])
 
+        local style = (interface.visuals.crosshair_style and interface.visuals.crosshair_style:get()) or 'default'
+        local align_text = (style == 'center') and 'c' or 'l'
+        local align_title = (style == 'center') and 'cb' or 'lb'
+
         if not self.element_positions then
             self.element_positions = {
                 noctua = screen_height / 2 + 10,
@@ -2727,20 +2737,20 @@ visuals = {} do
         self.element_positions.osaa = mathematic.lerp(self.element_positions.osaa, self.element_target_positions.osaa, fadeSpeedSetting)
         self.element_positions.dmg = mathematic.lerp(self.element_positions.dmg, self.element_target_positions.dmg, fadeSpeedSetting)
 
-        self.animated_text:render(screen_width / 2, self.element_positions.noctua, "lb", self.indicatorsAlpha)
-        renderer.text(screen_width / 2, self.element_positions.state, 255, 255, 255, self.indicatorsAlpha, "l", 1000, state)
+        self.animated_text:render(screen_width / 2, self.element_positions.noctua, align_title, self.indicatorsAlpha)
+        renderer.text(screen_width / 2, self.element_positions.state, 255, 255, 255, self.indicatorsAlpha, align_text, 1000, state)
 
         if smoothRapidAlpha >= 1 or smoothReloadAlpha >= 1 then
-            renderer.text(screen_width / 2, self.element_positions.rapid, 255, 255, 255, smoothRapidAlpha, "l", 1000, "rapid")
-            renderer.text(screen_width / 2, self.element_positions.rapid, 255, 255, 255, smoothReloadAlpha, "l", 1000, "reload")
+            renderer.text(screen_width / 2, self.element_positions.rapid, 255, 255, 255, smoothRapidAlpha, align_text, 1000, "rapid")
+            renderer.text(screen_width / 2, self.element_positions.rapid, 255, 255, 255, smoothReloadAlpha, align_text, 1000, "reload")
         end
 
         if smoothOsaaAlpha >= 1 then
-            renderer.text(screen_width / 2, self.element_positions.osaa, 255, 255, 255, smoothOsaaAlpha, "l", 1000, "osaa")
+            renderer.text(screen_width / 2, self.element_positions.osaa, 255, 255, 255, smoothOsaaAlpha, align_text, 1000, "osaa")
         end
         
         if smoothDmgAlpha >= 1 then
-            renderer.text(screen_width / 2, self.element_positions.dmg, 255, 255, 255, smoothDmgAlpha, "l", 1000, "dmg")
+            renderer.text(screen_width / 2, self.element_positions.dmg, 255, 255, 255, smoothDmgAlpha, align_text, 1000, "dmg")
         end
     end
 end
