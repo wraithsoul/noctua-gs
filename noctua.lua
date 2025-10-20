@@ -8,11 +8,11 @@
 
 --@region: information
 local _name = 'noctua debug'
-local _version = '1.3'
+local _version = '1.3a'
 local _nickname = entity.get_player_name(entity.get_local_player())
 
 local update = [[
-changelog 1.3 (18/10/2025):
+changelog 1.3a (18/10/2025):
  - added "on death" to balabolka (killsay) mode
  - added crosshair indicator "center" mode
  - added spawn zoom effect
