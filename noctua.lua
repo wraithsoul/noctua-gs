@@ -305,7 +305,7 @@ colors = {} do
         return bit.tohex(hexValue)
     end
     
-    colors.animate_text = function(time, text, r, g, b, a, r2, g2, b2, a2)
+    colors.shimmer = function(time, text, r, g, b, a, r2, g2, b2, a2)
         local animated = {}
         local index = 1
         local numChars = #text
@@ -2993,7 +2993,7 @@ visuals.window = function(self, base_x, base_y, align)
         render = function(self, x, y, alignment, overallAlpha)
             local alpha1 = math.floor(self.colors[1].a * (overallAlpha / 255))
             local alpha2 = math.floor(self.colors[2].a * (overallAlpha / 255))
-            local animatedStr = table.concat(colors.animate_text(
+            local animatedStr = table.concat(colors.shimmer(
                 globals.realtime() * self.timeSpeed, 
                 self.base, 
                 self.colors[1].r, self.colors[1].g, self.colors[1].b, alpha1, 
