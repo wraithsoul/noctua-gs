@@ -3174,7 +3174,16 @@ visuals.window = function(self, base_x, base_y, align)
 
         if smoothRapidAlpha >= 1 or smoothReloadAlpha >= 1 then
             renderer.text((x_rapid or x_draw), self.element_positions.rapid, 255, 255, 255, smoothRapidAlpha, align_text, 1000, "rapid")
-            renderer.text((x_reload or x_draw), self.element_positions.rapid, 255, 255, 255, smoothReloadAlpha, align_text, 1000, "reload")
+            local _ts = (((self.animated_text and self.animated_text.timeSpeed)) * 3.0)
+            local _a1 = math.min(255, math.floor(smoothReloadAlpha * 2.0))
+            local _a2 = math.floor(smoothReloadAlpha * 0.7)
+            local reloadStr = table.concat(colors.shimmer(
+                globals.realtime() * _ts,
+                "reload",
+                255, 255, 255, _a1,
+                255, 255, 255, _a2
+            ))
+            renderer.text((x_reload or x_draw), self.element_positions.rapid, 255, 255, 255, smoothReloadAlpha, align_text, 1000, reloadStr)
         end
 
         if smoothOsaaAlpha >= 1 then
