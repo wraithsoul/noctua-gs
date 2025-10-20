@@ -624,6 +624,7 @@ interface = {} do
         vgui = interface.header.general:label('vgui color', {255, 255, 255}), -- 140, 140, 140
         crosshair_indicators = interface.header.general:checkbox('crosshair indicators'),
         crosshair_style = interface.header.general:combobox('style', {'default', 'center'}),
+        crosshair_animate_scope = interface.header.general:checkbox('animate on-scope'),
         window = interface.header.general:checkbox('debug window'),
         -- shared = interface.header.general:checkbox('shared identity (wip)'),
         logging = interface.header.general:checkbox('logging'),
@@ -801,6 +802,14 @@ interface = {} do
 
                     if key == 'crosshair_style' then
                         element:set_visible((not is_other_selected) and interface.visuals.crosshair_indicators:get())
+                        return
+                    end
+
+                    if key == 'crosshair_animate_scope' then
+                        local show_anim = (not is_other_selected)
+                            and interface.visuals.crosshair_indicators:get()
+                            and (interface.visuals.crosshair_style:get() == 'center')
+                        element:set_visible(show_anim)
                         return
                     end
 
@@ -2667,7 +2676,7 @@ widgets = {} do
 
     function widgets.paint()
         local menuOpen = ui.is_menu_open()
-        if menuOpen then return end -- Don't render widget content in edit mode
+        if menuOpen then return end
         
         local function widget_enabled_paint(id)
             if not interface.visuals.enabled_visuals:get() then return false end
@@ -2709,7 +2718,6 @@ widgets = {} do
         local target_alpha = menuOpen and LINE_ALPHA or 0
         widgets.lines_alpha = mathematic.lerp(widgets.lines_alpha or 0, target_alpha, globals.frametime() * 12)
 
-        -- Fade for widget edit containers
         local target_frame = menuOpen and 1 or 0
         widgets.frames_alpha = mathematic.lerp(widgets.frames_alpha or 0, target_frame, globals.frametime() * 12)
 
@@ -2733,7 +2741,6 @@ widgets = {} do
             return true
         end
 
-        -- Recompute lines alpha based on whether any widget is enabled
         do
             local any_enabled = false
             for _, id in ipairs(widgets.order) do
@@ -2749,7 +2756,6 @@ widgets = {} do
             if widget_enabled(id) then any_enabled_draw = true; break end
         end
         if any_enabled_draw and a > 0 then
-            -- Draw crisp 1px guide lines
             renderer.rectangle(sw / 2, 0, 1, sh, 255, 255, 255, a)
             renderer.rectangle(0, sh / 2, sw, 1, 255, 255, 255, a)
         end
@@ -2809,7 +2815,6 @@ widgets = {} do
 
         for _, id in ipairs(widgets.order) do
             local enabled = widget_enabled(id)
-            -- per-widget fade alpha
             widgets.widget_alpha = widgets.widget_alpha or {}
             local wa = widgets.widget_alpha[id] or 0
             local target = enabled and 1 or 0
@@ -2818,7 +2823,6 @@ widgets = {} do
             local x, y, w, h, cx, cy = get_rect(id)
             if not (w and h and w > 0 and h > 0) then goto continue end
 
-            -- combined visibility ratio (menu fade * widget fade)
             local ratio_widget = (widgets.widget_alpha[id] or 0) * (widgets.frames_alpha or 0)
             if ratio_widget <= 0.01 then goto continue end
 
@@ -2858,7 +2862,6 @@ widgets = {} do
             local bg_alpha = math.floor(math.min(30, base_alpha) * ratio + 0.5)
             local border_alpha = math.floor(math.min(80, base_alpha + 25) * ratio + 0.5)
 
-            -- Subtle background (snap to whole pixels for crisp borders)
             local rect_x = x - PAD
             local rect_y = y - PAD
             local rect_w = w + PAD * 2
@@ -2866,7 +2869,6 @@ widgets = {} do
             local rx, ry, rw, rh = round(rect_x), round(rect_y), round(rect_w), round(rect_h)
             renderer.rectangle(rx + 1, ry + 1, rw - 2, rh - 2, 255, 255, 255, bg_alpha)
             
-            -- Border with small corner insets for a rounded look
             local inset = 2
             local oa = border_alpha
             -- top & bottom
@@ -3059,6 +3061,7 @@ visuals.window = function(self, base_x, base_y, align)
         local align_text = (style == 'center') and 'c' or 'l'
         local align_title = (style == 'center') and 'cb' or 'lb'
 
+
         if not self.element_positions then
             self.element_positions = {
                 noctua = base_y + 10,
@@ -3134,20 +3137,52 @@ visuals.window = function(self, base_x, base_y, align)
         self.element_positions.osaa = mathematic.lerp(self.element_positions.osaa, self.element_target_positions.osaa, fadeSpeedSetting)
         self.element_positions.dmg = mathematic.lerp(self.element_positions.dmg, self.element_target_positions.dmg, fadeSpeedSetting)
 
-        self.animated_text:render(base_x, self.element_positions.noctua, align_title, self.indicatorsAlpha)
-        renderer.text(base_x, self.element_positions.state, 255, 255, 255, self.indicatorsAlpha, align_text, 1000, state)
+        local animate_on_scope = (interface.visuals.crosshair_animate_scope and interface.visuals.crosshair_animate_scope:get()) or false
+        local use_scope_lerp = (style == 'center') and animate_on_scope
+
+        local scope_pos = self.scope_pos or 0
+        local target_scope = is_scoped and 1 or 0
+        scope_pos = mathematic.lerp(scope_pos, target_scope, fadeSpeedSetting)
+        self.scope_pos = scope_pos
+
+        local x_draw = base_x
+        local x_noctua, x_state, x_rapid, x_reload, x_osaa, x_dmg
+
+        if use_scope_lerp then
+            align_text = 'l'
+            align_title = 'lb'
+
+            local function lerp_x_for(text)
+                local w = select(1, renderer.measure_text('l', text)) or 0
+                local from = base_x - w / 2
+                local to = base_x + 3
+                return mathematic.lerp(from, to, scope_pos)
+            end
+
+            x_noctua = lerp_x_for(self.animated_text.base or "noctua")
+            x_state  = lerp_x_for(state)
+            x_rapid  = lerp_x_for("rapid")
+            x_reload = lerp_x_for("reload")
+            x_osaa   = lerp_x_for("osaa")
+            x_dmg    = lerp_x_for("dmg")
+        end
+
+        local state_r, state_g, state_b = 255, 255, 255
+
+        self.animated_text:render((x_noctua or x_draw), self.element_positions.noctua, align_title, self.indicatorsAlpha)
+        renderer.text((x_state or x_draw), self.element_positions.state, state_r, state_g, state_b, self.indicatorsAlpha, align_text, 1000, state)
 
         if smoothRapidAlpha >= 1 or smoothReloadAlpha >= 1 then
-            renderer.text(base_x, self.element_positions.rapid, 255, 255, 255, smoothRapidAlpha, align_text, 1000, "rapid")
-            renderer.text(base_x, self.element_positions.rapid, 255, 255, 255, smoothReloadAlpha, align_text, 1000, "reload")
+            renderer.text((x_rapid or x_draw), self.element_positions.rapid, 255, 255, 255, smoothRapidAlpha, align_text, 1000, "rapid")
+            renderer.text((x_reload or x_draw), self.element_positions.rapid, 255, 255, 255, smoothReloadAlpha, align_text, 1000, "reload")
         end
 
         if smoothOsaaAlpha >= 1 then
-            renderer.text(base_x, self.element_positions.osaa, 255, 255, 255, smoothOsaaAlpha, align_text, 1000, "osaa")
+            renderer.text((x_osaa or x_draw), self.element_positions.osaa, 255, 255, 255, smoothOsaaAlpha, align_text, 1000, "osaa")
         end
         
         if smoothDmgAlpha >= 1 then
-            renderer.text(base_x, self.element_positions.dmg, 255, 255, 255, smoothDmgAlpha, align_text, 1000, "dmg")
+            renderer.text((x_dmg or x_draw), self.element_positions.dmg, 255, 255, 255, smoothDmgAlpha, align_text, 1000, "dmg")
         end
     end
 end
