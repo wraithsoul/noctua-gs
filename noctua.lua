@@ -3358,6 +3358,16 @@ logging = {} do
         end
     end
 
+    logging.clear_preview = function(self)
+        self.preview_messages = {}
+        self.preview_active = false
+    end
+
+    logging.clearCache = function(self)
+        self.animatedMessages = {}
+        self.cache = {}
+    end
+
     logging.drawAnimatedMessages = function(self, base_x, base_y, edit_mode)
         local menuOpen = ui.is_menu_open()
         
@@ -3798,10 +3808,7 @@ widgets.register({
     end,
     draw = function(ctx)
         local line_spacing = 15
-        local visible = math.max(1, math.min(#logging.animatedMessages, 15))
-        local target_h = 10 + visible * line_spacing + 10
-        local top = ctx.cy - target_h / 2
-        local base_y = math.floor(top + 10 + math.ceil(line_spacing / 2) - 1 + 0.5)
+        local base_y = math.floor(ctx.y + 10 + math.ceil(line_spacing / 2) - 1 + 0.5)
         local base_x = math.floor(ctx.cx + 0.5)
         logging:drawAnimatedMessages(base_x, base_y, ctx.edit_mode)
     end,
