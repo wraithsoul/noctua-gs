@@ -9,18 +9,24 @@
 --@region: information
 local _name = 'noctua debug'
 local _version = '1.3'
+local _nickname = entity.get_player_name(entity.get_local_player())
 
 local update = [[
 changelog 1.3 (18/10/2025):
- - added 'on death' to balabolka (killsay) mode
+ - added "on death" to balabolka (killsay) mode
+ - added crosshair indicator "center" mode
  - added spawn zoom effect
- - added round counter
  - added zoom animation
- - added hitsound 
+ - added round counter
+ - added buy logging
+ - added hitsound
  - added buybot
+ - reworked "resolver tweaks" logic
  - reworked smart safety
+ - reworked widgets
  - fixed game crashes
- - improved 'resolver tweaks' logic
+ - fixed stickman shaders
+ - removed chat filter
 
 changelog 1.2 (18/03/2025):
  - reworked chat filter, now it blocks crash & noise
@@ -6257,3 +6263,6 @@ killsay = {} do
     client.set_event_callback("paint", killsay.setup)
 end
 --@endregion
+
+logging:push("checkout latest update in console")
+logging:push("nice to see you at " .. _name .. " " .. _version .. " (" .. _nickname .. ")")
