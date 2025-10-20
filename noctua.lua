@@ -540,11 +540,7 @@ interface = {} do
         smart_safety = interface.header.general:checkbox('smart safety'),
         silent_shot = interface.header.general:checkbox('silent shot'),
         force_recharge = interface.header.general:checkbox('allow force recharge'),
-        quick_stop = interface.header.general:checkbox('air stop', 0x00),
-        dormant_aimbot = interface.header.general:checkbox('dormant aimbot', 0x00),
-        dormant_mindmg = interface.header.general:slider('minimum damage', 1, 100, 10),
-        dormant_accuracy = interface.header.general:slider('accuracy', 50, 100, 90, true, '%'),
-        dormant_indicator = interface.header.general:checkbox('indicator'),
+        quick_stop = interface.header.general:checkbox('air stop', 0x00)
     }
     
     interface.builder = {
@@ -705,8 +701,6 @@ interface = {} do
                         element:set_visible(interface.aimbot.enabled_aimbot:get() and interface.aimbot.enabled_resolver_tweaks:get())
                     elseif key == 'smart_safety' then
                         element:set_visible(interface.aimbot.enabled_aimbot:get() and interface.aimbot.enabled_resolver_tweaks:get())
-                    elseif key == 'dormant_mindmg' or key == 'dormant_accuracy' or key == 'dormant_indicator' then
-                        element:set_visible(interface.aimbot.enabled_aimbot:get() and interface.aimbot.dormant_aimbot:get())
                     else
                         element:set_visible(interface.aimbot.enabled_aimbot:get() == true)
                     end
@@ -1172,7 +1166,7 @@ local function logMessage(prefix, extra, message)
 end
 --@endregion
 
-logMessage("[noctua]", "", update)
+logMessage("noctua ·", "", update)
 
 --@region: logging with arguments
 local function argLog(fmt, ...)    
@@ -1185,7 +1179,7 @@ local function argLog(fmt, ...)
 
     local r, g, b = unpack(interface.visuals.accent.color.value)
     
-    client.color_log(r, g, b, "[noctua] \0")
+    client.color_log(r, g, b, "noctua · \0")
 
     while true do
         local s, e, conv = string.find(fmt, "(%%[%-%+%.%d]*[sdf])", pos)
@@ -1215,156 +1209,156 @@ end
 --@endregion
 
 --@region: configs
-configs = {} do
-    configs.encode = function(str)
-        local b = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
-        return ((str:gsub('.', function(x) 
-            local r,b='',x:byte()
-            for i=8,1,-1 do r=r..(b%2^i-b%2^(i-1)>0 and '1' or '0') end
-            return r;
-        end)..'0000'):gsub('%d%d%d?%d?%d?%d?', function(x)
-            if (#x < 6) then return '' end
-            local c=0
-            for i=1,6 do c=c+(x:sub(i,i)=='1' and 2^(6-i) or 0) end
-            return b:sub(c+1,c+1)
-        end)..({ '', '==', '=' })[#str%3+1])
-    end
+-- configs = {} do
+--     configs.encode = function(str)
+--         local b = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+--         return ((str:gsub('.', function(x) 
+--             local r,b='',x:byte()
+--             for i=8,1,-1 do r=r..(b%2^i-b%2^(i-1)>0 and '1' or '0') end
+--             return r;
+--         end)..'0000'):gsub('%d%d%d?%d?%d?%d?', function(x)
+--             if (#x < 6) then return '' end
+--             local c=0
+--             for i=1,6 do c=c+(x:sub(i,i)=='1' and 2^(6-i) or 0) end
+--             return b:sub(c+1,c+1)
+--         end)..({ '', '==', '=' })[#str%3+1])
+--     end
 
-    configs.decode = function(str)
-        local b = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
-        str = string.gsub(str, '[^'..b..'=]', '')
-        return (str:gsub('.', function(x)
-            if (x == '=') then return '' end
-            local r,f='',(b:find(x)-1)
-            for i=6,1,-1 do r=r..(f%2^i-f%2^(i-1)>0 and '1' or '0') end
-            return r;
-        end):gsub('%d%d%d?%d?%d?%d?%d?%d?', function(x)
-            if (#x ~= 8) then return '' end
-            local c=0
-            for i=1,8 do c=c+(x:sub(i,i)=='1' and 2^(8-i) or 0) end
-            return string.char(c)
-        end))
-    end
+--     configs.decode = function(str)
+--         local b = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+--         str = string.gsub(str, '[^'..b..'=]', '')
+--         return (str:gsub('.', function(x)
+--             if (x == '=') then return '' end
+--             local r,f='',(b:find(x)-1)
+--             for i=6,1,-1 do r=r..(f%2^i-f%2^(i-1)>0 and '1' or '0') end
+--             return r;
+--         end):gsub('%d%d%d?%d?%d?%d?%d?%d?', function(x)
+--             if (#x ~= 8) then return '' end
+--             local c=0
+--             for i=1,8 do c=c+(x:sub(i,i)=='1' and 2^(8-i) or 0) end
+--             return string.char(c)
+--         end))
+--     end
 
-    configs.export = function()
-        if not interface.builder.enabled_builder:get() then
-            logMessage("[noctua]", "Enable builder first!")
-            return
-        end
+--     configs.export = function()
+--         if not interface.builder.enabled_builder:get() then
+--             logMessage("noctua ·", "Enable builder first!")
+--             return
+--         end
 
-        local config = {
-            conditions = {}
-        }
+--         local config = {
+--             conditions = {}
+--         }
 
-        for _, condition_name in ipairs(prepare_aa.condition_names) do
-            config.conditions[condition_name] = {
-                override = interface.builder.condition[condition_name].override:get(),
-                yaw_base = interface.builder.condition[condition_name].yaw_base:get(),
-                offset_left = interface.builder.condition[condition_name].offset_left:get(),
-                offset_right = interface.builder.condition[condition_name].offset_right:get(),
-                yaw_modifier = interface.builder.condition[condition_name].yaw_modifier:get(),
-                yaw_modifier_offset = interface.builder.condition[condition_name].yaw_modifier_offset:get(),
-                left_limit = interface.builder.condition[condition_name].left_limit:get(),
-                right_limit = interface.builder.condition[condition_name].right_limit:get(),
-                spin_angle = interface.builder.condition[condition_name].spin_angle:get(),
-                fake_options = interface.builder.condition[condition_name].fake_options:get(),
-                delay_tick = interface.builder.condition[condition_name].delay_tick:get(),
-                offset = interface.builder.condition[condition_name].offset:get(),
-                hide_lc = interface.builder.condition[condition_name].hide_lc:get(),
-                pitch = interface.builder.condition[condition_name].pitch:get(),
-                pitch_angle = interface.builder.condition[condition_name].pitch_angle:get(),
-                type = interface.builder.condition[condition_name].type:get(),
-                spin_speed = interface.builder.condition[condition_name].spin_speed:get(),
-                type_offset_left = interface.builder.condition[condition_name].type_offset_left:get(),
-                type_offset_right = interface.builder.condition[condition_name].type_offset_right:get()
-            }
-        end
+--         for _, condition_name in ipairs(prepare_aa.condition_names) do
+--             config.conditions[condition_name] = {
+--                 override = interface.builder.condition[condition_name].override:get(),
+--                 yaw_base = interface.builder.condition[condition_name].yaw_base:get(),
+--                 offset_left = interface.builder.condition[condition_name].offset_left:get(),
+--                 offset_right = interface.builder.condition[condition_name].offset_right:get(),
+--                 yaw_modifier = interface.builder.condition[condition_name].yaw_modifier:get(),
+--                 yaw_modifier_offset = interface.builder.condition[condition_name].yaw_modifier_offset:get(),
+--                 left_limit = interface.builder.condition[condition_name].left_limit:get(),
+--                 right_limit = interface.builder.condition[condition_name].right_limit:get(),
+--                 spin_angle = interface.builder.condition[condition_name].spin_angle:get(),
+--                 fake_options = interface.builder.condition[condition_name].fake_options:get(),
+--                 delay_tick = interface.builder.condition[condition_name].delay_tick:get(),
+--                 offset = interface.builder.condition[condition_name].offset:get(),
+--                 hide_lc = interface.builder.condition[condition_name].hide_lc:get(),
+--                 pitch = interface.builder.condition[condition_name].pitch:get(),
+--                 pitch_angle = interface.builder.condition[condition_name].pitch_angle:get(),
+--                 type = interface.builder.condition[condition_name].type:get(),
+--                 spin_speed = interface.builder.condition[condition_name].spin_speed:get(),
+--                 type_offset_left = interface.builder.condition[condition_name].type_offset_left:get(),
+--                 type_offset_right = interface.builder.condition[condition_name].type_offset_right:get()
+--             }
+--         end
 
-        local json_str = json.stringify(config)
-        local encoded = configs.encode(json_str)
+--         local json_str = json.stringify(config)
+--         local encoded = configs.encode(json_str)
         
-        clipboard.set("noctua:" .. encoded)
-        logMessage("[noctua]", "", "Config exported to clipboard!")
-    end
+--         clipboard.set("noctua:" .. encoded)
+--         logMessage("noctua ·", "", "Config exported to clipboard!")
+--     end
 
-    configs.import = function()
-        local clipboard_content = clipboard.get()
+--     configs.import = function()
+--         local clipboard_content = clipboard.get()
         
-        if not clipboard_content:match("^noctua:") then
-            logMessage("[noctua]", "Invalid config format in clipboard!")
-            return
-        end
+--         if not clipboard_content:match("^noctua:") then
+--             logMessage("noctua ·", "Invalid config format in clipboard!")
+--             return
+--         end
 
-        local encoded = clipboard_content:sub(8)
-        local decoded = configs.decode(encoded)
+--         local encoded = clipboard_content:sub(8)
+--         local decoded = configs.decode(encoded)
         
-        local jsonPart = decoded:match("^(%b{})")
-        if not jsonPart then
-            logMessage("[noctua]", "Failed to extract valid JSON from imported config!")
-            return
-        end
+--         local jsonPart = decoded:match("^(%b{})")
+--         if not jsonPart then
+--             logMessage("noctua ·", "Failed to extract valid JSON from imported config!")
+--             return
+--         end
 
-        local success, config = pcall(json.parse, jsonPart)
-        if not success or not config.conditions then
-            logMessage("[noctua]", "Failed to parse config!")
-            return
-        end
+--         local success, config = pcall(json.parse, jsonPart)
+--         if not success or not config.conditions then
+--             logMessage("noctua ·", "Failed to parse config!")
+--             return
+--         end
 
-        for condition_name, settings in pairs(config.conditions) do
-            if interface.builder.condition[condition_name] then
-                for setting_name, value in pairs(settings) do
-                    local element = interface.builder.condition[condition_name][setting_name]
-                    if element and element.set then
-                        element:set(value)
-                    end
-                end
-            end
-        end
+--         for condition_name, settings in pairs(config.conditions) do
+--             if interface.builder.condition[condition_name] then
+--                 for setting_name, value in pairs(settings) do
+--                     local element = interface.builder.condition[condition_name][setting_name]
+--                     if element and element.set then
+--                         element:set(value)
+--                     end
+--                 end
+--             end
+--         end
 
-        logMessage("[noctua]", "", "Config imported successfully!")
-    end
+--         logMessage("noctua ·", "", "Config imported successfully!")
+--     end
 
-    configs.default = function()
-        local default_config = "noctua:eyJjb25kaXRpb25zIjp7InVzZSI6eyJ5YXdfbW9kaWZpZXJfb2Zmc2V0IjowLCJwaXRjaCI6InJhbmRvbSIsImRlbGF5X3RpY2siOjgsImhpZGVfbGMiOnRydWUsIm9mZnNldCI6NTAsInJpZ2h0X2xpbWl0IjowLCJvZmZzZXRfbGVmdCI6LTExLCJvdmVycmlkZSI6ZmFsc2UsInBpdGNoX2FuZ2xlIjowLCJ5YXdfYmFzZSI6ImF0IHRhcmdldHMiLCJsZWZ0X2xpbWl0IjowLCJ0eXBlX29mZnNldF9yaWdodCI6MTgwLCJ0eXBlX29mZnNldF9sZWZ0Ijo5LCJzcGluX3NwZWVkIjowLCJvZmZzZXRfcmlnaHQiOjQsInR5cGUiOiJjdXN0b20iLCJ5YXdfbW9kaWZpZXIiOiJza2l0dGVyIiwiZmFrZV9vcHRpb25zIjoiaml0dGVyIiwic3Bpbl9hbmdsZSI6MTZ9LCJzbG93Ijp7Inlhd19tb2RpZmllcl9vZmZzZXQiOjM5LCJwaXRjaCI6InVwIiwiZGVsYXlfdGljayI6MCwiaGlkZV9sYyI6dHJ1ZSwib2Zmc2V0IjoyMywicmlnaHRfbGltaXQiOjAsIm9mZnNldF9sZWZ0IjotMjcsIm92ZXJyaWRlIjp0cnVlLCJwaXRjaF9hbmdsZSI6MCwieWF3X2Jhc2UiOiJhdCB0YXJnZXRzIiwibGVmdF9saW1pdCI6MCwidHlwZV9vZmZzZXRfcmlnaHQiOjE4MCwidHlwZV9vZmZzZXRfbGVmdCI6OSwic3Bpbl9zcGVlZCI6NjcsIm9mZnNldF9yaWdodCI6MjcsInR5cGUiOiJzcGluIiwieWF3X21vZGlmaWVyIjoib2ZmIiwiZmFrZV9vcHRpb25zIjoiaml0dGVyIiwic3Bpbl9hbmdsZSI6MTZ9LCJtYW51YWwiOnsieWF3X21vZGlmaWVyX29mZnNldCI6MCwicGl0Y2giOiJyYW5kb20iLCJkZWxheV90aWNrIjo4LCJoaWRlX2xjIjp0cnVlLCJvZmZzZXQiOjUwLCJyaWdodF9saW1pdCI6MCwib2Zmc2V0X2xlZnQiOi0xMSwib3ZlcnJpZGUiOmZhbHNlLCJwaXRjaF9hbmdsZSI6MCwieWF3X2Jhc2UiOiJhdCB0YXJnZXRzIiwibGVmdF9saW1pdCI6MCwidHlwZV9vZmZzZXRfcmlnaHQiOjE4MCwidHlwZV9vZmZzZXRfbGVmdCI6OSwic3Bpbl9zcGVlZCI6MCwib2Zmc2V0X3JpZ2h0Ijo0LCJ0eXBlIjoiY3VzdG9tIiwieWF3X21vZGlmaWVyIjoic2tpdHRlciIsImZha2Vfb3B0aW9ucyI6ImppdHRlciIsInNwaW5fYW5nbGUiOjE2fSwicnVuIjp7Inlhd19tb2RpZmllcl9vZmZzZXQiOjAsInBpdGNoIjoic3dpdGNoIHVwIiwiZGVsYXlfdGljayI6OCwiaGlkZV9sYyI6dHJ1ZSwib2Zmc2V0Ijo1MCwicmlnaHRfbGltaXQiOi0yMywib2Zmc2V0X2xlZnQiOi0xMSwib3ZlcnJpZGUiOnRydWUsInBpdGNoX2FuZ2xlIjowLCJ5YXdfYmFzZSI6ImF0IHRhcmdldHMiLCJsZWZ0X2xpbWl0IjotMTgsInR5cGVfb2Zmc2V0X3JpZ2h0IjozMCwidHlwZV9vZmZzZXRfbGVmdCI6MzksInNwaW5fc3BlZWQiOjAsIm9mZnNldF9yaWdodCI6MCwidHlwZSI6ImN1c3RvbSIsInlhd19tb2RpZmllciI6InNraXR0ZXIiLCJmYWtlX29wdGlvbnMiOiJqaXR0ZXIiLCJzcGluX2FuZ2xlIjoxNn0sImZyZWVzdGFuZCI6eyJ5YXdfbW9kaWZpZXJfb2Zmc2V0IjowLCJwaXRjaCI6InJhbmRvbSIsImRlbGF5X3RpY2siOjAsImhpZGVfbGMiOmZhbHNlLCJvZmZzZXQiOjUwLCJyaWdodF9saW1pdCI6MjcsIm9mZnNldF9sZWZ0IjotMTEsIm92ZXJyaWRlIjp0cnVlLCJwaXRjaF9hbmdsZSI6MCwieWF3X2Jhc2UiOiJhdCB0YXJnZXRzIiwibGVmdF9saW1pdCI6LTI1LCJ0eXBlX29mZnNldF9yaWdodCI6MTgwLCJ0eXBlX29mZnNldF9sZWZ0Ijo5LCJzcGluX3NwZWVkIjowLCJvZmZzZXRfcmlnaHQiOjksInR5cGUiOiJjdXN0b20iLCJ5YXdfbW9kaWZpZXIiOiJjZW50ZXIiLCJmYWtlX29wdGlvbnMiOiJqaXR0ZXIiLCJzcGluX2FuZ2xlIjoxNn0sImFpciI6eyJ5YXdfbW9kaWZpZXJfb2Zmc2V0IjowLCJwaXRjaCI6ImN1c3RvbSIsImRlbGF5X3RpY2siOjE2LCJoaWRlX2xjIjp0cnVlLCJvZmZzZXQiOjUwLCJyaWdodF9saW1pdCI6LTIwLCJvZmZzZXRfbGVmdCI6LTExLCJvdmVycmlkZSI6dHJ1ZSwicGl0Y2hfYW5nbGUiOjg5LCJ5YXdfYmFzZSI6ImF0IHRhcmdldHMiLCJsZWZ0X2xpbWl0IjoxOCwidHlwZV9vZmZzZXRfcmlnaHQiOjYwLCJ0eXBlX29mZnNldF9sZWZ0IjotMzYsInNwaW5fc3BlZWQiOjAsIm9mZnNldF9yaWdodCI6MTEsInR5cGUiOiJjdXN0b20iLCJ5YXdfbW9kaWZpZXIiOiJvZmZzZXQiLCJmYWtlX29wdGlvbnMiOiJqaXR0ZXIiLCJzcGluX2FuZ2xlIjoxNn0sImFpcmMiOnsieWF3X21vZGlmaWVyX29mZnNldCI6MCwicGl0Y2giOiJzd2l0Y2ggdXAiLCJkZWxheV90aWNrIjowLCJoaWRlX2xjIjp0cnVlLCJvZmZzZXQiOjE4LCJyaWdodF9saW1pdCI6MCwib2Zmc2V0X2xlZnQiOi0xOCwib3ZlcnJpZGUiOnRydWUsInBpdGNoX2FuZ2xlIjowLCJ5YXdfYmFzZSI6ImF0IHRhcmdldHMiLCJsZWZ0X2xpbWl0IjowLCJ0eXBlX29mZnNldF9yaWdodCI6MTgwLCJ0eXBlX29mZnNldF9sZWZ0Ijo5LCJzcGluX3NwZWVkIjowLCJvZmZzZXRfcmlnaHQiOjI3LCJ0eXBlIjoic3dpdGNoIiwieWF3X21vZGlmaWVyIjoib2ZmIiwiZmFrZV9vcHRpb25zIjoiaml0dGVyIiwic3Bpbl9hbmdsZSI6MTZ9LCJkdWNrIjp7Inlhd19tb2RpZmllcl9vZmZzZXQiOjAsInBpdGNoIjoic3dpdGNoIHVwIiwiZGVsYXlfdGljayI6NDQsImhpZGVfbGMiOnRydWUsIm9mZnNldCI6LTMwLCJyaWdodF9saW1pdCI6MCwib2Zmc2V0X2xlZnQiOi0zNiwib3ZlcnJpZGUiOnRydWUsInBpdGNoX2FuZ2xlIjowLCJ5YXdfYmFzZSI6ImF0IHRhcmdldHMiLCJsZWZ0X2xpbWl0Ijo0LCJ0eXBlX29mZnNldF9yaWdodCI6MTgwLCJ0eXBlX29mZnNldF9sZWZ0Ijo5LCJzcGluX3NwZWVkIjowLCJvZmZzZXRfcmlnaHQiOjMyLCJ0eXBlIjoibWV0YSIsInlhd19tb2RpZmllciI6Im9mZiIsImZha2Vfb3B0aW9ucyI6ImppdHRlciIsInNwaW5fYW5nbGUiOjE2fSwiaWRsZSI6eyJ5YXdfbW9kaWZpZXJfb2Zmc2V0IjowLCJwaXRjaCI6InJhbmRvbSIsImRlbGF5X3RpY2siOjI2LCJoaWRlX2xjIjp0cnVlLCJvZmZzZXQiOjI3LCJyaWdodF9saW1pdCI6MCwib2Zmc2V0X2xlZnQiOi0xMSwib3ZlcnJpZGUiOnRydWUsInBpdGNoX2FuZ2xlIjowLCJ5YXdfYmFzZSI6ImF0IHRhcmdldHMiLCJsZWZ0X2xpbWl0IjowLCJ0eXBlX29mZnNldF9yaWdodCI6MTgwLCJ0eXBlX29mZnNldF9sZWZ0Ijo5LCJzcGluX3NwZWVkIjowLCJvZmZzZXRfcmlnaHQiOjQsInR5cGUiOiJtZXRhIiwieWF3X21vZGlmaWVyIjoic2tpdHRlciIsImZha2Vfb3B0aW9ucyI6ImppdHRlciIsInNwaW5fYW5nbGUiOjE2fSwiZHVjayBtb3ZlIjp7Inlhd19tb2RpZmllcl9vZmZzZXQiOjAsInBpdGNoIjoic3dpdGNoIHVwIiwiZGVsYXlfdGljayI6OCwiaGlkZV9sYyI6dHJ1ZSwib2Zmc2V0Ijo1MCwicmlnaHRfbGltaXQiOjAsIm9mZnNldF9sZWZ0IjotMTEsIm92ZXJyaWRlIjp0cnVlLCJwaXRjaF9hbmdsZSI6MCwieWF3X2Jhc2UiOiJhdCB0YXJnZXRzIiwibGVmdF9saW1pdCI6MCwidHlwZV9vZmZzZXRfcmlnaHQiOjE4MCwidHlwZV9vZmZzZXRfbGVmdCI6OSwic3Bpbl9zcGVlZCI6MCwib2Zmc2V0X3JpZ2h0Ijo0LCJ0eXBlIjoibWV0YSIsInlhd19tb2RpZmllciI6InNraXR0ZXIiLCJmYWtlX29wdGlvbnMiOiJqaXR0ZXIiLCJzcGluX2FuZ2xlIjoxNn0sImRlZmF1bHQiOnsieWF3X21vZGlmaWVyX29mZnNldCI6MCwicGl0Y2giOiJyYW5kb20iLCJkZWxheV90aWNrIjo4LCJoaWRlX2xjIjp0cnVlLCJvZmZzZXQiOjUwLCJyaWdodF9saW1pdCI6MCwib2Zmc2V0X2xlZnQiOi0xMSwib3ZlcnJpZGUiOmZhbHNlLCJwaXRjaF9hbmdsZSI6MCwieWF3X2Jhc2UiOiJhdCB0YXJnZXRzIiwibGVmdF9saW1pdCI6MCwidHlwZV9vZmZzZXRfcmlnaHQiOjE4MCwidHlwZV9vZmZzZXRfbGVmdCI6OSwic3Bpbl9zcGVlZCI6MCwib2Zmc2V0X3JpZ2h0Ijo0LCJ0eXBlIjoiY3VzdG9tIiwieWF3X21vZGlmaWVyIjoic2tpdHRlciIsImZha2Vfb3B0aW9ucyI6ImppdHRlciIsInNwaW5fYW5nbGUiOjE2fX19"
+--     configs.default = function()
+--         local default_config = "noctua:eyJjb25kaXRpb25zIjp7InVzZSI6eyJ5YXdfbW9kaWZpZXJfb2Zmc2V0IjowLCJwaXRjaCI6InJhbmRvbSIsImRlbGF5X3RpY2siOjgsImhpZGVfbGMiOnRydWUsIm9mZnNldCI6NTAsInJpZ2h0X2xpbWl0IjowLCJvZmZzZXRfbGVmdCI6LTExLCJvdmVycmlkZSI6ZmFsc2UsInBpdGNoX2FuZ2xlIjowLCJ5YXdfYmFzZSI6ImF0IHRhcmdldHMiLCJsZWZ0X2xpbWl0IjowLCJ0eXBlX29mZnNldF9yaWdodCI6MTgwLCJ0eXBlX29mZnNldF9sZWZ0Ijo5LCJzcGluX3NwZWVkIjowLCJvZmZzZXRfcmlnaHQiOjQsInR5cGUiOiJjdXN0b20iLCJ5YXdfbW9kaWZpZXIiOiJza2l0dGVyIiwiZmFrZV9vcHRpb25zIjoiaml0dGVyIiwic3Bpbl9hbmdsZSI6MTZ9LCJzbG93Ijp7Inlhd19tb2RpZmllcl9vZmZzZXQiOjM5LCJwaXRjaCI6InVwIiwiZGVsYXlfdGljayI6MCwiaGlkZV9sYyI6dHJ1ZSwib2Zmc2V0IjoyMywicmlnaHRfbGltaXQiOjAsIm9mZnNldF9sZWZ0IjotMjcsIm92ZXJyaWRlIjp0cnVlLCJwaXRjaF9hbmdsZSI6MCwieWF3X2Jhc2UiOiJhdCB0YXJnZXRzIiwibGVmdF9saW1pdCI6MCwidHlwZV9vZmZzZXRfcmlnaHQiOjE4MCwidHlwZV9vZmZzZXRfbGVmdCI6OSwic3Bpbl9zcGVlZCI6NjcsIm9mZnNldF9yaWdodCI6MjcsInR5cGUiOiJzcGluIiwieWF3X21vZGlmaWVyIjoib2ZmIiwiZmFrZV9vcHRpb25zIjoiaml0dGVyIiwic3Bpbl9hbmdsZSI6MTZ9LCJtYW51YWwiOnsieWF3X21vZGlmaWVyX29mZnNldCI6MCwicGl0Y2giOiJyYW5kb20iLCJkZWxheV90aWNrIjo4LCJoaWRlX2xjIjp0cnVlLCJvZmZzZXQiOjUwLCJyaWdodF9saW1pdCI6MCwib2Zmc2V0X2xlZnQiOi0xMSwib3ZlcnJpZGUiOmZhbHNlLCJwaXRjaF9hbmdsZSI6MCwieWF3X2Jhc2UiOiJhdCB0YXJnZXRzIiwibGVmdF9saW1pdCI6MCwidHlwZV9vZmZzZXRfcmlnaHQiOjE4MCwidHlwZV9vZmZzZXRfbGVmdCI6OSwic3Bpbl9zcGVlZCI6MCwib2Zmc2V0X3JpZ2h0Ijo0LCJ0eXBlIjoiY3VzdG9tIiwieWF3X21vZGlmaWVyIjoic2tpdHRlciIsImZha2Vfb3B0aW9ucyI6ImppdHRlciIsInNwaW5fYW5nbGUiOjE2fSwicnVuIjp7Inlhd19tb2RpZmllcl9vZmZzZXQiOjAsInBpdGNoIjoic3dpdGNoIHVwIiwiZGVsYXlfdGljayI6OCwiaGlkZV9sYyI6dHJ1ZSwib2Zmc2V0Ijo1MCwicmlnaHRfbGltaXQiOi0yMywib2Zmc2V0X2xlZnQiOi0xMSwib3ZlcnJpZGUiOnRydWUsInBpdGNoX2FuZ2xlIjowLCJ5YXdfYmFzZSI6ImF0IHRhcmdldHMiLCJsZWZ0X2xpbWl0IjotMTgsInR5cGVfb2Zmc2V0X3JpZ2h0IjozMCwidHlwZV9vZmZzZXRfbGVmdCI6MzksInNwaW5fc3BlZWQiOjAsIm9mZnNldF9yaWdodCI6MCwidHlwZSI6ImN1c3RvbSIsInlhd19tb2RpZmllciI6InNraXR0ZXIiLCJmYWtlX29wdGlvbnMiOiJqaXR0ZXIiLCJzcGluX2FuZ2xlIjoxNn0sImZyZWVzdGFuZCI6eyJ5YXdfbW9kaWZpZXJfb2Zmc2V0IjowLCJwaXRjaCI6InJhbmRvbSIsImRlbGF5X3RpY2siOjAsImhpZGVfbGMiOmZhbHNlLCJvZmZzZXQiOjUwLCJyaWdodF9saW1pdCI6MjcsIm9mZnNldF9sZWZ0IjotMTEsIm92ZXJyaWRlIjp0cnVlLCJwaXRjaF9hbmdsZSI6MCwieWF3X2Jhc2UiOiJhdCB0YXJnZXRzIiwibGVmdF9saW1pdCI6LTI1LCJ0eXBlX29mZnNldF9yaWdodCI6MTgwLCJ0eXBlX29mZnNldF9sZWZ0Ijo5LCJzcGluX3NwZWVkIjowLCJvZmZzZXRfcmlnaHQiOjksInR5cGUiOiJjdXN0b20iLCJ5YXdfbW9kaWZpZXIiOiJjZW50ZXIiLCJmYWtlX29wdGlvbnMiOiJqaXR0ZXIiLCJzcGluX2FuZ2xlIjoxNn0sImFpciI6eyJ5YXdfbW9kaWZpZXJfb2Zmc2V0IjowLCJwaXRjaCI6ImN1c3RvbSIsImRlbGF5X3RpY2siOjE2LCJoaWRlX2xjIjp0cnVlLCJvZmZzZXQiOjUwLCJyaWdodF9saW1pdCI6LTIwLCJvZmZzZXRfbGVmdCI6LTExLCJvdmVycmlkZSI6dHJ1ZSwicGl0Y2hfYW5nbGUiOjg5LCJ5YXdfYmFzZSI6ImF0IHRhcmdldHMiLCJsZWZ0X2xpbWl0IjoxOCwidHlwZV9vZmZzZXRfcmlnaHQiOjYwLCJ0eXBlX29mZnNldF9sZWZ0IjotMzYsInNwaW5fc3BlZWQiOjAsIm9mZnNldF9yaWdodCI6MTEsInR5cGUiOiJjdXN0b20iLCJ5YXdfbW9kaWZpZXIiOiJvZmZzZXQiLCJmYWtlX29wdGlvbnMiOiJqaXR0ZXIiLCJzcGluX2FuZ2xlIjoxNn0sImFpcmMiOnsieWF3X21vZGlmaWVyX29mZnNldCI6MCwicGl0Y2giOiJzd2l0Y2ggdXAiLCJkZWxheV90aWNrIjowLCJoaWRlX2xjIjp0cnVlLCJvZmZzZXQiOjE4LCJyaWdodF9saW1pdCI6MCwib2Zmc2V0X2xlZnQiOi0xOCwib3ZlcnJpZGUiOnRydWUsInBpdGNoX2FuZ2xlIjowLCJ5YXdfYmFzZSI6ImF0IHRhcmdldHMiLCJsZWZ0X2xpbWl0IjowLCJ0eXBlX29mZnNldF9yaWdodCI6MTgwLCJ0eXBlX29mZnNldF9sZWZ0Ijo5LCJzcGluX3NwZWVkIjowLCJvZmZzZXRfcmlnaHQiOjI3LCJ0eXBlIjoic3dpdGNoIiwieWF3X21vZGlmaWVyIjoib2ZmIiwiZmFrZV9vcHRpb25zIjoiaml0dGVyIiwic3Bpbl9hbmdsZSI6MTZ9LCJkdWNrIjp7Inlhd19tb2RpZmllcl9vZmZzZXQiOjAsInBpdGNoIjoic3dpdGNoIHVwIiwiZGVsYXlfdGljayI6NDQsImhpZGVfbGMiOnRydWUsIm9mZnNldCI6LTMwLCJyaWdodF9saW1pdCI6MCwib2Zmc2V0X2xlZnQiOi0zNiwib3ZlcnJpZGUiOnRydWUsInBpdGNoX2FuZ2xlIjowLCJ5YXdfYmFzZSI6ImF0IHRhcmdldHMiLCJsZWZ0X2xpbWl0Ijo0LCJ0eXBlX29mZnNldF9yaWdodCI6MTgwLCJ0eXBlX29mZnNldF9sZWZ0Ijo5LCJzcGluX3NwZWVkIjowLCJvZmZzZXRfcmlnaHQiOjMyLCJ0eXBlIjoibWV0YSIsInlhd19tb2RpZmllciI6Im9mZiIsImZha2Vfb3B0aW9ucyI6ImppdHRlciIsInNwaW5fYW5nbGUiOjE2fSwiaWRsZSI6eyJ5YXdfbW9kaWZpZXJfb2Zmc2V0IjowLCJwaXRjaCI6InJhbmRvbSIsImRlbGF5X3RpY2siOjI2LCJoaWRlX2xjIjp0cnVlLCJvZmZzZXQiOjI3LCJyaWdodF9saW1pdCI6MCwib2Zmc2V0X2xlZnQiOi0xMSwib3ZlcnJpZGUiOnRydWUsInBpdGNoX2FuZ2xlIjowLCJ5YXdfYmFzZSI6ImF0IHRhcmdldHMiLCJsZWZ0X2xpbWl0IjowLCJ0eXBlX29mZnNldF9yaWdodCI6MTgwLCJ0eXBlX29mZnNldF9sZWZ0Ijo5LCJzcGluX3NwZWVkIjowLCJvZmZzZXRfcmlnaHQiOjQsInR5cGUiOiJtZXRhIiwieWF3X21vZGlmaWVyIjoic2tpdHRlciIsImZha2Vfb3B0aW9ucyI6ImppdHRlciIsInNwaW5fYW5nbGUiOjE2fSwiZHVjayBtb3ZlIjp7Inlhd19tb2RpZmllcl9vZmZzZXQiOjAsInBpdGNoIjoic3dpdGNoIHVwIiwiZGVsYXlfdGljayI6OCwiaGlkZV9sYyI6dHJ1ZSwib2Zmc2V0Ijo1MCwicmlnaHRfbGltaXQiOjAsIm9mZnNldF9sZWZ0IjotMTEsIm92ZXJyaWRlIjp0cnVlLCJwaXRjaF9hbmdsZSI6MCwieWF3X2Jhc2UiOiJhdCB0YXJnZXRzIiwibGVmdF9saW1pdCI6MCwidHlwZV9vZmZzZXRfcmlnaHQiOjE4MCwidHlwZV9vZmZzZXRfbGVmdCI6OSwic3Bpbl9zcGVlZCI6MCwib2Zmc2V0X3JpZ2h0Ijo0LCJ0eXBlIjoibWV0YSIsInlhd19tb2RpZmllciI6InNraXR0ZXIiLCJmYWtlX29wdGlvbnMiOiJqaXR0ZXIiLCJzcGluX2FuZ2xlIjoxNn0sImRlZmF1bHQiOnsieWF3X21vZGlmaWVyX29mZnNldCI6MCwicGl0Y2giOiJyYW5kb20iLCJkZWxheV90aWNrIjo4LCJoaWRlX2xjIjp0cnVlLCJvZmZzZXQiOjUwLCJyaWdodF9saW1pdCI6MCwib2Zmc2V0X2xlZnQiOi0xMSwib3ZlcnJpZGUiOmZhbHNlLCJwaXRjaF9hbmdsZSI6MCwieWF3X2Jhc2UiOiJhdCB0YXJnZXRzIiwibGVmdF9saW1pdCI6MCwidHlwZV9vZmZzZXRfcmlnaHQiOjE4MCwidHlwZV9vZmZzZXRfbGVmdCI6OSwic3Bpbl9zcGVlZCI6MCwib2Zmc2V0X3JpZ2h0Ijo0LCJ0eXBlIjoiY3VzdG9tIiwieWF3X21vZGlmaWVyIjoic2tpdHRlciIsImZha2Vfb3B0aW9ucyI6ImppdHRlciIsInNwaW5fYW5nbGUiOjE2fX19"
 
-        if default_config:sub(1, 7) ~= "noctua:" then
-            logMessage("[noctua]", "Invalid config format!")
-            return
-        end
+--         if default_config:sub(1, 7) ~= "noctua:" then
+--             logMessage("noctua ·", "Invalid config format!")
+--             return
+--         end
 
-        local jsonPart = default_config:sub(8)
-        local decoded = configs.decode(jsonPart)
-        if not decoded then
-            logMessage("[noctua]", "Failed to decode base64!")
-            return
-        end
+--         local jsonPart = default_config:sub(8)
+--         local decoded = configs.decode(jsonPart)
+--         if not decoded then
+--             logMessage("noctua ·", "Failed to decode base64!")
+--             return
+--         end
 
-        local success, config = pcall(json.parse, decoded)
-        if not success or not config.conditions then
-            logMessage("[noctua]", "Failed to parse config!")
-            return
-        end
+--         local success, config = pcall(json.parse, decoded)
+--         if not success or not config.conditions then
+--             logMessage("noctua ·", "Failed to parse config!")
+--             return
+--         end
 
-        for condition_name, settings in pairs(config.conditions) do
-            if interface.builder.condition[condition_name] then
-                for setting_name, value in pairs(settings) do
-                    local element = interface.builder.condition[condition_name][setting_name]
-                    if element and element.set then
-                        element:set(value)
-                    end
-                end
-            end
-        end
+--         for condition_name, settings in pairs(config.conditions) do
+--             if interface.builder.condition[condition_name] then
+--                 for setting_name, value in pairs(settings) do
+--                     local element = interface.builder.condition[condition_name][setting_name]
+--                     if element and element.set then
+--                         element:set(value)
+--                     end
+--                 end
+--             end
+--         end
 
-        logMessage("[noctua]", "", "Default config loaded successfully!")
-    end
+--         logMessage("noctua ·", "", "Default config loaded successfully!")
+--     end
 
-    -- uncomment later
-    -- interface.utility.export_config:set_callback(configs.export)
-    -- interface.utility.import_config:set_callback(configs.import)
-    -- interface.utility.default_config:set_callback(configs.default)
-end
---@endregion
+--     -- uncomment later
+--     -- interface.utility.export_config:set_callback(configs.export)
+--     -- interface.utility.import_config:set_callback(configs.import)
+--     -- interface.utility.default_config:set_callback(configs.default)
+-- end
+-- --@endregion
 
 --@region: reference
 reference = {} do
@@ -1688,17 +1682,17 @@ ffi_helpers:init()
 --@region: player
 player = {} do
     player.get_address = function(idx)
-        return ffi_helpers.get_client_entity_fn(ffi_helpers.entity_list_ptr, idx)
+        return ffi_helpers.get_client_entity(ffi_helpers.ientitylist, idx)
     end
 
     player.get_animstate = function(idx)
-        local addr = ffi_helpers.get_client_entity_fn(ffi_helpers.entity_list_ptr, idx)
+        local addr = ffi_helpers.get_client_entity(ffi_helpers.ientitylist, idx)
         if not addr then return end
         return ffi.cast("CPlayer_Animation_State**", addr + 0x9960)[0]
     end
 
     player.get_animlayer = function(idx)
-        local addr = ffi_helpers.get_client_entity_fn(ffi_helpers.entity_list_ptr, idx)
+        local addr = ffi_helpers.get_client_entity(ffi_helpers.ientitylist, idx)
         if not addr then return end
         return ffi.cast("C_AnimationLayer**", ffi.cast('uintptr_t', addr) + 0x2990)[0]
     end
@@ -3649,7 +3643,6 @@ end)
 
 --@region: hitsound
 hitsound = {} do
-    local native_Surface_PlaySound = vtable_bind("vguimatsurface.dll", "VGUI_Surface031", 82, "void(__thiscall*)(void*, const char*)")
     local hitsound_original = ui.reference("Visuals", "Player ESP", "Hit marker sound")
     
     hitsound.on_player_hurt = function(e)
@@ -3659,7 +3652,7 @@ hitsound = {} do
         local local_player = entity.get_local_player()
         
         if attacker == local_player then
-            native_Surface_PlaySound("physics/wood/wood_plank_impact_hard4.wav")
+            client.exec("play physics/wood/wood_plank_impact_hard4.wav")
         end
     end
     
@@ -4021,15 +4014,9 @@ model_changer = {} do
         return true
     end
 
-    local function set_model_index(entity, idx)
-        local raw_entity = get_client_entity(ientitylist, entity)
-        if raw_entity then 
-            local gce_entity = ffi.cast(class_ptr, raw_entity)
-            local a_set_model_index = ffi.cast("set_model_index_t", gce_entity[0][75])
-            if a_set_model_index == nil then 
-                error("set_model_index is nil")
-            end
-            a_set_model_index(gce_entity, idx)
+    local function set_model_index(entindex, idx)
+        if entindex and entindex > 0 then
+            entity.set_prop(entindex, 'm_nModelIndex', idx)
         end
     end
 
@@ -4648,377 +4635,6 @@ end
 --         anti_aim:reset()
 --     end)
 -- end
---@endregion
-
---@region: dormant aimbot
-local native_GetClientEntity = vtable_bind('client_panorama.dll', 'VClientEntityList003', 3, 'void*(__thiscall*)(void*,int)')
-local native_IsWeapon = vtable_thunk(166, 'bool(__thiscall*)(void*)')
-local native_GetInaccuracy = vtable_thunk(483, 'float(__thiscall*)(void*)')
-
-dormant_aim = {} do
-    dormant_aim.color = {214, 214, 214}
-    
-    local roundStarted = 0
-    local dormant_players = {}
-    local last_shot_data = {}
-    local can_hit_targets = {}
-    local shot_fired = false
-    local hit_registered = false
-    
-    local hitbox_positions = {
-        {scale = 5, hitbox = "stomach", vec = vector(0, 0, 40)},
-        {scale = 6, hitbox = "chest", vec = vector(0, 0, 50)},
-        {scale = 3, hitbox = "head", vec = vector(0, 0, 58)},
-        {scale = 4, hitbox = "leg", vec = vector(0, 0, 20)}
-    }
-    
-    local function modify_velocity(cmd, goalspeed)
-        local minspeed = math.sqrt((cmd.forwardmove * cmd.forwardmove) + (cmd.sidemove * cmd.sidemove))
-        if goalspeed <= 0 or minspeed <= 0 then
-            return
-        end
-    
-        if cmd.in_duck == 1 then
-            goalspeed = goalspeed * 2.94117647
-        end
-    
-        if minspeed <= goalspeed then
-            return
-        end
-    
-        local speedfactor = goalspeed / minspeed
-        cmd.forwardmove = cmd.forwardmove * speedfactor
-        cmd.sidemove = cmd.sidemove * speedfactor
-    end
-    
-    local function get_dormant_enemies()
-        local enemies = {}
-        local player_resource = entity.get_player_resource()
-        
-        for i = 1, globals.maxplayers() do
-            if entity.get_prop(player_resource, 'm_bConnected', i) == 1 and not plist.get(i, 'Add to whitelist') then
-                if entity.is_dormant(i) and entity.is_enemy(i) then
-                    enemies[#enemies + 1] = i
-                end
-            end
-        end
-        
-        return enemies
-    end
-    
-    local function get_target_points(eye_pos, target_pos, scale)
-        local _, yaw = eye_pos:to(target_pos):angles()
-        local rad = math.rad(yaw + 90)
-        local offset = vector(math.cos(rad), math.sin(rad), 0) * scale
-        
-        return {
-            {text = "Middle", vec = target_pos},
-            {text = "Left", vec = target_pos + offset},
-            {text = "Right", vec = target_pos - offset}
-        }
-    end
-    
-    dormant_aim.prepare = function(cmd)
-        if not (interface.aimbot.enabled_aimbot:get() and interface.aimbot.dormant_aimbot:get()) then
-            can_hit_targets = {}
-            return
-        end
-    
-        if not interface.aimbot.dormant_aimbot.hotkey:get() then
-            can_hit_targets = {}
-            return
-        end
-    
-        local me = entity.get_local_player()
-        if not me then return end
-    
-        local my_weapon = entity.get_player_weapon(me)
-        if not my_weapon then return end
-    
-        local ent = native_GetClientEntity(my_weapon)
-        if not ent or not native_IsWeapon(ent) then return end
-    
-        local inaccuracy = native_GetInaccuracy(ent)
-        if not inaccuracy then return end
-    
-        local tickcount = globals.tickcount()
-        if tickcount < roundStarted then 
-            can_hit_targets = {}
-            return 
-        end
-    
-        local eye_pos = vector(client.eye_position())
-        local simtime = entity.get_prop(me, 'm_flSimulationTime')
-        local weapon_id = entity.get_prop(my_weapon, 'm_iItemDefinitionIndex')
-        local weapon_info = {
-            is_revolver = (weapon_id == 64),
-            is_melee = (weapon_id == 42 or weapon_id == 59),
-            type = ((weapon_id == 9 or weapon_id == 11 or weapon_id == 38 or weapon_id == 40) and 'sniperrifle' or 'other'),
-            max_speed = entity.get_prop(my_weapon, 'm_flMaxSpeed') or 250,
-            max_speed_alt = entity.get_prop(my_weapon, 'm_flMaxSpeed2') or 200
-        }
-        local scoped = entity.get_prop(me, 'm_bIsScoped') == 1
-        local onground = bit.band(entity.get_prop(me, 'm_fFlags'), 1)
-    
-        if weapon_info.type == 'grenade' or weapon_info.is_melee then
-            can_hit_targets = {}
-            return
-        end
-    
-        if cmd.in_jump == 1 and onground == 0 then
-            can_hit_targets = {}
-            return
-        end
-    
-        local can_shoot
-        if weapon_info.is_revolver then
-            can_shoot = simtime > entity.get_prop(my_weapon, 'm_flNextPrimaryAttack')
-        else
-            can_shoot = simtime > math.max(
-                entity.get_prop(me, 'm_flNextAttack'),
-                entity.get_prop(my_weapon, 'm_flNextPrimaryAttack'),
-                entity.get_prop(my_weapon, 'm_flNextSecondaryAttack')
-            )
-        end
-    
-        if not can_shoot then return end
-    
-        local dormant_enemies = get_dormant_enemies()
-        can_hit_targets = {}
-        
-        for _, player_id in ipairs(dormant_enemies) do
-            local player_origin = vector(entity.get_origin(player_id))
-            local x1, y1, x2, y2, alpha = entity.get_bounding_box(player_id)
-            
-            if alpha > 0 and player_origin.x ~= 0 then
-                local accuracy_threshold = (interface.aimbot.dormant_accuracy and interface.aimbot.dormant_accuracy:get() or 90) / 100
-                
-                if alpha >= accuracy_threshold then
-                    local min_damage = interface.aimbot.dormant_mindmg:get()
-                    local duck_amount = entity.get_prop(player_id, 'm_flDuckAmount') or 0
-                    
-                    local best_target = nil
-                    local best_damage = 0
-                    
-                    for _, pos_data in ipairs(hitbox_positions) do
-                        local target_pos = player_origin + pos_data.vec
-                        
-                        if pos_data.hitbox == "Head" then
-                            target_pos = target_pos - vector(0, 0, duck_amount * 10)
-                        elseif pos_data.hitbox == "Chest" then
-                            target_pos = target_pos - vector(0, 0, duck_amount * 4)
-                        end
-                        
-                        local target_points = get_target_points(eye_pos, target_pos, pos_data.scale)
-                        
-                        for _, point in ipairs(target_points) do
-                            local hit_ent, damage = client.trace_bullet(me, 
-                                eye_pos.x, eye_pos.y, eye_pos.z,
-                                point.vec.x, point.vec.y, point.vec.z, true)
-                            
-                            if damage > min_damage and damage > best_damage then
-                                if not client.visible(point.vec.x, point.vec.y, point.vec.z) then
-                                    best_target = {
-                                        pos = point.vec,
-                                        damage = damage,
-                                        hitbox = pos_data.hitbox,
-                                        point_name = point.text,
-                                        player_id = player_id,
-                                        alpha = alpha
-                                    }
-                                    best_damage = damage
-                                end
-                            end
-                        end
-                    end
-                    
-                    if best_target then
-                        can_hit_targets[player_id] = best_target
-                        
-                        modify_velocity(cmd, (scoped and weapon_info.max_speed_alt or weapon_info.max_speed) * 0.33)
-                        
-                        local pitch, yaw = eye_pos:to(best_target.pos):angles()
-                        
-                        if not scoped and weapon_info.type == 'sniperrifle' and cmd.in_jump == 0 and onground == 1 then
-                            cmd.in_attack2 = 1
-                        end
-                        
-                        if inaccuracy < 0.01 and cmd.chokedcommands == 0 then
-                            cmd.pitch = pitch
-                            cmd.yaw = yaw
-                            cmd.in_attack = 1
-                            shot_fired = true
-                            last_shot_data = {
-                                target_id = player_id,
-                                hitbox = best_target.hitbox,
-                                point = best_target.point_name,
-                                alpha = alpha
-                            }
-                            break
-                        end
-                    end
-                end
-            end
-        end
-    end
-    
-    dormant_aim.paint = function()
-        local me = entity.get_local_player()
-        if not me then return end
-        
-        if interface.aimbot.enabled_aimbot:get() and interface.aimbot.dormant_aimbot:get() and interface.aimbot.dormant_indicator:get() then
-            local color = {255, 255, 255, 200}
-            
-            local has_targets = false
-            for _ in pairs(can_hit_targets) do
-                has_targets = true
-                break
-            end
-            
-            if interface.aimbot.dormant_aimbot.hotkey:get() then
-                if has_targets then
-                    color = {143, 194, 21, 255}
-                elseif #get_dormant_enemies() > 0 then
-                    local r, g, b, a = interface.visuals.accent:get()
-                    color = {r, g, b, a}
-                else
-                    color = {255, 0, 50, 255}
-                end
-            end
-            
-            renderer.indicator(color[1], color[2], color[3], color[4], 'DA')
-        end
-    end
-    
-    dormant_aim.reset = function()
-        local freezetime = (cvar.mp_freezetime:get_float() + 1) / globals.tickinterval()
-        roundStarted = globals.tickcount() + freezetime
-        can_hit_targets = {}
-        dormant_players = {}
-    end
-    
-    dormant_aim.on_weapon_fire = function(e)
-        client.delay_call(0.03, function()
-            local local_player = entity.get_local_player()
-            if client.userid_to_entindex(e.userid) == local_player and shot_fired and not hit_registered then
-                if interface.visuals.enabled_visuals:get() and interface.visuals.logging:get() then
-                    local unknown = "unknown"
-                    local target_name = entity.get_player_name(last_shot_data.target_id)
-                    local accuracy_str = string.format("%.0f", last_shot_data.alpha * 100) .. "%"
-                    
-                    local msg = string.format("missed %s's %s / reason: %s - accuracy: %s", 
-                        target_name, last_shot_data.hitbox, unknown, accuracy_str)
-                    
-                    local logOptions = interface.visuals.logging_options:get()
-                    local consoleOptions = interface.visuals.logging_options_console:get()
-                    local screenOptions = interface.visuals.logging_options_screen:get()
-                    
-                    local doConsole = utils.contains(logOptions, "console") and utils.contains(consoleOptions, "miss")
-                    local doScreen = utils.contains(logOptions, "screen") and utils.contains(screenOptions, "miss")
-                    
-                    if doConsole then
-                        argLog("missed %s's %s / reason: %s - accuracy: %s", target_name, last_shot_data.hitbox, unknown, accuracy_str)
-                    end
-                    
-                    if doScreen then
-                        logging:push(msg)
-                    end
-                end
-            end
-            
-            hit_registered = false
-            shot_fired = false
-            last_shot_data = {}
-        end)
-    end
-    
-    dormant_aim.on_player_hurt = function(e)
-        local attacker = client.userid_to_entindex(e.attacker)
-        local victim = client.userid_to_entindex(e.userid)
-        
-        if attacker == entity.get_local_player() and victim and shot_fired then
-            hit_registered = true
-            
-            if interface.visuals.enabled_visuals:get() and interface.visuals.logging:get() then
-                local unknown = "unknown"
-                local victim_name = entity.get_player_name(victim)
-                local hitgroup_names = {"generic", "head", "chest", "stomach", "left arm", "right arm", "left leg", "right leg", "neck", "?", "gear"}
-                
-                local hitgroup_name = hitgroup_names[e.hitgroup + 1] or "unknown"
-                local accuracy_str = string.format("%.0f", (last_shot_data.alpha or 1) * 100) .. "%"
-                
-                local msg = string.format("hit %s's %s for %d / lc: %s - yaw: %s - accuracy: %s", 
-                    victim_name, hitgroup_name, e.dmg_health, unknown, unknown, accuracy_str)
-                
-                local logOptions = interface.visuals.logging_options:get()
-                local consoleOptions = interface.visuals.logging_options_console:get()
-                local screenOptions = interface.visuals.logging_options_screen:get()
-                
-                local doConsole = utils.contains(logOptions, "console") and utils.contains(consoleOptions, "hit")
-                local doScreen = utils.contains(logOptions, "screen") and utils.contains(screenOptions, "hit")
-                
-                if doConsole then
-                    argLog("hit %s's %s for %d / lc: %s - yaw: %s - accuracy: %s", 
-                        victim_name, hitgroup_name, e.dmg_health, unknown, unknown, accuracy_str)
-                end
-                
-                if doScreen then
-                    logging:push(msg)
-                end
-            end
-        end
-    end
-    
-    client.register_esp_flag('DA', 255, 255, 255, function(player_id)
-        if interface.aimbot.enabled_aimbot:get() and interface.aimbot.dormant_aimbot:get() then
-            return can_hit_targets[player_id] ~= nil
-        end
-    end)
-end
-
-dormant_aim.setup = function()
-    local dormant_esp = ui.reference('visuals', 'player esp', 'dormant')
-    if dormant_esp then
-        if interface.aimbot.dormant_aimbot:get() then
-            ui.set(dormant_esp, true)
-            ui.set_enabled(dormant_esp, false)
-        else
-            ui.set_enabled(dormant_esp, true)
-        end
-    end
-end
-
-client.set_event_callback('setup_command', function(cmd)
-    if interface.aimbot.enabled_aimbot:get() and interface.aimbot.dormant_aimbot:get() then
-        dormant_aim.prepare(cmd)
-    end
-end)
-
-client.set_event_callback('paint', function()
-    dormant_aim.setup()
-    
-    if interface.aimbot.enabled_aimbot:get() and interface.aimbot.dormant_aimbot:get() then
-        dormant_aim.paint()
-    end
-end)
-
-client.set_event_callback('round_prestart', function()
-    if interface.aimbot.enabled_aimbot:get() and interface.aimbot.dormant_aimbot:get() then
-        dormant_aim.reset()
-    end
-end)
-
-client.set_event_callback('weapon_fire', function(e)
-    if interface.aimbot.enabled_aimbot:get() and interface.aimbot.dormant_aimbot:get() then
-        dormant_aim.on_weapon_fire(e)
-    end
-end)
-
-client.set_event_callback('player_hurt', function(e)
-    if interface.aimbot.enabled_aimbot:get() and interface.aimbot.dormant_aimbot:get() then
-        dormant_aim.on_player_hurt(e)
-    end
-end)
 --@endregion
 
 --@region: lethal_shot_handler
@@ -5655,7 +5271,7 @@ end
 --@region: killsay
 killsay = {} do
     killsay.last_say_time = 0
-    killsay.cooldown = 2.0
+    killsay.cooldown = 1.5
     
     killsay.multi_phrases_kill = {
         {
@@ -5995,6 +5611,18 @@ killsay = {} do
         {
             "скачать нокту можно здесь:",
             "а хуй тебе"
+        },
+        {
+            "заюш ты выебан бай нокта"
+        },
+        {
+            "пацаны а нокта сейчас крашит? просто боюсь загружать"
+        },
+        {
+            "прикупи курсы хвх у Axsiimov#7777"
+        },
+        {
+            "когда я был в прайме, меня все называли i.diman"
         }
     }
 
@@ -6008,6 +5636,9 @@ killsay = {} do
         },
         {
             "CERF"
+        },
+        {
+            "нокта сегодня не бодрая"
         },
         {
             "блять",
@@ -6066,7 +5697,7 @@ killsay = {} do
     end
     
     killsay.send_phrases = function(phrase_type)
-        local initial_delay = 0.20 + math.random() * 0.40
+        local initial_delay = 0.75 + math.random() * 0.40
         
         if phrase_type == "death" then
             initial_delay = initial_delay + 1.50
