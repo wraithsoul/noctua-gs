@@ -15,6 +15,7 @@ local update = [[
 changelog 1.3a (18/10/2025):
  - added "on death" to balabolka (killsay) mode
  - added crosshair indicator "center" mode
+ - added animate on-scope animation
  - added spawn zoom effect
  - added zoom animation
  - added round counter
@@ -22,6 +23,7 @@ changelog 1.3a (18/10/2025):
  - added hitsound
  - added buybot
  - reworked "resolver tweaks" logic
+ - reworked "reload" status
  - reworked smart safety
  - reworked widgets
  - fixed game crashes
@@ -3140,10 +3142,46 @@ visuals.window = function(self, base_x, base_y, align)
         local animate_on_scope = (interface.visuals.crosshair_animate_scope and interface.visuals.crosshair_animate_scope:get()) or false
         local use_scope_lerp = (style == 'center') and animate_on_scope
 
+        self._last_scoped = self._last_scoped or false
+        do
+            local _, yaw = client.camera_angles()
+            if yaw then
+                self._last_yaw = self._last_yaw or yaw
+                local dy = yaw - self._last_yaw
+                while dy > 180 do dy = dy - 360 end
+                while dy < -180 do dy = dy + 360 end
+                local dir = (dy > 0 and 1) or (dy < 0 and -1) or 0
+                local bias_speed = globals.frametime() * 10
+                self._look_bias = mathematic.lerp(self._look_bias or 0, dir, bias_speed)
+
+                if (not self._last_scoped) and is_scoped then
+                    local sign = (dir ~= 0) and dir or (((self._look_bias or 0) < 0) and -1 or 1)
+                    self._active_side = sign
+                    self._unscoping_side = nil
+                elseif self._last_scoped and (not is_scoped) then
+                    self._unscoping_side = self._active_side or self._unscoping_side or 1
+                    self._active_side = nil
+                end
+
+                self._last_yaw = yaw
+            else
+                if (not self._last_scoped) and is_scoped and (self._active_side == nil) then
+                    self._active_side = (((self._look_bias or 0) < 0) and -1 or 1)
+                    self._unscoping_side = nil
+                end
+            end
+        end
+        self._last_scoped = is_scoped
+
+        local side_sign = (self._active_side or self._unscoping_side or 1)
+
         local scope_pos = self.scope_pos or 0
         local target_scope = is_scoped and 1 or 0
         scope_pos = mathematic.lerp(scope_pos, target_scope, fadeSpeedSetting)
         self.scope_pos = scope_pos
+        if (not is_scoped) and (scope_pos < 0.001) then
+            self._unscoping_side = nil
+        end
 
         local x_draw = base_x
         local x_noctua, x_state, x_rapid, x_reload, x_osaa, x_dmg
@@ -3155,7 +3193,7 @@ visuals.window = function(self, base_x, base_y, align)
             local function lerp_x_for(text)
                 local w = select(1, renderer.measure_text('l', text)) or 0
                 local from = base_x - w / 2
-                local to = base_x + 3
+                local to = (side_sign > 0) and (base_x + 3) or (base_x - w - 3)
                 return mathematic.lerp(from, to, scope_pos)
             end
 
