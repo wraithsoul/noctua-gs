@@ -1694,7 +1694,7 @@ player = {} do
     player.get_animstate = function(idx)
         local addr = ffi_helpers.get_client_entity(ffi_helpers.ientitylist, idx)
         if not addr then return end
-        return ffi.cast("CPlayer_Animation_State**", addr + 0x9960)[0]
+        return ffi.cast("CPlayer_Animation_State**", ffi.cast('uintptr_t', addr) + 0x9960)[0]
     end
 
     player.get_animlayer = function(idx)
@@ -2502,9 +2502,367 @@ client.set_event_callback('setup_command', function(cmd)
 end)
 --@endregion
 
+--@region: widgets
+widgets = {} do
+    local SNAP = 8
+    local PAD = 4
+    local LINE_ALPHA = 40
+    local LINE_ALPHA_SNAP = 80
+
+    widgets.SNAP = SNAP
+    widgets.PAD = PAD
+    widgets.items = {}
+    widgets.order = {}
+    widgets.state = {}
+    widgets.is_dragging = false
+    widgets.active_id = nil
+    widgets.db_key_prefix = "noctua.widgets.positions"
+    widgets.version = 1
+    widgets.lines_alpha = 0
+    widgets.frames_alpha = 0
+    widgets.widget_alpha = {}
+
+    local function screen_key()
+        local w, h = client.screen_size()
+        return tostring(w) .. "x" .. tostring(h)
+    end
+
+    function widgets.register(def)
+        if not def or not def.id then return end
+        widgets.items[def.id] = def
+        table.insert(widgets.order, def.id)
+        local st = widgets.state[def.id] or {}
+        st.anchor_x = st.anchor_x or (def.defaults and def.defaults.anchor_x or "center")
+        st.anchor_y = st.anchor_y or (def.defaults and def.defaults.anchor_y or "center")
+        st.offset_x = st.offset_x or (def.defaults and def.defaults.offset_x or 0)
+        st.offset_y = st.offset_y or (def.defaults and def.defaults.offset_y or 0)
+        widgets.state[def.id] = st
+    end
+
+    function widgets.load_from_db()
+        local key = widgets.db_key_prefix .. "." .. screen_key()
+        local ok, data = pcall(database.read, key)
+        if ok and type(data) == "table" then
+            for id, st in pairs(data) do
+                if type(st) == "table" then
+                    widgets.state[id] = {
+                        anchor_x = st.anchor_x,
+                        anchor_y = st.anchor_y,
+                        offset_x = st.offset_x or 0,
+                        offset_y = st.offset_y or 0,
+                    }
+                end
+            end
+        end
+    end
+
+    local function export_positions()
+        local out = {}
+        for id, st in pairs(widgets.state) do
+            out[id] = {
+                anchor_x = st.anchor_x,
+                anchor_y = st.anchor_y,
+                offset_x = st.offset_x,
+                offset_y = st.offset_y,
+            }
+        end
+        return out
+    end
+
+    function widgets.save_all()
+        local key = widgets.db_key_prefix .. "." .. screen_key()
+        local data = export_positions()
+        pcall(database.write, key, data)
+    end
+
+    local function compute_center(id)
+        local sw, sh = client.screen_size()
+        local st = widgets.state[id]
+        local cx = (st.anchor_x == "center") and (sw / 2 + (st.offset_x or 0)) or (st.offset_x or 0)
+        local cy = (st.anchor_y == "center") and (sh / 2 + (st.offset_y or 0)) or (st.offset_y or 0)
+        return cx, cy
+    end
+
+    local function clamp(v, mn, mx)
+        if v < mn then return mn end
+        if v > mx then return mx end
+        return v
+    end
+
+    local function round(n)
+        return math.floor(n + 0.5)
+    end
+
+    local function get_rect(id)
+        local def = widgets.items[id]; if not def then return end
+        local st = widgets.state[id]
+        local cx, cy = compute_center(id)
+        local content_w, content_h = 100, 40
+        if def.get_size then
+            local ok, w, h = pcall(def.get_size, st)
+            if ok and type(w) == "number" and type(h) == "number" then
+                content_w, content_h = w, h
+            end
+        end
+
+        st._smooth_w = st._smooth_w or content_w
+        st._smooth_h = st._smooth_h or content_h
+        local lerp_speed = globals.frametime() * 12
+        st._smooth_w = mathematic.lerp(st._smooth_w, content_w, lerp_speed)
+        st._smooth_h = mathematic.lerp(st._smooth_h, content_h, lerp_speed)
+        widgets.state[id] = st
+
+        local x = cx - st._smooth_w / 2
+        local y = cy - st._smooth_h / 2
+        return x, y, st._smooth_w, st._smooth_h, cx, cy
+    end
+
+    local function hit_test(id, mx, my)
+        local x, y, w, h = get_rect(id)
+        if not x then return false end
+        x = x - PAD; y = y - PAD; w = w + PAD * 2; h = h + PAD * 2
+        return mx >= x and mx <= x + w and my >= y and my <= y + h
+    end
+
+    function widgets.paint()
+        local menuOpen = ui.is_menu_open()
+        if menuOpen then return end -- Don't render widget content in edit mode
+        
+        local function widget_enabled_paint(id)
+            if not interface.visuals.enabled_visuals:get() then return false end
+            if id == "debug_window" then
+                return interface.visuals.window:get()
+            elseif id == "crosshair_indicators" then
+                return interface.visuals.crosshair_indicators:get()
+            elseif id == "screen_logging" then
+                if not interface.visuals.logging:get() then return false end
+                local opts = interface.visuals.logging_options:get() or {}
+                return utils.contains(opts, "screen")
+            end
+            return true
+        end
+        
+        for _, id in ipairs(widgets.order) do
+            if not widget_enabled_paint(id) then goto continue end
+            local def = widgets.items[id]
+            if def and def.draw then
+                local x, y, w, h, cx, cy = get_rect(id)
+                if w and h and w > 0 and h > 0 then
+                    def.draw({
+                        id = id,
+                        x = x, y = y, w = w, h = h,
+                        cx = cx, cy = cy,
+                        edit_mode = false,
+                        snapped_x = false, snapped_y = false
+                    })
+                end
+            end
+            ::continue::
+        end
+    end
+
+    function widgets.paint_ui()
+        local menuOpen = ui.is_menu_open()
+        local local_player = entity.get_local_player()
+        
+        local target_alpha = menuOpen and LINE_ALPHA or 0
+        widgets.lines_alpha = mathematic.lerp(widgets.lines_alpha or 0, target_alpha, globals.frametime() * 12)
+
+        -- Fade for widget edit containers
+        local target_frame = menuOpen and 1 or 0
+        widgets.frames_alpha = mathematic.lerp(widgets.frames_alpha or 0, target_frame, globals.frametime() * 12)
+
+        if not menuOpen then widgets.is_dragging = false end
+        
+        local sw, sh = client.screen_size()
+        local mx, my = ui.mouse_position()
+        local m1 = client.key_state(0x01)
+        local function widget_enabled(id)
+            if not interface.visuals.enabled_visuals:get() then return false end
+            if id == "debug_window" then
+                return interface.visuals.window:get()
+            elseif id == "crosshair_indicators" then
+                return interface.visuals.crosshair_indicators:get()
+            elseif id == "screen_logging" then
+                if not interface.visuals.logging:get() then return false end
+                local opts = interface.visuals.logging_options:get() or {}
+                return utils.contains(opts, "screen")
+            end
+
+            return true
+        end
+
+        -- Recompute lines alpha based on whether any widget is enabled
+        do
+            local any_enabled = false
+            for _, id in ipairs(widgets.order) do
+                if widget_enabled(id) then any_enabled = true; break end
+            end
+            local target_alpha = (menuOpen and any_enabled) and LINE_ALPHA or 0
+            widgets.lines_alpha = mathematic.lerp(widgets.lines_alpha or 0, target_alpha, globals.frametime() * 12)
+        end
+
+        local a = math.floor(widgets.lines_alpha + 0.5)
+        local any_enabled_draw = false
+        for _, id in ipairs(widgets.order) do
+            if widget_enabled(id) then any_enabled_draw = true; break end
+        end
+        if any_enabled_draw and a > 0 then
+            -- Draw crisp 1px guide lines
+            renderer.rectangle(sw / 2, 0, 1, sh, 255, 255, 255, a)
+            renderer.rectangle(0, sh / 2, sw, 1, 255, 255, 255, a)
+        end
+        local allow_interact = menuOpen
+        if not allow_interact and (widgets.frames_alpha or 0) < 0.01 then return end
+
+        if allow_interact and m1 and not widgets.is_dragging then
+            for idx = #widgets.order, 1, -1 do
+                local id = widgets.order[idx]
+                if widget_enabled(id) and hit_test(id, mx, my) then
+                    widgets.is_dragging = true
+                    widgets.active_id = id
+                    local _, _, _, _, cx, cy = get_rect(id)
+                    widgets.drag_dx = cx - mx
+                    widgets.drag_dy = cy - my
+                    break
+                end
+            end
+        elseif allow_interact and widgets.is_dragging and m1 then
+            -- dragging preview handled in frame drawing below
+        elseif allow_interact and widgets.is_dragging and not m1 then
+            local id = widgets.active_id
+            if id then
+                local sw_, sh_ = client.screen_size()
+                local cx = mx + (widgets.drag_dx or 0)
+                local cy = my + (widgets.drag_dy or 0)
+                local snapped_x = math.abs(cx - sw_ / 2) <= SNAP
+                local snapped_y = math.abs(cy - sh_ / 2) <= SNAP
+                if snapped_x then cx = sw_ / 2 end
+                if snapped_y then cy = sh_ / 2 end
+                local _, _, w, h = get_rect(id)
+                local min_cx = (w / 2) + PAD
+                local max_cx = sw_ - (w / 2) - PAD
+                local min_cy = (h / 2) + PAD
+                local max_cy = sh_ - (h / 2) - PAD
+                cx = clamp(cx, min_cx, max_cx)
+                cy = clamp(cy, min_cy, max_cy)
+
+                local st = widgets.state[id]
+                if snapped_x then
+                    st.anchor_x = "center"; st.offset_x = cx - sw_ / 2
+                else
+                    st.anchor_x = nil; st.offset_x = cx
+                end
+                if snapped_y then
+                    st.anchor_y = "center"; st.offset_y = cy - sh_ / 2
+                else
+                    st.anchor_y = nil; st.offset_y = cy
+                end
+                widgets.state[id] = st
+                widgets.save_all()
+            end
+            widgets.is_dragging = false
+            widgets.active_id = nil
+            widgets.drag_dx = 0; widgets.drag_dy = 0
+        end
+
+        for _, id in ipairs(widgets.order) do
+            local enabled = widget_enabled(id)
+            -- per-widget fade alpha
+            widgets.widget_alpha = widgets.widget_alpha or {}
+            local wa = widgets.widget_alpha[id] or 0
+            local target = enabled and 1 or 0
+            widgets.widget_alpha[id] = mathematic.lerp(wa, target, globals.frametime() * 12)
+
+            local x, y, w, h, cx, cy = get_rect(id)
+            if not (w and h and w > 0 and h > 0) then goto continue end
+
+            -- combined visibility ratio (menu fade * widget fade)
+            local ratio_widget = (widgets.widget_alpha[id] or 0) * (widgets.frames_alpha or 0)
+            if ratio_widget <= 0.01 then goto continue end
+
+            if widgets.is_dragging and widgets.active_id == id and allow_interact and enabled then
+                local sw2, sh2 = client.screen_size()
+                local mx2, my2 = ui.mouse_position()
+                cx = mx2 + (widgets.drag_dx or 0)
+                cy = my2 + (widgets.drag_dy or 0)
+                local snapped_x = math.abs(cx - sw2 / 2) <= SNAP
+                local snapped_y = math.abs(cy - sh2 / 2) <= SNAP
+                if snapped_x then cx = sw2 / 2 end
+                if snapped_y then cy = sh2 / 2 end
+                local min_cx = (w / 2) + PAD
+                local max_cx = sw2 - (w / 2) - PAD
+                local min_cy = (h / 2) + PAD
+                local max_cy = sh2 - (h / 2) - PAD
+                cx = clamp(cx, min_cx, max_cx)
+                cy = clamp(cy, min_cy, max_cy)
+                x = cx - w / 2
+                y = cy - h / 2
+            end
+
+            local hovered = false
+            if allow_interact and enabled then
+                local mx3, my3 = ui.mouse_position()
+                hovered = hit_test(id, mx3, my3)
+            end
+
+            local base_alpha = 20
+            if allow_interact and widgets.is_dragging and widgets.active_id == id then
+                base_alpha = 60
+            elseif hovered then
+                base_alpha = 35
+            end
+
+            local ratio = math.max(0, math.min(1, ratio_widget))
+            local bg_alpha = math.floor(math.min(30, base_alpha) * ratio + 0.5)
+            local border_alpha = math.floor(math.min(80, base_alpha + 25) * ratio + 0.5)
+
+            -- Subtle background (snap to whole pixels for crisp borders)
+            local rect_x = x - PAD
+            local rect_y = y - PAD
+            local rect_w = w + PAD * 2
+            local rect_h = h + PAD * 2
+            local rx, ry, rw, rh = round(rect_x), round(rect_y), round(rect_w), round(rect_h)
+            renderer.rectangle(rx + 1, ry + 1, rw - 2, rh - 2, 255, 255, 255, bg_alpha)
+            
+            -- Border with small corner insets for a rounded look
+            local inset = 2
+            local oa = border_alpha
+            -- top & bottom
+            renderer.rectangle(rx + inset, ry, rw - inset * 2, 1, 255, 255, 255, oa)
+            renderer.rectangle(rx + inset, ry + rh - 1, rw - inset * 2, 1, 255, 255, 255, oa)
+            -- left & right
+            renderer.rectangle(rx, ry + inset, 1, rh - inset * 2, 255, 255, 255, oa)
+            renderer.rectangle(rx + rw - 1, ry + inset, 1, rh - inset * 2, 255, 255, 255, oa)
+
+            local sw3, sh3 = client.screen_size()
+            local snapped_x_now, snapped_y_now = false, false
+            if allow_interact and enabled then
+                snapped_x_now = math.abs(cx - sw3 / 2) <= SNAP
+                snapped_y_now = math.abs(cy - sh3 / 2) <= SNAP
+            end
+            if allow_interact and widgets.is_dragging then
+                if snapped_x_now then
+                    renderer.rectangle(sw3 / 2, 0, 1, sh3, 255, 255, 255, LINE_ALPHA_SNAP)
+                end
+                if snapped_y_now then
+                    renderer.rectangle(0, sh3 / 2, sw3, 1, 255, 255, 255, LINE_ALPHA_SNAP)
+                end
+            end
+
+            local def = widgets.items[id]
+            if def and def.draw and allow_interact and enabled then
+                def.draw({ id = id, x = x, y = y, w = w, h = h, cx = cx, cy = cy, edit_mode = true, snapped_x = snapped_x_now, snapped_y = snapped_y_now })
+            end
+            ::continue::
+        end
+    end
+end
+--@endregion
+
 --@region: visuals
 visuals = {} do 
-    visuals.window = function(self)
+visuals.window = function(self, base_x, base_y, align)
         self.windowAlpha = self.windowAlpha or 0
 
         local frameTime = globals.frametime()
@@ -2515,6 +2873,7 @@ visuals = {} do
 
         local is_scoreboard = client.key_state(0x09) -- TAB
         local game_rules = entity.get_all("CCSGameRulesProxy")[1]
+        local menuOpen = ui.is_menu_open()
         
         local is_game_over = game_rules and entity.get_prop(game_rules, "m_gamePhase") >= 5
         local is_halftime = game_rules and entity.get_prop(game_rules, "m_gamePhase") == 4
@@ -2527,15 +2886,15 @@ visuals = {} do
         local is_freeze_period = game_rules and entity.get_prop(game_rules, "m_bFreezePeriod") == 1
 
         local is_scoped = local_player and entity.get_prop(local_player, "m_bIsScoped") == 1
-
+        
         local windowEnabled = interface.visuals.enabled_visuals:get() 
                             and interface.visuals.window:get()
-                            and local_player and (health > 0)
                             and not is_game_over
                             and not is_timeout
                             and not is_halftime
                             and not is_waiting
                             and not is_restarting
+                            and ((local_player and (health > 0)) or menuOpen)
 
         local targetAlpha = windowEnabled and 255 or 0
         self.windowAlpha = mathematic.lerp(self.windowAlpha, targetAlpha, fadeSpeedSetting)
@@ -2543,8 +2902,6 @@ visuals = {} do
         if self.windowAlpha < 1 then
             return
         end
-
-        local _, screen_height = client.screen_size()
 
         local target = client.current_threat()
         local target_text = "target: none"
@@ -2577,11 +2934,11 @@ visuals = {} do
 
         local line_spacing = 12
         local total_height = #lines * line_spacing
-        local left_margin = 10
 
+        local a = align or "c"
         for i, line in ipairs(lines) do
-            local y = (screen_height - total_height) / 2 + (i - 1) * line_spacing
-            renderer.text(left_margin, y, 255, 255, 255, self.windowAlpha, "l", 1000, line)
+            local y = base_y + (i - 1) * line_spacing
+            renderer.text(base_x, y, 255, 255, 255, self.windowAlpha, a, 1000, line)
         end
     end
 
@@ -2605,7 +2962,7 @@ visuals = {} do
         end
     }
 
-    visuals.indicators = function(self)
+    visuals.indicators = function(self, base_x, base_y)
         local frameTime = globals.frametime()
         local fadeSpeedBase = 10
         local fadeSpeedSetting = fadeSpeedBase * frameTime
@@ -2614,6 +2971,7 @@ visuals = {} do
 
         local is_scoreboard = client.key_state(0x09) -- TAB
         local game_rules = entity.get_all("CCSGameRulesProxy")[1]
+        local menuOpen = ui.is_menu_open()
 
         local is_game_over = game_rules and entity.get_prop(game_rules, "m_gamePhase") >= 5
         local is_halftime = game_rules and entity.get_prop(game_rules, "m_gamePhase") == 4
@@ -2629,13 +2987,12 @@ visuals = {} do
         
         local indicatorsEnabled = interface.visuals.enabled_visuals:get()
                                   and interface.visuals.crosshair_indicators:get()
-                                  and local_player and (health > 0) 
-                                  and not is_scoreboard
                                   and not is_game_over
                                   and not is_timeout
                                   and not is_halftime
                                   and not is_waiting
                                   and not is_restarting
+                                  and ((local_player and (health > 0) and not is_scoreboard) or menuOpen)
 
         local scopeAlpha = is_scoped and (255 * 0.5) or 255
         self.scopeAlpha = mathematic.lerp(self.scopeAlpha or 255, scopeAlpha, fadeSpeedSetting)
@@ -2652,7 +3009,6 @@ visuals = {} do
         local r2, g2, b2, a2 = unpack(interface.visuals.secondary.color.value)
         self.animated_text.colors[2] = { r = r2, g = g2, b = b2, a = a2 }
 
-        local screen_width, screen_height = client.screen_size()
         local state = utils.get_state()
         local isOS = ui.get(ui_references.on_shot_anti_aim[1]) and ui.get(ui_references.on_shot_anti_aim[2])
         local isDT = ui.get(ui_references.double_tap[1]) and ui.get(ui_references.double_tap[2])
@@ -2664,22 +3020,22 @@ visuals = {} do
 
         if not self.element_positions then
             self.element_positions = {
-                noctua = screen_height / 2 + 10,
-                state = screen_height / 2 + 20,
-                rapid = screen_height / 2 + 30,
-                osaa = screen_height / 2 + 40,
-                dmg = screen_height / 2 + 50
+                noctua = base_y + 10,
+                state = base_y + 20,
+                rapid = base_y + 30,
+                osaa = base_y + 40,
+                dmg = base_y + 50
             }
             self.element_target_positions = {
-                noctua = screen_height / 2 + 10,
-                state = screen_height / 2 + 20,
-                rapid = screen_height / 2 + 30,
-                osaa = screen_height / 2 + 40,
-                dmg = screen_height / 2 + 50
+                noctua = base_y + 10,
+                state = base_y + 20,
+                rapid = base_y + 30,
+                osaa = base_y + 40,
+                dmg = base_y + 50
             }
         end
 
-        self.element_target_positions.noctua = screen_height / 2 + 10
+        self.element_target_positions.noctua = base_y + 10
         self.element_target_positions.state = self.element_target_positions.noctua + 10
 
         local dt = antiaim_funcs.get_double_tap()
@@ -2737,20 +3093,20 @@ visuals = {} do
         self.element_positions.osaa = mathematic.lerp(self.element_positions.osaa, self.element_target_positions.osaa, fadeSpeedSetting)
         self.element_positions.dmg = mathematic.lerp(self.element_positions.dmg, self.element_target_positions.dmg, fadeSpeedSetting)
 
-        self.animated_text:render(screen_width / 2, self.element_positions.noctua, align_title, self.indicatorsAlpha)
-        renderer.text(screen_width / 2, self.element_positions.state, 255, 255, 255, self.indicatorsAlpha, align_text, 1000, state)
+        self.animated_text:render(base_x, self.element_positions.noctua, align_title, self.indicatorsAlpha)
+        renderer.text(base_x, self.element_positions.state, 255, 255, 255, self.indicatorsAlpha, align_text, 1000, state)
 
         if smoothRapidAlpha >= 1 or smoothReloadAlpha >= 1 then
-            renderer.text(screen_width / 2, self.element_positions.rapid, 255, 255, 255, smoothRapidAlpha, align_text, 1000, "rapid")
-            renderer.text(screen_width / 2, self.element_positions.rapid, 255, 255, 255, smoothReloadAlpha, align_text, 1000, "reload")
+            renderer.text(base_x, self.element_positions.rapid, 255, 255, 255, smoothRapidAlpha, align_text, 1000, "rapid")
+            renderer.text(base_x, self.element_positions.rapid, 255, 255, 255, smoothReloadAlpha, align_text, 1000, "reload")
         end
 
         if smoothOsaaAlpha >= 1 then
-            renderer.text(screen_width / 2, self.element_positions.osaa, 255, 255, 255, smoothOsaaAlpha, align_text, 1000, "osaa")
+            renderer.text(base_x, self.element_positions.osaa, 255, 255, 255, smoothOsaaAlpha, align_text, 1000, "osaa")
         end
         
         if smoothDmgAlpha >= 1 then
-            renderer.text(screen_width / 2, self.element_positions.dmg, 255, 255, 255, smoothDmgAlpha, align_text, 1000, "dmg")
+            renderer.text(base_x, self.element_positions.dmg, 255, 255, 255, smoothDmgAlpha, align_text, 1000, "dmg")
         end
     end
 end
@@ -2959,8 +3315,7 @@ stickman = {} do
 end
 
 client.set_event_callback('paint', function()
-    visuals:window()
-    visuals:indicators()
+    widgets.paint()
     stickman:setup()
 end)
 
@@ -2971,90 +3326,12 @@ logging = {} do
     logging.animatedMessages = {}
     logging.cache = {}
     logging.round_counter = 0
-    logging.drag = {
-        text = "drag me to adjust",
-        posX = nil,
-        posY = nil,
-        width = nil,
-        height = nil,
-        isDragging = false,
-        dragOffsetY = 0,
-        currentAlpha = 255,
-        fade_alpha = 0,
-        fadeProgress = 0,
-        padding = 15,
+    logging.preview_messages = {}
+    logging.preview_active = false
+    logging.preview_alpha = 0
+    logging.ui_alpha = 1
 
-        isMouseDown = function(self, vKey)
-            return client.key_state(vKey)
-        end,
-
-        paintCallback = function(self)
-            if not interface.visuals.logging:get() then return end
-            local logOptions = interface.visuals.logging_options:get()
-            if not utils.contains(logOptions, "screen") then return end
-            
-            local menuOpen = ui.is_menu_open()
-            local target_alpha = menuOpen and 255 or 0
-            self.fade_alpha = mathematic.lerp(self.fade_alpha, target_alpha, 0.15)
-
-            local screen_width, screen_height = client.screen_size()
-            local mx, my = ui.mouse_position()
-
-            if not self.width then
-                local textWidth, textHeight = renderer.measure_text("c", self.text)
-                self.width = textWidth
-                self.height = textHeight
-            end
-
-            if menuOpen and not self.isDragging then
-                self.posY = screen_height / 2 + interface.visuals.logging_slider:get()
-            end
-
-            local centerX = screen_width / 2
-
-            local function isInside(x, y)
-                local leftBound = centerX - (self.width / 2) - self.padding
-                local rightBound = centerX + (self.width / 2) + self.padding
-                local topBound = self.posY - self.padding
-                local bottomBound = self.posY + self.height + self.padding
-                return x >= leftBound and x <= rightBound and y >= topBound and y <= bottomBound
-            end
-
-            if menuOpen then
-                if not self.isDragging and self:isMouseDown(0x01) and isInside(mx, my) then
-                    self.isDragging = true
-                    self.dragOffsetY = my - self.posY
-                end
-
-                if self.isDragging then
-                    self.posY = my - self.dragOffsetY
-                    local newSliderValue = self.posY - screen_height / 2
-                    newSliderValue = mathematic.clamp(newSliderValue, 40, 450)
-                    self.posY = screen_height / 2 + newSliderValue
-                    interface.visuals.logging_slider:set(newSliderValue)
-                end
-
-                if self.isDragging and not self:isMouseDown(0x01) then
-                    self.isDragging = false
-                end
-            end
-
-            local final_alpha = self.fade_alpha
-            if self.isDragging then
-                final_alpha = final_alpha * 0.5
-            end
-
-            renderer.text(centerX, self.posY, 255, 255, 255, final_alpha, "c", 0, self.text)
-        end,
-
-        handle_release = function(self)
-            if not self:isMouseDown(0x01) then
-                self.isDragging = false
-            end
-        end
-    }
-
-    logging.push = function(self, text, duration)
+    logging.push = function(self, text, duration, is_preview)
         duration = duration or 3
         for i = 1, #self.animatedMessages do
             if not self.animatedMessages[i].targetY then
@@ -3071,7 +3348,8 @@ logging = {} do
             targetY = 0,
             removing = false,
             alpha = 0,
-            offset = -10
+            offset = -10,
+            preview = is_preview == true
         })
 
         if #self.animatedMessages > 10 then
@@ -3080,38 +3358,48 @@ logging = {} do
         end
     end
 
-    logging.clearCache = function(self)
-        self.animatedMessages = {}
-        self.cache = {}
-    end
-
-    logging.drawAnimatedMessages = function(self)
+    logging.drawAnimatedMessages = function(self, base_x, base_y, edit_mode)
+        local menuOpen = ui.is_menu_open()
+        
+        local real_count = 0
+        for i = 1, #self.animatedMessages do
+            if not self.animatedMessages[i].preview then real_count = real_count + 1 end
+        end
+        
+        if edit_mode and real_count == 0 and not self.preview_active then
+            self:push("missed racen's head / lc: 12 - reason: bad code", 999999, true)
+            self.preview_active = true
+        end
+        if (not edit_mode or real_count > 0) and self.preview_active then
+            local keep = {}
+            for i = 1, #self.animatedMessages do
+                if not self.animatedMessages[i].preview then
+                    table.insert(keep, self.animatedMessages[i])
+                end
+            end
+            self.animatedMessages = keep
+            self.preview_active = false
+        end
+        
         if #self.animatedMessages == 0 then
             return
         end
-    
-        self.drag:paintCallback()
-    
-        local menuOpen = ui.is_menu_open()
-        local screen_width, screen_height = client.screen_size()
-        local base_y = screen_height / 2 + interface.visuals.logging_slider:get()
+
         local currentTime = globals.realtime()
         local line_spacing = 15
-    
-        local logAlphaMultiplier = menuOpen and 0 or 1
-    
+
         local animTime = 0.2
         local holdTime = 3
         local totalDuration = animTime + holdTime + animTime
-    
+        
         local function easeInOutQuad(t)
             return t < 0.5 and 2 * t * t or -1 + (4 - 2 * t) * t
         end
-    
+        
         for i = 1, #self.animatedMessages do
             local msg = self.animatedMessages[i]
             local elapsedTime = currentTime - msg.startTime
-    
+        
             msg.currentY = msg.currentY or 0
             msg.alpha = msg.alpha or 0
             msg.offset = msg.offset or -10
@@ -3121,45 +3409,55 @@ logging = {} do
             else
                 msg.currentY = msg.targetY
             end
-    
-            if (elapsedTime >= totalDuration and not msg.removing) or msg.removing then
-                if not msg.removing then
-                    msg.removing = true
-                    msg.targetY = msg.targetY + 15
-                end
-                
-                if math.abs(msg.currentY - msg.targetY) < 0.1 then
-                    table.remove(self.animatedMessages, i)
-                    break
-                end
-            else
-                local targetAlpha, targetOffset
-                if elapsedTime < animTime then
-                    local progress = elapsedTime / animTime
-                    local easedProgress = easeInOutQuad(progress)
-                    targetAlpha = 255
-                    targetOffset = 0
-                elseif elapsedTime < (animTime + holdTime) then
-                    targetAlpha = 255
-                    targetOffset = 0
-                else
-                    local progress = (elapsedTime - animTime - holdTime) / animTime
-                    local easedProgress = easeInOutQuad(progress)
-                    targetAlpha = 255 * (1 - easedProgress)
-                    targetOffset = 10 * easedProgress
-                end
-    
+        
+            if msg.preview and edit_mode then
+                local targetAlpha = 255
+                local targetOffset = 0
                 msg.alpha = mathematic.lerp(msg.alpha, targetAlpha, globals.frametime() * 10)
                 msg.offset = mathematic.lerp(msg.offset, targetOffset, globals.frametime() * 10)
-    
-                local alpha = msg.alpha * logAlphaMultiplier
-                local y = base_y + msg.currentY + msg.offset
-    
-                renderer.text(screen_width / 2, y, 255, 255, 255, alpha, "c", 0, msg.text)
-            end
+                local alpha = msg.alpha or 255
+                local y = math.floor(base_y + msg.currentY + msg.offset + 0.5)
+                renderer.text(base_x, y, 255, 255, 255, alpha, "c", 0, msg.text)
+            else
+                if (elapsedTime >= totalDuration and not msg.removing) or msg.removing then
+                    if not msg.removing then
+                        msg.removing = true
+                        msg.targetY = msg.targetY + 15
+                    end
+                    
+                    if math.abs(msg.currentY - msg.targetY) < 0.1 then
+                        table.remove(self.animatedMessages, i)
+                        break
+                    end
+                else
+                    local targetAlpha, targetOffset
+                    if elapsedTime < animTime then
+                        local progress = elapsedTime / animTime
+                        local easedProgress = easeInOutQuad(progress)
+                        targetAlpha = 255
+                        targetOffset = 0
+                    elseif elapsedTime < (animTime + holdTime) then
+                        targetAlpha = 255
+                        targetOffset = 0
+                    else
+                        local progress = (elapsedTime - animTime - holdTime) / animTime
+                        local easedProgress = easeInOutQuad(progress)
+                        targetAlpha = 255 * (1 - easedProgress)
+                        targetOffset = 10 * easedProgress
+                    end
+            
+                    msg.alpha = mathematic.lerp(msg.alpha, targetAlpha, globals.frametime() * 10)
+                    msg.offset = mathematic.lerp(msg.offset, targetOffset, globals.frametime() * 10)
+            
+                    local alpha = msg.alpha or 255
+                    local y = math.floor(base_y + msg.currentY + msg.offset + 0.5)
+            
+                    renderer.text(base_x, y, 255, 255, 255, alpha, "c", 0, msg.text)
                 end
             end
-            
+        end
+    end
+
     logging.handleAimFire = function(self, e)
         if not e then return end
         
@@ -3459,11 +3757,92 @@ end
 client.set_event_callback("round_prestart", logging.on_round_prestart)
 client.set_event_callback("item_purchase", logging.on_item_purchase)
 
-client.set_event_callback("paint", function()
-    logging.drag:handle_release()
-    logging.drag.paintCallback(logging.drag)
-    logging.drawAnimatedMessages(logging)
-end)
+widgets.register({
+    id = "crosshair_indicators",
+    title = "Indicators",
+    defaults = { anchor_x = "center", anchor_y = "center", offset_x = 0, offset_y = 10 },
+    get_size = function(st)
+        local maxw, lineh = 0, select(2, renderer.measure_text("c", "A")) or 12
+        local samples = { "noctua", "freestand", "rapid", "reload", "osaa", "dmg" }
+        for i = 1, #samples do
+            local w = select(1, renderer.measure_text("c", samples[i])) or 0
+            if w > maxw then maxw = w end
+        end
+        local lines = 5
+        return math.max(maxw, 80), lineh * lines
+    end,
+    draw = function(ctx)
+        visuals:indicators(ctx.x + ctx.w / 2, ctx.y + 10)
+    end,
+    z = 10
+})
+
+widgets.register({
+    id = "screen_logging",
+    title = "Logging",
+    defaults = { anchor_x = "center", anchor_y = "center", offset_x = 0, offset_y = 0 },
+    get_size = function(st)
+        local line_spacing = 15
+        local MAX_LINES = 15
+        local count = #logging.animatedMessages
+        local visible = math.max(1, math.min(count, MAX_LINES))
+        local maxw = 0
+        
+        for i = 1, count do
+            local w = select(1, renderer.measure_text("c", logging.animatedMessages[i].text or "")) or 0
+            if w > maxw then maxw = w end
+        end
+        if maxw == 0 then maxw = 300 end
+        local height = 10 + visible * line_spacing + 10
+        return maxw, height
+    end,
+    draw = function(ctx)
+        local line_spacing = 15
+        local visible = math.max(1, math.min(#logging.animatedMessages, 15))
+        local target_h = 10 + visible * line_spacing + 10
+        local top = ctx.cy - target_h / 2
+        local base_y = math.floor(top + 10 + math.ceil(line_spacing / 2) - 1 + 0.5)
+        local base_x = math.floor(ctx.cx + 0.5)
+        logging:drawAnimatedMessages(base_x, base_y, ctx.edit_mode)
+    end,
+    z = 5
+})
+
+widgets.register({
+    id = "debug_window",
+    title = "Debug Window",
+    defaults = { anchor_x = "center", anchor_y = "center", offset_x = 0, offset_y = -80 },
+    get_size = function(st)
+        local lineh = 12
+        local lines = 4
+        local maxw = 0
+        local samples = { _name .. " " .. _version, "target: none", "target state: none", "target yaw: none" }
+        for i = 1, #samples do
+            local w = select(1, renderer.measure_text("c", samples[i])) or 0
+            if w > maxw then maxw = w end
+        end
+        return math.max(maxw, 120), lineh * lines + 12
+    end,
+    draw = function(ctx)
+        local sw, _ = client.screen_size()
+        local third = sw / 3
+        local align, x
+        if ctx.cx < third then
+            align = "l"; x = ctx.x
+        elseif ctx.cx > (sw - third) then
+            align = "r"; x = ctx.x + ctx.w
+        else
+            align = "c"; x = ctx.x + ctx.w / 2
+        end
+        visuals:window(x, ctx.y + 6, align)
+    end,
+    z = 6
+})
+
+widgets.load_from_db()
+client.set_event_callback("paint_ui", function() widgets.paint_ui() end)
+client.set_event_callback("shutdown", function() widgets.save_all() end)
+
 
 client.set_event_callback("shutdown", function()
     logging:clearCache()
@@ -3571,7 +3950,7 @@ for event, callback in pairs(aimHandlers) do
 end
 
 client.set_event_callback("setup_command", function(cmd)
-    if logging.drag.isDragging then
+    if widgets and widgets.is_dragging then
         cmd.in_attack = 0
     end
 end)
@@ -5281,7 +5660,7 @@ end
 --@region: killsay
 killsay = {} do
     killsay.last_say_time = 0
-    killsay.cooldown = 1.5
+    killsay.cooldown = 2.0
     
     killsay.multi_phrases_kill = {
         {
@@ -5633,6 +6012,24 @@ killsay = {} do
         },
         {
             "когда я был в прайме, меня все называли i.diman"
+        },
+        {
+            "всенокты.нет"
+        },
+        {
+            "нокта любит таких же решительных, как я"
+        },
+        {
+            "и это анти-аимы? для #noctua это мелочь"
+        },
+        {
+            "станед хуянед резольвер? гет нокта - зетс олл"
+        },
+        {
+            "я твоей маме колени выбил битой хуесос"
+        },
+        {
+            "ОЙ"
         }
     }
 
@@ -5645,7 +6042,8 @@ killsay = {} do
             "КАК ТЫ УБИЛ"
         },
         {
-            "CERF"
+            "CERF",
+            "сука"
         },
         {
             "нокта сегодня не бодрая"
@@ -5656,10 +6054,12 @@ killsay = {} do
         },
         {
             "тьывотльбФЫВотльбФЫЯВЧ",
-            "не везет пиздец"
+            "не везет пиздец",
+            "когда нибудь я тебя убью хуесос"
         },
         {
-            "ДА СУКА"
+            "?",
+            "че"
         },
         {
             "!admin",
@@ -5683,6 +6083,34 @@ killsay = {} do
         {
             "я щас админку байну и забаню тебя хуесос",
             "ходи оглядывайся"
+        },
+        {
+            "опять какой то долбаеб убил",
+            "статс в чат прописал нахуй"
+        },
+        {
+            "сыно шлюхи",
+            "я мать те резал"
+        },
+        {
+            "КАК ЖЕ ТЫ МЕНЯ ЗАЕБАЛ УЖЕ",
+            "ТЛЬДБфыячОТЛЬДБфыяч"
+        },
+        {
+            ",KZNM RFR",
+            "БЛЯТЬ КАК ЖЕ ТЫ ЗАЕБАЛ"
+        },
+        {
+            "lf ,kznm",
+            "да блять",
+            "опять мисснул"
+        },
+        {
+            "ПАРНИ не подскажете че такое трешток"
+        },
+        {
+            "опять анрег",
+            "что за пиздец"
         }
     }
     
@@ -5699,7 +6127,7 @@ killsay = {} do
     killsay.calculate_delay = function(text)
         local base_delay = 0.03
         
-        local char_delay = 0.02
+        local char_delay = 0.035
         
         local human_randomness = 1 + (math.random() * 0.4 - 0.2)
         
@@ -5707,10 +6135,10 @@ killsay = {} do
     end
     
     killsay.send_phrases = function(phrase_type)
-        local initial_delay = 0.75 + math.random() * 0.40
+        local initial_delay = 1.0 + math.random() * 0.40
         
         if phrase_type == "death" then
-            initial_delay = initial_delay + 1.50
+            initial_delay = initial_delay + 1.75
         end
         
         local phrases = killsay.get_random_phrase(phrase_type)
