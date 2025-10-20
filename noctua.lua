@@ -4136,7 +4136,7 @@ buybot = {} do
         client.delay_call(0.5, function()
             local money = entity.get_prop(entity.get_local_player(), "m_iAccount")
             
-            if not interface.utility.buybot:get() or money <= 800 then
+            if not interface.utility.buybot:get() or (money >= 800 and money <= 1000) then
                 return
             end
             
