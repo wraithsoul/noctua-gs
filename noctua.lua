@@ -13,6 +13,7 @@ local _version = '1.3'
 local update = [[
 changelog 1.3 (18/10/2025):
  - added 'on death' to balabolka (killsay) mode
+ - added spawn zoom effect
  - added round counter
  - added zoom animation
  - added hitsound 
@@ -482,6 +483,37 @@ zoom_animation = {} do
 end
 --@endregion
 
+--@region: spawn zoom
+spawn_zoom = {} do
+    spawn_zoom.active = false
+
+    spawn_zoom.on_player_spawn = function(e)
+        local me = entity.get_local_player()
+        if not me then return end
+        if client.userid_to_entindex(e.userid) ~= me then return end
+        if not (interface.visuals.enabled_visuals:get() and interface.visuals.spawn_zoom:get()) then return end
+        spawn_zoom.active = true
+        zoom_animation.lerp_storage['spawn_zoom'] = 100
+    end
+
+    spawn_zoom.setup = function(ctx)
+        if not spawn_zoom.active then return end
+        if not (interface.visuals.enabled_visuals:get() and interface.visuals.spawn_zoom:get()) then
+            spawn_zoom.active = false
+            return
+        end
+        pui.reference('misc', 'miscellaneous', 'override zoom fov'):override(0)
+        local animate = zoom_animation.lerp('spawn_zoom', 0, 80 / 10, 0.01, 'ease_out')
+        ctx.fov = ctx.fov - animate
+        if math.abs(animate - 0) <= 0.01 then
+            spawn_zoom.active = false
+        end
+    end
+end
+
+client.set_event_callback('player_spawn', spawn_zoom.on_player_spawn)
+--@endregion
+
 client.set_event_callback('paint', function()
     aspect_ratio.setup()
     thirdperson.setup()
@@ -489,6 +521,7 @@ client.set_event_callback('paint', function()
 end)
 
 client.set_event_callback('override_view', function(ctx)
+    spawn_zoom.setup(ctx)
     zoom_animation.setup(ctx)
 end)
 --@endregion
@@ -604,6 +637,7 @@ interface = {} do
         zoom_animation = interface.header.general:checkbox('zoom animation'),
         zoom_animation_speed = interface.header.general:slider('speed', 10, 100, 60, true, '%'),
         zoom_animation_value = interface.header.general:slider('strength', 1, 100, 5, true, '%'),
+        spawn_zoom = interface.header.general:checkbox('spawn zoom'),
         stickman = interface.header.general:checkbox('stickman', {255, 255, 255, 140})
     }
 
@@ -738,6 +772,7 @@ interface = {} do
                         zoom_animation = true,
                         zoom_animation_speed = true,
                         zoom_animation_value = true,
+                        spawn_zoom = true,
                         logging_options = true,
                         logging_options_console = true,
                         logging_options_screen = true
