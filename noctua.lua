@@ -8,10 +8,14 @@
 
 --@region: information
 local _name = 'noctua debug'
-local _version = '1.3a'
+local _version = '1.4'
 local _nickname = entity.get_player_name(entity.get_local_player())
 
 local update = [[
+changelog 1.4 (21/20/2025):
+ - added anti-aim build
+ - added extensions for anti-aim's
+ - reworked logging t
 changelog 1.3a (18/10/2025):
  - added "on death" to balabolka (killsay) mode
  - added crosshair indicator "center" mode
@@ -228,6 +232,10 @@ local color = modules.color
 local http = modules.http
 local antiaim_funcs = modules.antiaim_funcs
 local clipboard = modules.clipboard
+
+-- optional dependencies
+local ok_weapons, weapons = pcall(require, 'gamesense/csgo_weapons')
+local ok_base64, base64 = pcall(require, 'gamesense/base64')
 --@endregion
 
 --@region: mathematic
@@ -545,34 +553,12 @@ interface = {} do
     interface.additional = {
         empty = '⠀'
     }
+ 
+    interface.search = interface.header.general:combobox(pui.macros.title .. ' - '.. _version, 'aimbot', 'antiaim', 'visuals', 'utility', 'models', 'other')
 
-    prepare_aa = {
-        onground = false,
-        ticks = 0,
-        state = 'idle',
-        condition = {},
-        condition_names = {
-            'default',
-            'idle',
-            'run',
-            'air',
-            'airc',
-            'duck',
-            'duck move',
-            'slow',
-            'use',
-            'freestand',
-            'manual'
-        },
-        extensions = {
-            'adjust manual anti-aim',
-            'legit anti-aim',
-            'bombsite e fix',
-            'fast ladder'
-        }
+    interface.aa = {
+        page = interface.header.general:combobox('\n', 'builder', 'extensions')
     }
-    
-    interface.search = interface.header.general:combobox(pui.macros.title .. ' - '.. _version, 'aimbot', 'visuals', 'models', 'utility', 'other') -- add builder later
 
     interface.aimbot = {
         enabled_aimbot = interface.header.general:checkbox('enable aimbot'),
@@ -583,44 +569,10 @@ interface = {} do
         force_recharge = interface.header.general:checkbox('allow force recharge'),
         quick_stop = interface.header.general:checkbox('air stop', 0x00)
     }
-    
-    interface.builder = {
-        enabled_builder = interface.header.general:checkbox('enable builder'),
-        current_state = interface.header.general:combobox('state', prepare_aa.condition_names),
-        condition = {}
-    }
-
-    gs_tooltips = {[0] = "GS"}
-
-    for i, name in pairs(prepare_aa.condition_names) do
-        interface.builder.condition[name] = {
-            override = interface.header.general:checkbox('override ' .. prepare_aa.condition_names[i]),
-            yaw_base = interface.header.general:combobox('yaw base', {'local view', 'at targets'}),
-            offset_left = interface.header.general:slider('offset left', -180, 180, 0, true, '°'),
-            offset_right = interface.header.general:slider('offset right', -180, 180, 0, true, '°'),
-            yaw_modifier = interface.header.general:combobox('yaw modifier', {'off', 'center', 'offset', 'random', 'skitter', 'spin', '3-way', '5-way'}),
-            yaw_modifier_offset = interface.header.general:slider('way offset', -180, 180, 0, true, '°'),
-            left_limit = interface.header.general:slider('left limit', -180, 180, 0),
-            right_limit = interface.header.general:slider('right limit', -180, 180, 0),
-            spin_angle = interface.header.general:slider('spin angle', -180, 180, 0, true, '°'),
-            fake_options = interface.header.general:combobox('fake options', {'off', 'opposite', 'jitter', 'static'}),
-            delay_tick = interface.header.general:slider('delay tick', 0, 100, 0, true, '%', 1, gs_tooltips),
-            offset = interface.header.general:slider('offset', -180, 180, 0, true, '°'),
-            
-            hide_lc = interface.header.general:checkbox('\aa5ab55ffhide lc anti aim'),
-            pitch = interface.header.general:combobox('pitch', {'disabled', 'zero', 'up', 'medium', 'random', 'switch up', 'switch down', 'custom'}),
-            pitch_angle = interface.header.general:slider('angle', -89, 89, 0, true, '°'),
-            type = interface.header.general:combobox('type', {'disabled', 'meta', 'switch', 'spin', 'free sway', 'forward', 'switch left', 'switch right', 'custom'}),
-            spin_speed = interface.header.general:slider('spin speed', 0, 100, 0, true, '%'),
-            type_offset_left = interface.header.general:slider('type offset left', -180, 180, 0, true, '°'),
-            type_offset_right = interface.header.general:slider('type offset right', -180, 180, 0, true, '°'),
-            empty = interface.header.general:label(interface.additional.empty)
-        }
-    end
 
     interface.visuals = {
         enabled_visuals = interface.header.general:checkbox('enable visuals'),
-        group = interface.header.general:combobox('group', 'general', 'other'),
+        group = interface.header.general:combobox('\n', 'general', 'other'),
         accent = interface.header.general:label('accent color', {120, 160, 180}),
         secondary = interface.header.general:label('secondary color', {215, 240, 255}),
         vgui = interface.header.general:label('vgui color', {255, 255, 255}), -- 140, 140, 140
@@ -631,8 +583,8 @@ interface = {} do
         -- shared = interface.header.general:checkbox('shared identity (wip)'),
         logging = interface.header.general:checkbox('logging'),
         logging_options = interface.header.general:multiselect('options', 'console', 'screen'),
-        logging_options_console = interface.header.general:multiselect('console', 'aimbot', 'fire', 'hit', 'miss', 'buy'),
-        logging_options_screen = interface.header.general:multiselect('screen', 'aimbot', 'fire', 'hit', 'miss'),
+        logging_options_console = interface.header.general:multiselect('console', 'fire', 'hit', 'miss', 'buy', 'events'),
+        logging_options_screen = interface.header.general:multiselect('screen', 'fire', 'hit', 'miss', 'events'),
         logging_slider = interface.header.general:slider('slider', 40, 450, 240),
         aspect_ratio = interface.header.general:checkbox('override aspect ratio'),
         aspect_ratio_slider = interface.header.general:slider('value', 0, aspect_ratio.steps, aspect_ratio.steps/2, true, '', 1, aspect_ratio.ratio_table),
@@ -681,6 +633,76 @@ interface = {} do
         -- default_config = interface.header.general:button('default config'),
     }
 
+    interface.builder = {} do
+        local e_statement = {"default","idle","run","air","airc","duck","duck move","slow","use","fakelag","on shot","freestand","manual","safe head"}
+        local tooltips  = {delay = {[1] = "off"}, body = {[0] = "off"}}
+        interface.condition = interface.header.general:combobox("condition", e_statement)
+        if interface.condition.depend then
+            interface.condition:depend({ interface.search, 'antiaim' }, { interface.aa.page, 'builder' })
+        end
+        for _, state in ipairs(e_statement) do
+            interface.builder[state] = {}
+            local this = interface.builder[state]
+            if state == "use" then
+                this.allow_use_aa = interface.header.general:checkbox('allow antiaim on use', false)
+            end
+            if state ~= "default" then
+                this.enable = interface.header.general:checkbox('override ' .. state, false)
+                if state == "use" and this.enable.depend then
+                    this.enable:depend({ this.allow_use_aa, true })
+                end
+            end
+            this.base = interface.header.general:combobox("base", {"local view", "at targets"})
+            this.add = interface.header.general:slider("yaw", -180, 180, 0, true, "°", 1)
+            this.expand = interface.header.general:combobox("expand" ,{ "off", "left/right","x-way","spin"})
+            this.epd_left = interface.header.general:slider("\n", -180, 180, 0, true, "°", 1):depend({this.expand,"x-way",true},{this.expand,"off",true})
+            this.epd_right = interface.header.general:slider("\n", -180, 180, 0, true, "°", 1):depend({this.expand,"x-way",true},{this.expand,"off",true})
+            this.delay = interface.header.general:slider("delay ", 1, 10, 0, true, "t", 1, tooltips.delay):depend({this.expand,"left/right"})
+            this.speed = interface.header.general:slider("speed ", 1, 64, 1, true, "t", 1):depend({this.expand,"spin"})
+            this.ways_manual = interface.header.general:checkbox('ways manual', false):depend({ this.expand, "x-way" })
+            this.x_way = interface.header.general:slider("total ", 3, 7, 3, true, "w"):depend({ this.expand, "x-way" })
+            this.x_waylabel = interface.header.general:label("way"):depend({this.expand,"x-way"}, {this.ways_manual,true})
+            this.x_way:set_callback(function (ctx) this.x_waylabel:set("way " .. ctx.value) end, true)
+            this.epd_way = interface.header.general:slider("way ", -180, 180, 0, true, "°", 1):depend({this.expand,"x-way"}, {this.ways_manual,false})
+            for w = 1, 7 do
+                this[w] = interface.header.general:slider(tostring(w), -180, 180, 0, true, "°", 1, {[0] = "R"}):depend({this.expand, "x-way"}, {this.ways_manual, true}, {this.x_way, w, 7})
+            end
+            this.jitter = interface.header.general:combobox("modifier",{ "off", "offset", "center", "random"})
+            this.jitter_add = interface.header.general:slider("\n", -180, 180, 0, true,"°"):depend({this.jitter,"off",true})
+            this.yaw_randomize = interface.header.general:slider("randomization", 0, 100, 0, 0, '%', 1, {[0] = "off"})
+            this.by_mode = interface.header.general:combobox("body ",{ "off", "static", "opposite", "jitter" })
+            this.by_num = interface.header.general:slider("\n", -180, 180, 0, true, "°", 1, tooltips.body):depend({ this.by_mode, "off", true }, { this.by_mode, "opposite", true })
+            this.break_lc = interface.header.general:checkbox("\aa5ab55ffforce break lc")
+            this.defensive = interface.header.general:checkbox("defensive")
+            if this.defensive and this.defensive.depend then
+                this.defensive:depend({ this.break_lc, true })
+            end
+            this.def_pitch = interface.header.general:combobox("pitch defensive ",{ "default", "up", "zero", "up switch","down switch", "random static","random","custom"}):depend({this.defensive,true})
+            this.def_pitch_num = interface.header.general:slider("\n", -89, 89, 0, true, "°", 1):depend({this.defensive,true},{this.def_pitch,"custom"})
+            this.def_yaw = interface.header.general:combobox("yaw defensive ",{ "default", "forward", "sideways", "delayed","spin","random", "random static","flick exploit","custom"}):depend({this.defensive,true})
+            this.def_left = interface.header.general:slider("left yaw ", -180, 180, 0, true, "°", 1):depend({this.defensive,true},{this.def_yaw, function()
+                return  this.def_yaw:get() == "delayed" or  this.def_yaw:get() == "spin" or  this.def_yaw:get() == "random" or  this.def_yaw:get() == "random static"
+            end})
+            this.def_right = interface.header.general:slider("right yaw ", -180, 180, 0, true, "°", 1):depend({this.defensive,true},{this.def_yaw, function()
+                return  this.def_yaw:get() == "delayed" or  this.def_yaw:get() == "spin" or  this.def_yaw:get() == "random" or  this.def_yaw:get() == "random static"
+            end})
+            this.def_speed = interface.header.general:slider("speed yaw ", 1, 64, 1, true, "t", 1):depend({this.defensive,true},{this.def_yaw, "spin" })
+            this.def_yaw_num = interface.header.general:slider("\n", -180, 180, 0, true, "°", 1):depend({this.defensive,true},{this.def_yaw,"custom"})
+            this.def_body = interface.header.general:combobox("body defensive ",{ "default", "auto", "jitter"}):depend({this.defensive,true})
+            for key, v in pairs(this) do
+                if type(v) == 'table' and v.depend then
+                    local arr = { { interface.search, 'antiaim' }, { interface.aa.page, 'builder' }, { interface.condition, state } }
+                    if key ~= "enable" and state ~= "default" then
+                        if not (state == "use" and key == "allow_use_aa") then
+                            arr[#arr+1] = { this.enable, true }
+                        end
+                    end
+                    v:depend(table.unpack(arr))
+                end
+            end
+        end
+    end
+
     -- interface.utility.item_anti_crash:override(true) -- uncomment later
 
     interface.hide_references = {
@@ -723,8 +745,15 @@ interface = {} do
         end
     end
 
+    local noctua_universeaa_visibility = function(page)
+        -- replaced later
+    end
+
     interface.setup = function()
         local selection = interface.search:get()
+        if interface.aa and interface.aa.page and interface.aa.page.set_visible then
+            interface.aa.page:set_visible(selection == 'antiaim')
+        end
         local groups = {
             aimbot = interface.aimbot,
             visuals = interface.visuals,
@@ -736,7 +765,7 @@ interface = {} do
         local visibility_config = {
             aimbot = {
                 groups_to_show = { groups.aimbot },
-                groups_to_hide = { groups.visuals, groups.builder, groups.models, groups.utility },
+                groups_to_hide = { groups.visuals, groups.models, groups.utility },
                 element_visibility_logic = function(element, path)
                     local key = path[#path]
                     if key == 'enabled_aimbot' then
@@ -752,7 +781,7 @@ interface = {} do
             },
             visuals = {
                 groups_to_show = { groups.visuals },
-                groups_to_hide = { groups.aimbot, groups.builder, groups.models, groups.utility },
+                groups_to_hide = { groups.aimbot, groups.models, groups.utility },
                 element_visibility_logic = function(element, path)
                     local key = path[#path]
                     local is_other_selected = interface.visuals.group:get() == 'other'
@@ -880,190 +909,13 @@ interface = {} do
                     end
                 end
             },
-            builder = {
-                groups_to_show = { groups.builder },
-                groups_to_hide = { groups.aimbot, groups.visuals, groups.models, groups.utility },
-                element_visibility_logic = function(element, path)
-                    local key = path[#path]
-                    if key == 'enabled_builder' then
-                        element:set_visible(true)
-                        return
-                    end
-
-                    if not interface.builder.enabled_builder:get() then
-                        element:set_visible(false)
-                        return
-                    end
-
-                    if key == 'current_state' then
-                        element:set_visible(true)
-                        return
-                    end
-
-                    local current_state = interface.builder.current_state:get()
-                    local element_state = nil
-
-                    for _, state in ipairs(prepare_aa.condition_names) do
-                        if path[2] == state then
-                            element_state = state
-                            break
-                        end
-                    end
-
-                    if element_state then
-                        local should_show = current_state == element_state
-                        if not should_show then
-                            element:set_visible(false)
-                            return
-                        end
-
-                        if key == 'override' then
-                            element:set_visible(element_state ~= 'default')
-                            return
-                        end
-
-                        if element_state ~= 'default' then
-                            local override_enabled = interface.builder.condition[element_state].override:get()
-                            if not override_enabled then
-                                element:set_visible(false)
-                                return
-                            end
-                        end
-
-                        if key == 'yaw_modifier_offset' then
-                            local yaw_modifier = interface.builder.condition[element_state].yaw_modifier:get()
-                            element:set_visible(yaw_modifier == '3-way' or yaw_modifier == '5-way')
-                            return
-                        end
-
-                        if key == 'left_limit' or key == 'right_limit' then
-                            local yaw_modifier = interface.builder.condition[element_state].yaw_modifier:get()
-                            element:set_visible(yaw_modifier ~= 'off' and yaw_modifier ~= 'spin' and yaw_modifier ~= '3-way' and yaw_modifier ~= '5-way')
-                            return
-                        end
-
-                        if key == 'spin_angle' then
-                            local yaw_modifier = interface.builder.condition[element_state].yaw_modifier:get()
-                            element:set_visible(yaw_modifier == 'spin')
-                            return
-                        end
-
-                        if key == 'body_yaw_offset' then
-                            local body_yaw = interface.builder.condition[element_state].body_yaw:get()
-                            element:set_visible(body_yaw ~= 'off' and body_yaw ~= 'opposite')
-                            return
-                        end
-
-                        if key == 'delay_tick' then
-                            local fake_options = interface.builder.condition[element_state].fake_options:get()
-                            element:set_visible(fake_options == 'jitter')
-                            return
-                        end
-
-                        if key == 'offset' then
-                            local fake_options = interface.builder.condition[element_state].fake_options:get()
-                            element:set_visible(fake_options == 'jitter' or fake_options == 'static')
-                            return
-                        end
-
-                        local hide_lc = interface.builder.condition[element_state].hide_lc:get()
-                        
-                        if key == 'pitch' or key == 'type' then
-                            element:set_visible(hide_lc)
-                            return
-                        end
-
-                        if key == 'pitch_angle' then
-                            local pitch_mode = interface.builder.condition[element_state].pitch:get()
-                            element:set_visible(hide_lc and pitch_mode == 'custom')
-                            return
-                        end
-
-                        if key == 'type_offset_left' or key == 'type_offset_right' then
-                            local type_mode = interface.builder.condition[element_state].type:get()
-                            element:set_visible(hide_lc and type_mode == 'custom')
-                            return
-                        end
-
-                        if key == 'lc_mode' then
-                            element:set_visible(hide_lc)
-                            return
-                        end
-
-                        if key == 'lc_type' then
-                            local lc_mode = interface.builder.condition[element_state].lc_mode:get()
-                            element:set_visible(hide_lc and lc_mode ~= 'off' and lc_mode ~= 'custom')
-                            return
-                        end
-
-                        if key == 'spin_speed' then
-                            local type_mode = interface.builder.condition[element_state].type:get()
-                            element:set_visible(hide_lc and type_mode == 'spin')
-                            return
-                        end
-
-                        if key:find("defensive_") then
-                            local lc_mode = interface.builder.condition[element_state].lc_mode:get()
-                            
-                            if not (hide_lc and lc_mode == "custom") then
-                                element:set_visible(false)
-                                return
-                            end
-
-                            if key == "defensive_pitch_value" then
-                                local pitch_mode = interface.builder.condition[element_state].defensive_pitch:get()
-                                element:set_visible(pitch_mode == "custom")
-                                return
-                            end
-
-                            if key == "defensive_yaw_value" then
-                                local yaw_mode = interface.builder.condition[element_state].defensive_yaw:get()
-                                element:set_visible(yaw_mode == "custom")
-                                return
-                            end
-
-                            if key == "defensive_modifier_value" then
-                                local modifier_mode = interface.builder.condition[element_state].defensive_modifier:get()
-                                element:set_visible(modifier_mode ~= "off")
-                                return
-                            end
-
-                            element:set_visible(true)
-                            return
-                        end
-
-                        if key:find("lc_custom_") then
-                            if not hide_lc then
-                                element:set_visible(false)
-                                return
-                            end
-
-                            local lc_mode = interface.builder.condition[element_state].lc_mode:get()
-                            local lc_type = interface.builder.condition[element_state].lc_type:get()
-
-                            if key:find("pitch_") or key:find("yaw_") then
-                                element:set_visible(lc_mode == "custom")
-                            elseif key:find("ticks_") or key:find("timing_") or key:find("offset") then
-                                element:set_visible(lc_type == "custom")
-                            else
-                                element:set_visible(false)
-                            end
-                            return
-                        end
-
-                        element:set_visible(true)
-                    else
-                        element:set_visible(false)
-                    end
-                end
-            },
             models = {
                 groups_to_show = { groups.models },
-                groups_to_hide = { groups.aimbot, groups.visuals, groups.builder, groups.utility }
+                groups_to_hide = { groups.aimbot, groups.visuals, groups.utility }
             },
             utility = {
                 groups_to_show = { groups.utility },
-                groups_to_hide = { groups.aimbot, groups.visuals, groups.builder, groups.models },
+                groups_to_hide = { groups.aimbot, groups.visuals, groups.models },
                 element_visibility_logic = function(element, path)
                     if element and element.set_visible then
                         local key = path[#path]
@@ -1098,33 +950,56 @@ interface = {} do
                 end
             },
             default = {
-                groups_to_hide = { groups.aimbot, groups.visuals, groups.builder, groups.models, groups.utility }
+                groups_to_hide = { groups.aimbot, groups.visuals, groups.models, groups.utility }
             }
         }
+
+        if selection == 'antiaim' then
+            pui.traverse(interface.aimbot, function(element) if element and element.set_visible then element:set_visible(false) end end)
+            pui.traverse(interface.visuals, function(element) if element and element.set_visible then element:set_visible(false) end end)
+            pui.traverse(interface.models, function(element) if element and element.set_visible then element:set_visible(false) end end)
+            pui.traverse(interface.utility, function(element) if element and element.set_visible then element:set_visible(false) end end)
+
+            if interface.aa and interface.aa.page and interface.aa.page.set_visible then
+                interface.aa.page:set_visible(true)
+            end
+
+            noctua_universeaa_visibility(interface.aa.page:get())
+
+            return
+        end
+
+        if type(noctua_universeaa_visibility) == 'function' then
+            noctua_universeaa_visibility('')
+        end
 
         local config = visibility_config[selection] or visibility_config.default
 
         if config.groups_to_show then
-            for _, group in ipairs(config.groups_to_show) do
-                pui.traverse(group, function(element, path)
-                    if element and element.set_visible then
-                        if config.element_visibility_logic then
-                            config.element_visibility_logic(element, path)
-                        else
-                            element:set_visible(true)
+            for _, group in pairs(config.groups_to_show) do
+                if group then
+                    pui.traverse(group, function(element, path)
+                        if element and element.set_visible then
+                            if config.element_visibility_logic then
+                                config.element_visibility_logic(element, path)
+                            else
+                                element:set_visible(true)
+                            end
                         end
-                    end
-                end)
+                    end)
+                end
             end
         end
 
         if config.groups_to_hide then
-            for _, group in ipairs(config.groups_to_hide) do
-                pui.traverse(group, function(element, path)
-                    if element and element.set_visible then
-                        element:set_visible(false)
-                    end
-                end)
+            for _, group in pairs(config.groups_to_hide) do
+                if group then
+                    pui.traverse(group, function(element, path)
+                        if element and element.set_visible then
+                            element:set_visible(false)
+                        end
+                    end)
+                end
             end
         end
 
@@ -1133,6 +1008,10 @@ interface = {} do
         end
     end
 end
+
+-- initialize tab visibility on load
+interface.update_visibility()
+interface.setup()
 
 client.set_event_callback('paint_ui', function()
     interface.update_visibility()
@@ -1265,158 +1144,6 @@ local function argLog(fmt, ...)
     end
 end
 --@endregion
-
---@region: configs
--- configs = {} do
---     configs.encode = function(str)
---         local b = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
---         return ((str:gsub('.', function(x) 
---             local r,b='',x:byte()
---             for i=8,1,-1 do r=r..(b%2^i-b%2^(i-1)>0 and '1' or '0') end
---             return r;
---         end)..'0000'):gsub('%d%d%d?%d?%d?%d?', function(x)
---             if (#x < 6) then return '' end
---             local c=0
---             for i=1,6 do c=c+(x:sub(i,i)=='1' and 2^(6-i) or 0) end
---             return b:sub(c+1,c+1)
---         end)..({ '', '==', '=' })[#str%3+1])
---     end
-
---     configs.decode = function(str)
---         local b = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
---         str = string.gsub(str, '[^'..b..'=]', '')
---         return (str:gsub('.', function(x)
---             if (x == '=') then return '' end
---             local r,f='',(b:find(x)-1)
---             for i=6,1,-1 do r=r..(f%2^i-f%2^(i-1)>0 and '1' or '0') end
---             return r;
---         end):gsub('%d%d%d?%d?%d?%d?%d?%d?', function(x)
---             if (#x ~= 8) then return '' end
---             local c=0
---             for i=1,8 do c=c+(x:sub(i,i)=='1' and 2^(8-i) or 0) end
---             return string.char(c)
---         end))
---     end
-
---     configs.export = function()
---         if not interface.builder.enabled_builder:get() then
---             logMessage("noctua ·", "Enable builder first!")
---             return
---         end
-
---         local config = {
---             conditions = {}
---         }
-
---         for _, condition_name in ipairs(prepare_aa.condition_names) do
---             config.conditions[condition_name] = {
---                 override = interface.builder.condition[condition_name].override:get(),
---                 yaw_base = interface.builder.condition[condition_name].yaw_base:get(),
---                 offset_left = interface.builder.condition[condition_name].offset_left:get(),
---                 offset_right = interface.builder.condition[condition_name].offset_right:get(),
---                 yaw_modifier = interface.builder.condition[condition_name].yaw_modifier:get(),
---                 yaw_modifier_offset = interface.builder.condition[condition_name].yaw_modifier_offset:get(),
---                 left_limit = interface.builder.condition[condition_name].left_limit:get(),
---                 right_limit = interface.builder.condition[condition_name].right_limit:get(),
---                 spin_angle = interface.builder.condition[condition_name].spin_angle:get(),
---                 fake_options = interface.builder.condition[condition_name].fake_options:get(),
---                 delay_tick = interface.builder.condition[condition_name].delay_tick:get(),
---                 offset = interface.builder.condition[condition_name].offset:get(),
---                 hide_lc = interface.builder.condition[condition_name].hide_lc:get(),
---                 pitch = interface.builder.condition[condition_name].pitch:get(),
---                 pitch_angle = interface.builder.condition[condition_name].pitch_angle:get(),
---                 type = interface.builder.condition[condition_name].type:get(),
---                 spin_speed = interface.builder.condition[condition_name].spin_speed:get(),
---                 type_offset_left = interface.builder.condition[condition_name].type_offset_left:get(),
---                 type_offset_right = interface.builder.condition[condition_name].type_offset_right:get()
---             }
---         end
-
---         local json_str = json.stringify(config)
---         local encoded = configs.encode(json_str)
-        
---         clipboard.set("noctua:" .. encoded)
---         logMessage("noctua ·", "", "Config exported to clipboard!")
---     end
-
---     configs.import = function()
---         local clipboard_content = clipboard.get()
-        
---         if not clipboard_content:match("^noctua:") then
---             logMessage("noctua ·", "Invalid config format in clipboard!")
---             return
---         end
-
---         local encoded = clipboard_content:sub(8)
---         local decoded = configs.decode(encoded)
-        
---         local jsonPart = decoded:match("^(%b{})")
---         if not jsonPart then
---             logMessage("noctua ·", "Failed to extract valid JSON from imported config!")
---             return
---         end
-
---         local success, config = pcall(json.parse, jsonPart)
---         if not success or not config.conditions then
---             logMessage("noctua ·", "Failed to parse config!")
---             return
---         end
-
---         for condition_name, settings in pairs(config.conditions) do
---             if interface.builder.condition[condition_name] then
---                 for setting_name, value in pairs(settings) do
---                     local element = interface.builder.condition[condition_name][setting_name]
---                     if element and element.set then
---                         element:set(value)
---                     end
---                 end
---             end
---         end
-
---         logMessage("noctua ·", "", "Config imported successfully!")
---     end
-
---     configs.default = function()
---         local default_config = "noctua:eyJjb25kaXRpb25zIjp7InVzZSI6eyJ5YXdfbW9kaWZpZXJfb2Zmc2V0IjowLCJwaXRjaCI6InJhbmRvbSIsImRlbGF5X3RpY2siOjgsImhpZGVfbGMiOnRydWUsIm9mZnNldCI6NTAsInJpZ2h0X2xpbWl0IjowLCJvZmZzZXRfbGVmdCI6LTExLCJvdmVycmlkZSI6ZmFsc2UsInBpdGNoX2FuZ2xlIjowLCJ5YXdfYmFzZSI6ImF0IHRhcmdldHMiLCJsZWZ0X2xpbWl0IjowLCJ0eXBlX29mZnNldF9yaWdodCI6MTgwLCJ0eXBlX29mZnNldF9sZWZ0Ijo5LCJzcGluX3NwZWVkIjowLCJvZmZzZXRfcmlnaHQiOjQsInR5cGUiOiJjdXN0b20iLCJ5YXdfbW9kaWZpZXIiOiJza2l0dGVyIiwiZmFrZV9vcHRpb25zIjoiaml0dGVyIiwic3Bpbl9hbmdsZSI6MTZ9LCJzbG93Ijp7Inlhd19tb2RpZmllcl9vZmZzZXQiOjM5LCJwaXRjaCI6InVwIiwiZGVsYXlfdGljayI6MCwiaGlkZV9sYyI6dHJ1ZSwib2Zmc2V0IjoyMywicmlnaHRfbGltaXQiOjAsIm9mZnNldF9sZWZ0IjotMjcsIm92ZXJyaWRlIjp0cnVlLCJwaXRjaF9hbmdsZSI6MCwieWF3X2Jhc2UiOiJhdCB0YXJnZXRzIiwibGVmdF9saW1pdCI6MCwidHlwZV9vZmZzZXRfcmlnaHQiOjE4MCwidHlwZV9vZmZzZXRfbGVmdCI6OSwic3Bpbl9zcGVlZCI6NjcsIm9mZnNldF9yaWdodCI6MjcsInR5cGUiOiJzcGluIiwieWF3X21vZGlmaWVyIjoib2ZmIiwiZmFrZV9vcHRpb25zIjoiaml0dGVyIiwic3Bpbl9hbmdsZSI6MTZ9LCJtYW51YWwiOnsieWF3X21vZGlmaWVyX29mZnNldCI6MCwicGl0Y2giOiJyYW5kb20iLCJkZWxheV90aWNrIjo4LCJoaWRlX2xjIjp0cnVlLCJvZmZzZXQiOjUwLCJyaWdodF9saW1pdCI6MCwib2Zmc2V0X2xlZnQiOi0xMSwib3ZlcnJpZGUiOmZhbHNlLCJwaXRjaF9hbmdsZSI6MCwieWF3X2Jhc2UiOiJhdCB0YXJnZXRzIiwibGVmdF9saW1pdCI6MCwidHlwZV9vZmZzZXRfcmlnaHQiOjE4MCwidHlwZV9vZmZzZXRfbGVmdCI6OSwic3Bpbl9zcGVlZCI6MCwib2Zmc2V0X3JpZ2h0Ijo0LCJ0eXBlIjoiY3VzdG9tIiwieWF3X21vZGlmaWVyIjoic2tpdHRlciIsImZha2Vfb3B0aW9ucyI6ImppdHRlciIsInNwaW5fYW5nbGUiOjE2fSwicnVuIjp7Inlhd19tb2RpZmllcl9vZmZzZXQiOjAsInBpdGNoIjoic3dpdGNoIHVwIiwiZGVsYXlfdGljayI6OCwiaGlkZV9sYyI6dHJ1ZSwib2Zmc2V0Ijo1MCwicmlnaHRfbGltaXQiOi0yMywib2Zmc2V0X2xlZnQiOi0xMSwib3ZlcnJpZGUiOnRydWUsInBpdGNoX2FuZ2xlIjowLCJ5YXdfYmFzZSI6ImF0IHRhcmdldHMiLCJsZWZ0X2xpbWl0IjotMTgsInR5cGVfb2Zmc2V0X3JpZ2h0IjozMCwidHlwZV9vZmZzZXRfbGVmdCI6MzksInNwaW5fc3BlZWQiOjAsIm9mZnNldF9yaWdodCI6MCwidHlwZSI6ImN1c3RvbSIsInlhd19tb2RpZmllciI6InNraXR0ZXIiLCJmYWtlX29wdGlvbnMiOiJqaXR0ZXIiLCJzcGluX2FuZ2xlIjoxNn0sImZyZWVzdGFuZCI6eyJ5YXdfbW9kaWZpZXJfb2Zmc2V0IjowLCJwaXRjaCI6InJhbmRvbSIsImRlbGF5X3RpY2siOjAsImhpZGVfbGMiOmZhbHNlLCJvZmZzZXQiOjUwLCJyaWdodF9saW1pdCI6MjcsIm9mZnNldF9sZWZ0IjotMTEsIm92ZXJyaWRlIjp0cnVlLCJwaXRjaF9hbmdsZSI6MCwieWF3X2Jhc2UiOiJhdCB0YXJnZXRzIiwibGVmdF9saW1pdCI6LTI1LCJ0eXBlX29mZnNldF9yaWdodCI6MTgwLCJ0eXBlX29mZnNldF9sZWZ0Ijo5LCJzcGluX3NwZWVkIjowLCJvZmZzZXRfcmlnaHQiOjksInR5cGUiOiJjdXN0b20iLCJ5YXdfbW9kaWZpZXIiOiJjZW50ZXIiLCJmYWtlX29wdGlvbnMiOiJqaXR0ZXIiLCJzcGluX2FuZ2xlIjoxNn0sImFpciI6eyJ5YXdfbW9kaWZpZXJfb2Zmc2V0IjowLCJwaXRjaCI6ImN1c3RvbSIsImRlbGF5X3RpY2siOjE2LCJoaWRlX2xjIjp0cnVlLCJvZmZzZXQiOjUwLCJyaWdodF9saW1pdCI6LTIwLCJvZmZzZXRfbGVmdCI6LTExLCJvdmVycmlkZSI6dHJ1ZSwicGl0Y2hfYW5nbGUiOjg5LCJ5YXdfYmFzZSI6ImF0IHRhcmdldHMiLCJsZWZ0X2xpbWl0IjoxOCwidHlwZV9vZmZzZXRfcmlnaHQiOjYwLCJ0eXBlX29mZnNldF9sZWZ0IjotMzYsInNwaW5fc3BlZWQiOjAsIm9mZnNldF9yaWdodCI6MTEsInR5cGUiOiJjdXN0b20iLCJ5YXdfbW9kaWZpZXIiOiJvZmZzZXQiLCJmYWtlX29wdGlvbnMiOiJqaXR0ZXIiLCJzcGluX2FuZ2xlIjoxNn0sImFpcmMiOnsieWF3X21vZGlmaWVyX29mZnNldCI6MCwicGl0Y2giOiJzd2l0Y2ggdXAiLCJkZWxheV90aWNrIjowLCJoaWRlX2xjIjp0cnVlLCJvZmZzZXQiOjE4LCJyaWdodF9saW1pdCI6MCwib2Zmc2V0X2xlZnQiOi0xOCwib3ZlcnJpZGUiOnRydWUsInBpdGNoX2FuZ2xlIjowLCJ5YXdfYmFzZSI6ImF0IHRhcmdldHMiLCJsZWZ0X2xpbWl0IjowLCJ0eXBlX29mZnNldF9yaWdodCI6MTgwLCJ0eXBlX29mZnNldF9sZWZ0Ijo5LCJzcGluX3NwZWVkIjowLCJvZmZzZXRfcmlnaHQiOjI3LCJ0eXBlIjoic3dpdGNoIiwieWF3X21vZGlmaWVyIjoib2ZmIiwiZmFrZV9vcHRpb25zIjoiaml0dGVyIiwic3Bpbl9hbmdsZSI6MTZ9LCJkdWNrIjp7Inlhd19tb2RpZmllcl9vZmZzZXQiOjAsInBpdGNoIjoic3dpdGNoIHVwIiwiZGVsYXlfdGljayI6NDQsImhpZGVfbGMiOnRydWUsIm9mZnNldCI6LTMwLCJyaWdodF9saW1pdCI6MCwib2Zmc2V0X2xlZnQiOi0zNiwib3ZlcnJpZGUiOnRydWUsInBpdGNoX2FuZ2xlIjowLCJ5YXdfYmFzZSI6ImF0IHRhcmdldHMiLCJsZWZ0X2xpbWl0Ijo0LCJ0eXBlX29mZnNldF9yaWdodCI6MTgwLCJ0eXBlX29mZnNldF9sZWZ0Ijo5LCJzcGluX3NwZWVkIjowLCJvZmZzZXRfcmlnaHQiOjMyLCJ0eXBlIjoibWV0YSIsInlhd19tb2RpZmllciI6Im9mZiIsImZha2Vfb3B0aW9ucyI6ImppdHRlciIsInNwaW5fYW5nbGUiOjE2fSwiaWRsZSI6eyJ5YXdfbW9kaWZpZXJfb2Zmc2V0IjowLCJwaXRjaCI6InJhbmRvbSIsImRlbGF5X3RpY2siOjI2LCJoaWRlX2xjIjp0cnVlLCJvZmZzZXQiOjI3LCJyaWdodF9saW1pdCI6MCwib2Zmc2V0X2xlZnQiOi0xMSwib3ZlcnJpZGUiOnRydWUsInBpdGNoX2FuZ2xlIjowLCJ5YXdfYmFzZSI6ImF0IHRhcmdldHMiLCJsZWZ0X2xpbWl0IjowLCJ0eXBlX29mZnNldF9yaWdodCI6MTgwLCJ0eXBlX29mZnNldF9sZWZ0Ijo5LCJzcGluX3NwZWVkIjowLCJvZmZzZXRfcmlnaHQiOjQsInR5cGUiOiJtZXRhIiwieWF3X21vZGlmaWVyIjoic2tpdHRlciIsImZha2Vfb3B0aW9ucyI6ImppdHRlciIsInNwaW5fYW5nbGUiOjE2fSwiZHVjayBtb3ZlIjp7Inlhd19tb2RpZmllcl9vZmZzZXQiOjAsInBpdGNoIjoic3dpdGNoIHVwIiwiZGVsYXlfdGljayI6OCwiaGlkZV9sYyI6dHJ1ZSwib2Zmc2V0Ijo1MCwicmlnaHRfbGltaXQiOjAsIm9mZnNldF9sZWZ0IjotMTEsIm92ZXJyaWRlIjp0cnVlLCJwaXRjaF9hbmdsZSI6MCwieWF3X2Jhc2UiOiJhdCB0YXJnZXRzIiwibGVmdF9saW1pdCI6MCwidHlwZV9vZmZzZXRfcmlnaHQiOjE4MCwidHlwZV9vZmZzZXRfbGVmdCI6OSwic3Bpbl9zcGVlZCI6MCwib2Zmc2V0X3JpZ2h0Ijo0LCJ0eXBlIjoibWV0YSIsInlhd19tb2RpZmllciI6InNraXR0ZXIiLCJmYWtlX29wdGlvbnMiOiJqaXR0ZXIiLCJzcGluX2FuZ2xlIjoxNn0sImRlZmF1bHQiOnsieWF3X21vZGlmaWVyX29mZnNldCI6MCwicGl0Y2giOiJyYW5kb20iLCJkZWxheV90aWNrIjo4LCJoaWRlX2xjIjp0cnVlLCJvZmZzZXQiOjUwLCJyaWdodF9saW1pdCI6MCwib2Zmc2V0X2xlZnQiOi0xMSwib3ZlcnJpZGUiOmZhbHNlLCJwaXRjaF9hbmdsZSI6MCwieWF3X2Jhc2UiOiJhdCB0YXJnZXRzIiwibGVmdF9saW1pdCI6MCwidHlwZV9vZmZzZXRfcmlnaHQiOjE4MCwidHlwZV9vZmZzZXRfbGVmdCI6OSwic3Bpbl9zcGVlZCI6MCwib2Zmc2V0X3JpZ2h0Ijo0LCJ0eXBlIjoiY3VzdG9tIiwieWF3X21vZGlmaWVyIjoic2tpdHRlciIsImZha2Vfb3B0aW9ucyI6ImppdHRlciIsInNwaW5fYW5nbGUiOjE2fX19"
-
---         if default_config:sub(1, 7) ~= "noctua:" then
---             logMessage("noctua ·", "Invalid config format!")
---             return
---         end
-
---         local jsonPart = default_config:sub(8)
---         local decoded = configs.decode(jsonPart)
---         if not decoded then
---             logMessage("noctua ·", "Failed to decode base64!")
---             return
---         end
-
---         local success, config = pcall(json.parse, decoded)
---         if not success or not config.conditions then
---             logMessage("noctua ·", "Failed to parse config!")
---             return
---         end
-
---         for condition_name, settings in pairs(config.conditions) do
---             if interface.builder.condition[condition_name] then
---                 for setting_name, value in pairs(settings) do
---                     local element = interface.builder.condition[condition_name][setting_name]
---                     if element and element.set then
---                         element:set(value)
---                     end
---                 end
---             end
---         end
-
---         logMessage("noctua ·", "", "Default config loaded successfully!")
---     end
-
---     -- uncomment later
---     -- interface.utility.export_config:set_callback(configs.export)
---     -- interface.utility.import_config:set_callback(configs.import)
---     -- interface.utility.default_config:set_callback(configs.default)
--- end
--- --@endregion
 
 --@region: reference
 reference = {} do
@@ -2556,10 +2283,12 @@ end)
 
 --@region: widgets
 widgets = {} do
-    local SNAP = 8
+    local SNAP = 12
     local PAD = 4
     local LINE_ALPHA = 40
     local LINE_ALPHA_SNAP = 80
+    local DIM_ALPHA = 120
+    local DIM_COLOR = {0, 0, 0}
 
     widgets.SNAP = SNAP
     widgets.PAD = PAD
@@ -2573,6 +2302,7 @@ widgets = {} do
     widgets.lines_alpha = 0
     widgets.frames_alpha = 0
     widgets.widget_alpha = {}
+    widgets.dim_alpha = 0
 
     local function screen_key()
         local w, h = client.screen_size()
@@ -2643,6 +2373,23 @@ widgets = {} do
 
     local function round(n)
         return math.floor(n + 0.5)
+    end
+
+    local function get_menu_rect()
+        local mx, my = ui.menu_position()
+        local mw, mh = 0, 0
+        if ui.menu_size then
+            mw, mh = ui.menu_size()
+        end
+        return mx or 0, my or 0, mw or 0, mh or 0
+    end
+
+    local function point_in_rect(px, py, rx, ry, rw, rh)
+        return px >= rx and px <= rx + rw and py >= ry and py <= ry + rh
+    end
+
+    local function rects_intersect(ax, ay, aw, ah, bx, by, bw, bh)
+        return ax < bx + bw and ax + aw > bx and ay < by + bh and ay + ah > by
     end
 
     local function get_rect(id)
@@ -2717,7 +2464,7 @@ widgets = {} do
         local menuOpen = ui.is_menu_open()
         local local_player = entity.get_local_player()
         
-        local target_alpha = menuOpen and LINE_ALPHA or 0
+        local target_alpha = (menuOpen and widgets.is_dragging) and LINE_ALPHA or 0
         widgets.lines_alpha = mathematic.lerp(widgets.lines_alpha or 0, target_alpha, globals.frametime() * 12)
 
         local target_frame = menuOpen and 1 or 0
@@ -2748,20 +2495,33 @@ widgets = {} do
             for _, id in ipairs(widgets.order) do
                 if widget_enabled(id) then any_enabled = true; break end
             end
-            local target_alpha = (menuOpen and any_enabled) and LINE_ALPHA or 0
+            local target_alpha = (menuOpen and widgets.is_dragging and any_enabled) and LINE_ALPHA or 0
             widgets.lines_alpha = mathematic.lerp(widgets.lines_alpha or 0, target_alpha, globals.frametime() * 12)
         end
 
+        local allow_interact = menuOpen
+
+        -- Dim the screen while dragging (animated)
+        local target_dim = (allow_interact and widgets.is_dragging) and DIM_ALPHA or 0
+        widgets.dim_alpha = mathematic.lerp(widgets.dim_alpha or 0, target_dim, globals.frametime() * 12)
+        do
+            local da = math.floor((widgets.dim_alpha or 0) + 0.5)
+            if da > 0 then
+                renderer.rectangle(0, 0, sw, sh, DIM_COLOR[1], DIM_COLOR[2], DIM_COLOR[3], da)
+            end
+        end
+
+        -- Draw snapping guide lines above the dim layer with animated alpha
         local a = math.floor(widgets.lines_alpha + 0.5)
         local any_enabled_draw = false
         for _, id in ipairs(widgets.order) do
             if widget_enabled(id) then any_enabled_draw = true; break end
         end
-        if any_enabled_draw and a > 0 then
+        if any_enabled_draw and widgets.is_dragging and a > 0 then
             renderer.rectangle(sw / 2, 0, 1, sh, 255, 255, 255, a)
             renderer.rectangle(0, sh / 2, sw, 1, 255, 255, 255, a)
         end
-        local allow_interact = menuOpen
+
         if not allow_interact and (widgets.frames_alpha or 0) < 0.01 then return end
 
         if allow_interact and m1 and not widgets.is_dragging then
@@ -2843,6 +2603,24 @@ widgets = {} do
                 local max_cy = sh2 - (h / 2) - PAD
                 cx = clamp(cx, min_cx, max_cx)
                 cy = clamp(cy, min_cy, max_cy)
+
+                local menu_x, menu_y, menu_w, menu_h = get_menu_rect()
+                local try_x = cx - w / 2
+                local try_y = cy - h / 2
+                local rect_x = try_x - PAD
+                local rect_y = try_y - PAD
+                local rect_w = w + PAD * 2
+                local rect_h = h + PAD * 2
+                if rects_intersect(rect_x, rect_y, rect_w, rect_h, menu_x, menu_y, menu_w, menu_h) then
+                    if widgets.last_safe_cx and widgets.last_safe_cy then
+                        cx = widgets.last_safe_cx
+                        cy = widgets.last_safe_cy
+                    end
+                else
+                    widgets.last_safe_cx = cx
+                    widgets.last_safe_cy = cy
+                end
+
                 x = cx - w / 2
                 y = cy - h / 2
             end
@@ -3055,6 +2833,14 @@ visuals.window = function(self, base_x, base_y, align)
         self.animated_text.colors[2] = { r = r2, g = g2, b = b2, a = a2 }
 
         local state = utils.get_state()
+        -- override crosshair state when use, manual AA or safe head are active
+        if _G.noctua_runtime and _G.noctua_runtime.use_active then
+            state = "use"
+        elseif _G.noctua_runtime and _G.noctua_runtime.manual_active then
+            state = "manual"
+        elseif _G.noctua_runtime and _G.noctua_runtime.safe_head_active then
+            state = "safe"
+        end
         local isOS = ui.get(ui_references.on_shot_anti_aim[1]) and ui.get(ui_references.on_shot_anti_aim[2])
         local isDT = ui.get(ui_references.double_tap[1]) and ui.get(ui_references.double_tap[2])
         local isDMG = ui.get(ui_references.minimum_damage_override[1]) and ui.get(ui_references.minimum_damage_override[2])
@@ -3623,13 +3409,14 @@ logging = {} do
         local doScreen = utils.contains(logOptions, "screen") and utils.contains(screenOptions, "fire")
         if not doConsole and not doScreen then return end
 
+        local yawDisplay = (type(desiredYaw) == "number") and (desiredYaw.."°") or (tostring(desiredYaw).."°")
         local msg = string.format(
             "fired at %s's %s for %d / lc: %d - yaw: %s",
-            playerName, hitbox, hitChance, damage, lagComp, type(desiredYaw) == "number" and desiredYaw.."°" or desiredYaw.."°"
+            playerName, hitbox, hitChance, lagComp, yawDisplay
         )
 
         if doConsole then 
-            argLog("fired at %s's %s for %d / lc: %d - yaw: %s", playerName, hitbox, hitChance, damage, lagComp, type(desiredYaw) == "number" and desiredYaw.."°" or desiredYaw.."°")
+            argLog("fired at %s's %s for %d / lc: %d - yaw: %s", playerName, hitbox, hitChance, lagComp, yawDisplay)
         end
 
         if doScreen then self:push(msg) end
@@ -4872,292 +4659,6 @@ model_changer = {} do
 end
 --@endregion
 
---@region: anti-aim
--- anti_aim = {} do
---     anti_aim.jitter_side = false
---     anti_aim.jitter_ticks = 0
---     anti_aim.last_time = 0
---     anti_aim.defensive_active = false
---     anti_aim.defensive_ticks = 0
---     anti_aim.last_tickcount = 0
---     anti_aim.force_next_update = false
---     anti_aim.body_yaw_delay = 0
---     anti_aim.last_body_update = 0
---     anti_aim.body_jitter_side = false
-
---     anti_aim.reset = function(self)
---         self.jitter_side = false
---         self.jitter_ticks = 0
---         self.last_time = 0
---         self.force_next_update = true
-        
---         self.body_yaw_delay = 0
---         self.last_body_update = 0
---         self.body_jitter_side = false
-        
---         self.defensive_active = false
---         self.defensive_ticks = 0
---         self.last_tickcount = 0
-        
---         ui.set(reference.antiaim.angles.pitch[1], "Off")
---         ui.set(reference.antiaim.angles.pitch[2], 0)
---         ui.set(reference.antiaim.angles.yaw[1], "180")
---         ui.set(reference.antiaim.angles.yaw[2], 0)
---         ui.set(reference.antiaim.angles.yaw_jitter[1], "Off")
---         ui.set(reference.antiaim.angles.yaw_jitter[2], 0)
---         ui.set(reference.antiaim.angles.body_yaw[1], "Off")
---         ui.set(reference.antiaim.angles.body_yaw[2], 0)
---     end
-
---     anti_aim.get_jitter_side = function(self)
---         local tickcount = globals.tickcount()
-
---         if self.force_next_update or tickcount < self.last_tickcount then
---             self.jitter_side = not self.jitter_side
---             self.jitter_ticks = tickcount + 1
---             self.force_next_update = false
---         end
-
---         if tickcount > self.jitter_ticks then
---             self.jitter_side = not self.jitter_side
---             self.jitter_ticks = tickcount + 1
---         end
-
---         self.last_tickcount = tickcount
---         return self.jitter_side
---     end
-
---     anti_aim.handle_defensive = function(self, cmd, condition)
---         if not condition.hide_lc:get() then
---             return
---         end
-
---         local local_player = entity.get_local_player()
---         if not local_player or not entity.is_alive(local_player) then
---             return
---         end
-
---         local exploit_active = (ui.get(ui_references.double_tap[1]) and ui.get(ui_references.double_tap[2])) or 
---                              (ui.get(ui_references.on_shot_anti_aim[1]) and ui.get(ui_references.on_shot_anti_aim[2]))
-
---         if not exploit_active then
---             self.defensive_active = false
---             return
---         end
-
---         local inverter = (10 / 2 <= (globals.tickcount() % 10))
-        
---         if exploit_active then
---             if not condition.hide_lc:get() then
---                 return
---             end
---             if globals.tickcount() % 20 >= 10 then
---                 cmd.force_defensive = true
-                
---                 local pitch_mode = condition.pitch:get()
---                 local pitch_angle = condition.pitch_angle:get()
---                 if pitch_mode == "zero" then
---                     ui.set(reference.antiaim.angles.pitch[1], "Custom")
---                     ui.set(reference.antiaim.angles.pitch[2], inverter and 89 or 0)
---                 elseif pitch_mode == "up" then
---                     ui.set(reference.antiaim.angles.pitch[1], "Custom")
---                     ui.set(reference.antiaim.angles.pitch[2], inverter and 89 or -89)
---                 elseif pitch_mode == "medium" then
---                     ui.set(reference.antiaim.angles.pitch[1], "Custom")
---                     ui.set(reference.antiaim.angles.pitch[2], inverter and 89 or math.random(-89, -70))
---                 elseif pitch_mode == "random" then
---                     ui.set(reference.antiaim.angles.pitch[1], "Custom")
---                     ui.set(reference.antiaim.angles.pitch[2], math.random(-89, 89))
---                 elseif pitch_mode == "switch up" then
---                     ui.set(reference.antiaim.angles.pitch[1], "Up")
---                     ui.set(reference.antiaim.angles.pitch[2], inverter and -89 or 89)
---                 elseif pitch_mode == "switch down" then
---                     ui.set(reference.antiaim.angles.pitch[1], "Custom")
---                     ui.set(reference.antiaim.angles.pitch[2], inverter and 0 or -89)
---                 elseif pitch_mode == "custom" then
---                     ui.set(reference.antiaim.angles.pitch[1], "Custom")
---                     ui.set(reference.antiaim.angles.pitch[2], pitch_angle)
---                 end
-
---                 local type_mode = condition.type:get()
---                 if type_mode == "meta" then
---                     ui.set(reference.antiaim.angles.yaw[1], "180")
---                     ui.set(reference.antiaim.angles.yaw[2], 180)
-
---                     ui.set(reference.antiaim.angles.yaw_jitter[1], "Center")
---                     ui.set(reference.antiaim.angles.yaw_jitter[2], 45)
---                 elseif type_mode == "spin" then
---                     local spin_speed = condition.spin_speed:get()
-                    
---                     if spin_speed > 0 then
---                         local angle = (globals.tickcount() * spin_speed) % 360
-
---                         if angle > 180 then
---                             angle = angle - 360
---                         end
-
---                         ui.set(reference.antiaim.angles.yaw[1], "180")
---                         ui.set(reference.antiaim.angles.yaw[2], angle)
-
---                         ui.set(reference.antiaim.angles.yaw_jitter[1], "Off")
---                         ui.set(reference.antiaim.angles.yaw_jitter[2], 0)
---                     else
---                         ui.set(reference.antiaim.angles.yaw[1], "180")
---                         ui.set(reference.antiaim.angles.yaw[2], 0)
---                         ui.set(reference.antiaim.angles.yaw_jitter[1], "Off")
---                         ui.set(reference.antiaim.angles.yaw_jitter[2], 0)
---                     end
---                 elseif type_mode == "free sway" then
---                     ui.set(reference.antiaim.angles.yaw[1], "180")
---                     ui.set(reference.antiaim.angles.yaw[2], 90)
-
---                     ui.set(reference.antiaim.angles.yaw_jitter[1], "Center")
---                     ui.set(reference.antiaim.angles.yaw_jitter[2], 45)
---                 elseif type_mode == "forward" then
---                     ui.set(reference.antiaim.angles.yaw[1], "180")
---                     ui.set(reference.antiaim.angles.yaw[2], 180)
---                 elseif type_mode == "switch left" then
---                     ui.set(reference.antiaim.angles.yaw[1], "180")
---                     ui.set(reference.antiaim.angles.yaw[2], -90)
---                 elseif type_mode == "switch right" then
---                     ui.set(reference.antiaim.angles.yaw[1], "180")
---                     ui.set(reference.antiaim.angles.yaw[2], 90)
---                 elseif type_mode == "custom" then
---                     local offset_left = condition.type_offset_left:get()
---                     local offset_right = condition.type_offset_right:get()
-
---                     ui.set(reference.antiaim.angles.yaw[1], "180")
---                     ui.set(reference.antiaim.angles.yaw[2], globals.tickcount() % 2 == 0 and offset_left or offset_right)
---                 end
---             end
---         end
---     end
-
---     anti_aim.setup = function(self, cmd)
---         if not entity.get_local_player() then 
---             self.force_next_update = true
---             return 
---         end
-
---         if not interface.builder.enabled_builder:get() then 
---             self.force_next_update = true
---             return 
---         end
-        
---         local state = utils.get_state()
-        
---         if not interface.builder.condition[state] then
---             state = "default"
---         end
-
---         local condition = interface.builder.condition[state]
---         local default = interface.builder.condition["default"]
-
---         if state ~= "default" and not condition.override:get() then
---             condition = default
---         end
-
---         ui.set(reference.antiaim.angles.enabled, true)
---         ui.set(reference.antiaim.angles.pitch[1], "Down")
-
---         local yaw_base = condition.yaw_base:get()
---         ui.set(reference.antiaim.angles.yaw_base, yaw_base == "at targets" and "At targets" or "Local view")
-
---         local delay_tick = condition.delay_tick:get()
---         local fake_option = condition.fake_options:get()
-
---         if fake_option == 'jitter' and delay_tick > 0 then
---             local interval = math.max(2, math.floor(1 + (delay_tick * 0.05)))
---             if globals.tickcount() % interval == 0 then
---                 self.jitter_side = not self.jitter_side
---             end
---             current_jitter = self.jitter_side
-
---             ui.set(reference.antiaim.angles.body_yaw[1], "Static")
---             local offset = condition.offset:get()
---             ui.set(reference.antiaim.angles.body_yaw[2], current_jitter and offset or -offset)
---         else
---             current_jitter = self:get_jitter_side()
---             if fake_option == "static" then
---                 local offset = condition.offset:get()
---                 ui.set(reference.antiaim.angles.body_yaw[2], offset)
---             end
---             ui.set(reference.antiaim.angles.body_yaw[1], fake_option)
---         end
-
---         ui.set(reference.antiaim.angles.yaw[1], "180")
---         local current_offset = current_jitter and condition.offset_left:get() or condition.offset_right:get()
---         ui.set(reference.antiaim.angles.yaw[2], current_offset)
-
---         local yaw_modifier = condition.yaw_modifier:get()
---         local left_limit = condition.left_limit:get()
---         local right_limit = condition.right_limit:get()
-
---         if yaw_modifier == "off" then
---             ui.set(reference.antiaim.angles.yaw_jitter[1], "Off")
---         elseif yaw_modifier == "center" then
---             ui.set(reference.antiaim.angles.yaw_jitter[1], "Center")
---             ui.set(reference.antiaim.angles.yaw_jitter[2], current_jitter and left_limit or right_limit)
---         elseif yaw_modifier == "offset" then
---             ui.set(reference.antiaim.angles.yaw_jitter[1], "Offset")
---             ui.set(reference.antiaim.angles.yaw_jitter[2], current_jitter and left_limit or right_limit)
---         elseif yaw_modifier == "random" then
---             ui.set(reference.antiaim.angles.yaw_jitter[1], "Random")
---             ui.set(reference.antiaim.angles.yaw_jitter[2], math.random(left_limit, right_limit))
---         elseif yaw_modifier == "skitter" then
---             ui.set(reference.antiaim.angles.yaw_jitter[1], "Skitter")
---             ui.set(reference.antiaim.angles.yaw_jitter[2], current_jitter and left_limit or right_limit)
---         elseif yaw_modifier == "spin" then
---             local target_angle = condition.spin_angle:get()
---             local current_tick = globals.tickcount()
---             local cycle = current_tick % 32
---             local base_offset = current_jitter and condition.offset_left:get() or condition.offset_right:get()
-            
---             if cycle == 0 then
---                 ui.set(reference.antiaim.angles.yaw[2], base_offset)
---             else
---                 local progress = cycle / 31
---                 local current_angle = target_angle * progress
---                 ui.set(reference.antiaim.angles.yaw[2], base_offset + current_angle)
---             end
-
---             ui.set(reference.antiaim.angles.yaw_jitter[1], "Off")
---             ui.set(reference.antiaim.angles.yaw_jitter[2], 0)
---         elseif yaw_modifier == "3-way" then
---             local base_offset = current_jitter and condition.offset_left:get() or condition.offset_right:get()
---             local modifier_offset = current_jitter and condition.yaw_modifier_offset:get() or 0
---             local step = modifier_offset / 2
---             local ways = {base_offset, base_offset + step, base_offset + modifier_offset}
---             local index = (globals.tickcount() % 3) + 1
---             ui.set(reference.antiaim.angles.yaw[2], ways[index])
---         elseif yaw_modifier == "5-way" then
---             local base_offset = current_jitter and condition.offset_left:get() or condition.offset_right:get()
---             local modifier_offset = current_jitter and condition.yaw_modifier_offset:get() or 0
---             local step = modifier_offset / 4
---             local ways = {base_offset, base_offset + step, base_offset + step * 2, base_offset + step * 3, base_offset + modifier_offset}
---             local index = (globals.tickcount() % 5) + 1
---             ui.set(reference.antiaim.angles.yaw[2], ways[index])
---         end
-
---         ui.set(reference.antiaim.angles.freestanding_body_yaw, false)
-
---         self:handle_defensive(cmd, condition)
---     end
-
---     client.set_event_callback('setup_command', function(cmd)
---         anti_aim:setup(cmd)
---     end)
-
---     client.set_event_callback('game_newmap', function()
---         anti_aim:reset()
---     end)
-
---     client.set_event_callback('cs_game_disconnected', function()
---         anti_aim:reset()
---     end)
--- end
---@endregion
-
 --@region: lethal_shot_handler
 lethal_shot_handler = {} do
     lethal_shot_handler.cache = {}
@@ -5407,8 +4908,8 @@ lethal_shot_handler = {} do
                     local consoleOptions = interface.visuals.logging_options_console:get()
                     local screenOptions = interface.visuals.logging_options_screen:get()
                     
-                    local doConsole = utils.contains(logOptions, "console") and utils.contains(consoleOptions, "aimbot")
-                    local doScreen = utils.contains(logOptions, "screen") and utils.contains(screenOptions, "aimbot")
+                    local doConsole = utils.contains(logOptions, "console") and utils.contains(consoleOptions, "events")
+                    local doScreen = utils.contains(logOptions, "screen") and utils.contains(screenOptions, "events")
                     
                     if doConsole then
                         argLog("forced safe point for %s / hp: %d - reason: %s", playerName, health, reason)
@@ -5511,8 +5012,8 @@ lethal_shot_handler = {} do
                         local consoleOptions = interface.visuals.logging_options_console:get()
                         local screenOptions = interface.visuals.logging_options_screen:get()
                         
-                        local doConsole = utils.contains(logOptions, "console") and utils.contains(consoleOptions, "aimbot")
-                        local doScreen = utils.contains(logOptions, "screen") and utils.contains(screenOptions, "aimbot")
+                        local doConsole = utils.contains(logOptions, "console") and utils.contains(consoleOptions, "events")
+                        local doScreen = utils.contains(logOptions, "screen") and utils.contains(screenOptions, "events")
                         
                         if doConsole then
                             argLog("forced safe point for %s / hp: %d - reason: %s", playerName, health, reason)
@@ -6348,3 +5849,830 @@ end
 
 logging:push("checkout latest update in console")
 logging:push("nice to see you at " .. _name .. " " .. _version .. " (" .. _nickname .. ")")
+
+do
+    local u_reference = {} do
+        u_reference.ragebot = {} do
+            u_reference.ragebot.enabled = pui.reference("RAGE", "Aimbot", "Enabled")
+            u_reference.ragebot.double_tap = pui.reference("RAGE", "Aimbot", "Double tap")
+            u_reference.ragebot.dt_limit = {pui.reference("rage", "aimbot", "Double tap fake lag limit")}
+            u_reference.ragebot.duck = pui.reference("RAGE", "Other", "Duck peek assist")
+            u_reference.ragebot.quick_peek =  pui.reference("Rage", "Other", "Quick peek assist")
+            u_reference.ragebot.ovr = { pui.reference('rage', 'aimbot', 'minimum damage override') }
+            u_reference.ragebot.force_bodyaim = pui.reference('RAGE', 'Aimbot', 'Force body aim')
+            u_reference.ragebot.force_safepoint = pui.reference('RAGE', 'Aimbot', 'Force safe point')
+        end
+
+        u_reference.antiaim = {} do
+            u_reference.antiaim.enable = pui.reference("AA", "Anti-Aimbot angles", "Enabled")
+            u_reference.antiaim.pitch = { pui.reference("AA", "Anti-Aimbot angles", "Pitch") }
+            u_reference.antiaim.yaw = { pui.reference("AA", "Anti-Aimbot angles", "Yaw") }
+            u_reference.antiaim.base = pui.reference("AA", "Anti-Aimbot angles", "Yaw base")
+            u_reference.antiaim.jitter = { pui.reference("AA", "Anti-Aimbot angles", "Yaw jitter") }
+            u_reference.antiaim.body = { pui.reference("AA", "Anti-Aimbot angles", "Body yaw") }
+            u_reference.antiaim.edge = pui.reference("AA", "Anti-Aimbot angles", "Edge yaw")
+            u_reference.antiaim.fs_body = pui.reference("AA", "Anti-Aimbot angles", "Freestanding body yaw")
+            u_reference.antiaim.freestand = pui.reference("AA", "Anti-Aimbot angles", "Freestanding")
+            u_reference.antiaim.roll = pui.reference("AA", "Anti-Aimbot angles", "Roll")
+            u_reference.antiaim.slowmotion = pui.reference("AA", "Other", "Slow motion")
+            u_reference.antiaim.onshot = pui.reference("AA", "Other", "On shot anti-aim")
+            u_reference.antiaim.leg_movement = pui.reference('AA', 'Other', 'Leg movement')
+        end
+
+        u_reference.fakelag = {} do
+            u_reference.fakelag.enable = {pui.reference('AA', 'Fake lag', 'Enabled')}
+            u_reference.fakelag.amount = pui.reference('AA', 'Fake lag', 'Amount')
+            u_reference.fakelag.variance = pui.reference('AA', 'Fake lag', 'Variance')
+            u_reference.fakelag.limit = pui.reference('AA', 'Fake lag', 'Limit')
+        end
+    end
+
+    local u_memory = {} do
+        local ffi_ok = true
+        pcall(function()
+            u_memory.get_client_entity = vtable_bind('client.dll', 'VClientEntityList003', 3, 'void*(__thiscall*)(void***, int)')
+        end)
+
+        u_memory.animstate = {} do
+            local animstate_t = ffi.typeof 'struct { char pad0[0x18]; float anim_update_timer; char pad1[0xC]; float started_moving_time; float last_move_time; char pad2[0x10]; float last_lby_time; char pad3[0x8]; float run_amount; char pad4[0x10]; void* entity; void* active_weapon; void* last_active_weapon; float last_client_side_animation_update_time; int last_client_side_animation_update_framecount; float eye_timer; float eye_angles_y; float eye_angles_x; float goal_feet_yaw; float current_feet_yaw; float torso_yaw; float last_move_yaw; float lean_amount; char pad5[0x4]; float feet_cycle; float feet_yaw_rate; char pad6[0x4]; float duck_amount; float landing_duck_amount; char pad7[0x4]; float current_origin[3]; float last_origin[3]; float velocity_x; float velocity_y; char pad8[0x4]; float unknown_float1; char pad9[0x8]; float unknown_float2; float unknown_float3; float unknown; float m_velocity; float jump_fall_velocity; float clamped_velocity; float feet_speed_forwards_or_sideways; float feet_speed_unknown_forwards_or_sideways; float last_time_started_moving; float last_time_stopped_moving; bool on_ground; bool hit_in_ground_animation; char pad10[0x4]; float time_since_in_air; float last_origin_z; float head_from_ground_distance_standing; float stop_to_full_running_fraction; char pad11[0x4]; float magic_fraction; char pad12[0x3C]; float world_force; char pad13[0x1CA]; float min_yaw; float max_yaw; } **'
+            u_memory.animstate.offset = 0x9960
+            u_memory.animstate.get = function (self, ent)
+                if not ent then return end
+                local client_entity = u_memory.get_client_entity and u_memory.get_client_entity(ent)
+                if not client_entity then return end
+                return ffi.cast(animstate_t, ffi.cast('uintptr_t', client_entity) + self.offset)[0]
+            end
+        end
+
+        u_memory.animlayers = {} do
+            if not pcall(ffi.typeof, 'bt_animlayer_t') then
+                ffi.cdef[[
+                    typedef struct {
+                        float   anim_time;
+                        float   fade_out_time;
+                        int     nil;
+                        int     activty;
+                        int     priority;
+                        int     order;
+                        int     sequence;
+                        float   prev_cycle;
+                        float   weight;
+                        float   weight_delta_rate;
+                        float   playback_rate;
+                        float   cycle;
+                        int     owner;
+                        int     bits;
+                    } bt_animlayer_t, *pbt_animlayer_t;
+                ]]
+            end
+            local ok, offset = pcall(function()
+                return ffi.cast('int*', ffi.cast('uintptr_t', client.find_signature('client.dll', '\x8B\x89\xCC\xCC\xCC\xCC\x8D\x0C\xD1')) + 2)[0]
+            end)
+            u_memory.animlayers.offset = ok and offset or 0x2990
+            u_memory.animlayers.get = function (self, ent)
+                local client_entity = u_memory.get_client_entity and u_memory.get_client_entity(ent)
+                if not client_entity then return end
+                return ffi.cast('pbt_animlayer_t*', ffi.cast('uintptr_t', client_entity) + self.offset)[0]
+            end
+        end
+
+        u_memory.activity = {} do
+            if not pcall(ffi.typeof, 'bt_get_sequence') then
+                ffi.cdef[[ typedef int(__fastcall* bt_get_sequence)(void* entity, void* studio_hdr, int sequence); ]]
+            end
+            u_memory.activity.offset = 0x2950
+            local ok, loc = pcall(function()
+                return ffi.cast('bt_get_sequence', client.find_signature('client.dll', '\x55\x8B\xEC\x53\x8B\x5D\x08\x56\x8B\xF1\x83'))
+            end)
+            u_memory.activity.location = ok and loc or nil
+            u_memory.activity.get = function (self, sequence, ent)
+                if not self.location then return 0 end
+                local client_entity = u_memory.get_client_entity and u_memory.get_client_entity(ent)
+                if not client_entity then return 0 end
+                local studio_hdr = ffi.cast('void**', ffi.cast('uintptr_t', client_entity) + self.offset)[0]
+                if not studio_hdr then return 0 end
+                return self.location(client_entity, studio_hdr, sequence)
+            end
+        end
+
+        u_memory.user_input = {} do
+            if not pcall(ffi.typeof, 'bt_cusercmd_t') then
+                ffi.cdef[[
+                    typedef struct {
+                        struct bt_cusercmd_t (*cusercmd)();
+                        int     command_number;
+                        int     tick_count;
+                        float   view[3];
+                        float   aim[3];
+                        float   move[3];
+                        int     buttons;
+                    } bt_cusercmd_t;
+                ]]
+            end
+            if not pcall(ffi.typeof, 'bt_get_usercmd') then
+                ffi.cdef[[ typedef bt_cusercmd_t*(__thiscall* bt_get_usercmd)(void* input, int, int command_number); ]]
+            end
+            local ok, vtbl = pcall(function()
+                return ffi.cast('void***', ffi.cast('void**', ffi.cast('uintptr_t', client.find_signature('client.dll', '\xB9\xCC\xCC\xCC\xCC\x8B\x40\x38\xFF\xD0\x84\xC0\x0F\x85') or error('sig')) + 1)[0])
+            end)
+            if ok and vtbl then
+                u_memory.user_input.vtbl = vtbl
+                u_memory.user_input.location = ffi.cast('bt_get_usercmd', vtbl[0][8])
+                u_memory.user_input.get_command = function (self, command_number)
+                    return self.location(self.vtbl, 0, command_number)
+                end
+            else
+                u_memory.user_input.get_command = function() return nil end
+            end
+        end
+
+        u_memory.get_simtime = function(ent)
+            local pointer = u_memory.get_client_entity and u_memory.get_client_entity(ent)
+            if pointer then
+                return entity.get_prop(ent, "m_flSimulationTime"), ffi.cast("float*", ffi.cast("uintptr_t", pointer) + 620)[0]
+            else
+                return 0
+            end
+        end
+    end
+
+    local u_math = {} do
+        u_math.normalize_yaw = function(a)
+            while a > 180 do a = a - 360 end
+            while a < -180 do a = a + 360 end
+            return a
+        end
+        u_math.lerp = function(a, b, w) return a + (b - a) * w end
+        u_math.contains = function(tbl, value)
+            local tbl_len = #tbl
+            for i=1, tbl_len do if tbl[i] == value then return true end end
+            return false
+        end
+        u_math.extend_vector = function(pos, length, angle)
+            local rad = angle * math.pi / 180
+            if not angle or not pos or not length then return end
+            return { pos[1] + (math.cos(rad) * length), pos[2] + (math.sin(rad) * length), pos[3] }
+        end
+        u_math.closest_ray_point = function(p, s, e)
+            local t, d = p - s, e - s
+            local l = d:length()
+            d = d / l
+            local r = d:dot(t)
+            if r < 0 then return s elseif r > l then return e end
+            return s + d * r
+        end
+    end
+
+    local u_player = {
+        shifting = false,
+        defensive = false,
+        onground = false,
+        is_fs_peek = false,
+        duckamount = 0,
+        speed = 0,
+        packets = 0,
+        fs_side = 'none',
+        state = 'idle',
+        body_yaw = 0.0,
+        get_players = {},
+        lc_left = 0.0,
+        crouching = false,
+    }
+
+    do
+        local last_commandnumber
+        local tickbase_max = 0
+        local function get_double_tap()
+            local me = entity.get_local_player()
+            local m_nTickBase = me and entity.get_prop(me, 'm_nTickBase') or 0
+            local client_latency = client.latency()
+            local shift = math.floor(m_nTickBase - globals.tickcount() - 3 - toticks(client_latency) * .5 + .5 * (client_latency * 10))
+            local wanted = -14 + ((u_reference.ragebot.dt_limit[1] and u_reference.ragebot.dt_limit[1]:get() or 1) - 1) + 3
+            return shift <= wanted
+        end
+        local function defensive_predict(cmd)
+            local me = entity.get_local_player()
+            if not me or last_commandnumber ~= cmd.command_number then return false end
+            local tickbase = entity.get_prop(me, "m_nTickBase") or 0
+            if math.abs(tickbase - tickbase_max) > 64 then tickbase_max = 0 end
+            if tickbase > tickbase_max then
+                tickbase_max = tickbase
+            end
+            u_player.lc_left = math.min(14, math.max(0, tickbase_max - tickbase - 1))
+            return u_player.lc_left ~= 1 and u_player.lc_left > 2 and globals.chokedcommands() < 13
+        end
+        client.set_event_callback("run_command", function(cmd)
+            last_commandnumber = cmd.command_number
+            u_player.shifting = get_double_tap()
+        end)
+        local function is_onground()
+            local animstate = u_memory.animstate:get(entity.get_local_player())
+            if not animstate then return true end
+            local ptr_addr = ffi.cast('uintptr_t', ffi.cast('void*', animstate))
+            local landed_on_ground_this_frame = ffi.cast('bool*', ptr_addr + 0x120)[0]
+            return animstate.on_ground and not landed_on_ground_this_frame
+        end
+        local function is_fs_peek()
+            local me = entity.get_local_player()
+            local enemy = client.current_threat()
+            if not me or entity.is_dormant(enemy) then return false end
+            local _, yaw = client.camera_angles(me)
+            local left2 = u_math.extend_vector({entity.get_origin(me)},30,yaw + 60)
+            local right2 = u_math.extend_vector({entity.get_origin(me)},30,yaw - 60)
+            local _, yaw_e = entity.get_prop(enemy, "m_angEyeAngles")
+            local enemy_right2 = u_math.extend_vector({entity.get_origin(enemy)},20,yaw_e - 35)
+            local enemy_left2 = u_math.extend_vector({entity.get_origin(enemy)},20,yaw_e + 35)
+            local _, dmg_left2 =  client.trace_bullet(enemy, enemy_left2[1], enemy_left2[2], enemy_left2[3] + 30, left2[1], left2[2], left2[3], true)
+            local _, dmg_right2 = client.trace_bullet(enemy, enemy_right2[1], enemy_right2[2], enemy_right2[3] + 30, right2[1], right2[2], right2[3], true)
+            if  dmg_right2 > 0 and dmg_left2 > 0 then return false
+            elseif dmg_left2 > 0 then return true
+            elseif dmg_right2 > 0 then return true end
+            return false
+        end
+        local function get_state()
+            if not u_player.onground then
+                if u_player.duckamount > 0.5 then return 'airc' else return 'air' end
+            end
+            if u_player.duckamount > 0.5 or (u_reference.ragebot.duck and u_reference.ragebot.duck:get()) then
+                if u_player.speed > 4 then return 'duck move' else return 'duck' end
+            end
+            local slowmotion_state = u_reference.antiaim.slowmotion.hotkey:get()
+            if slowmotion_state then return 'slow' end
+            if u_player.speed > 4 then return 'run' end
+            return 'idle'
+        end
+        local function get_side(target)
+            local local_pos, enemy_pos = vector(entity.hitbox_position(entity.get_local_player(), 0)), vector(entity.hitbox_position(target, 0))
+            local _, yaw = (local_pos-enemy_pos):angles()
+            local l_dir, r_dir = vector():init_from_angles(0, yaw+90), vector():init_from_angles(0, yaw-90)
+            local l_pos, r_pos = local_pos + l_dir * 110, local_pos + r_dir * 110
+            local fraction = client.trace_line(target, enemy_pos.x, enemy_pos.y, enemy_pos.z, l_pos.x, l_pos.y, l_pos.z)
+            local fraction_s = client.trace_line(target, enemy_pos.x, enemy_pos.y, enemy_pos.z, r_pos.x, r_pos.y, r_pos.z)
+            if fraction > fraction_s then return 'left'
+            elseif fraction_s > fraction then return 'right'
+            elseif fraction == fraction_s then return 'none' end
+            return 'none'
+        end
+        local function get_fs_side()
+            local me = entity.get_local_player()
+            local target, cross_target,best_yaw = nil, nil, 362
+            local enemy_list = entity.get_players(true)
+            local stomach_origin = vector(entity.hitbox_position(me, 2))
+            local camera_angles = vector(client.camera_angles())
+            for idx=1, #enemy_list do
+                local ent = enemy_list[idx]
+                local ent_wpn = entity.get_player_weapon(ent)
+                if ent_wpn then
+                    local enemy_head = vector(entity.hitbox_position(ent, 2))
+                    local _, yaw = (stomach_origin-enemy_head):angles()
+                    local base_diff = math.abs(camera_angles.y-yaw)
+                    if base_diff < best_yaw then cross_target = ent; best_yaw = base_diff end
+                end
+            end
+            if not target then target = cross_target end
+            return target and get_side(target) or 'none'
+        end
+        function u_player.predict_command(cmd)
+            local me = entity.get_local_player()
+            u_player.speed = vector(entity.get_prop(me, 'm_vecVelocity')):length()
+            u_player.state = get_state()
+            u_player.fs_side = get_fs_side()
+            u_player.defensive = defensive_predict(cmd)
+            u_player.onground = is_onground()
+            u_player.is_fs_peek = is_fs_peek()
+            u_player.duckamount = entity.get_prop(me, 'm_flDuckAmount')
+        end
+        function u_player.setup_command(cmd)
+            u_player.get_players = entity.get_players()
+            u_player.crouching = cmd.in_duck == 1
+            u_player.walking = u_player.speed > 5 and (cmd.in_speed == 1)
+        end
+    end
+
+    local group = interface.header.general
+    local ui_handler = { navigation = {}, anti_aim = {}, manual_aa_hotkey = {}, builder = {} }
+    ui_handler.navigation.aa_combo = interface.aa.page
+
+    do -- extensions
+        ui_handler.anti_aim.edge_yaw = group:hotkey("edge yaw")
+        ui_handler.anti_aim.freestanding = group:hotkey("freestanding")
+        ui_handler.anti_aim.dis_fs = group:multiselect("allow freestand on",{"idle","run","air","airc","duck","duck move","slow"})
+        ui_handler.anti_aim.anti_backstab = group:checkbox("avoid backstab")
+        -- ui_handler.anti_aim.fd_edge = group:checkbox("fakeduck edge")
+        ui_handler.anti_aim.ladder = group:checkbox("fast ladder")
+        ui_handler.anti_aim.anti_bruteforce = group:checkbox("anti-bruteforce")
+        ui_handler.anti_aim.anti_bruteforce_type = group:combobox("anti bruteforce type","increase","decrease")
+        ui_handler.anti_aim.defensive = group:multiselect("defensive",{"on shot","flashed","damage received","reloading","weapon switch"})
+        ui_handler.anti_aim.safe_head = group:multiselect("safe head",{ "height distance", "high distance", "knife", "zeus" })
+        ui_handler.anti_aim.warmup_aa = group:multiselect("warmup aa",{"warmup","round end"})
+        ui_handler.anti_aim.manual_aa = group:checkbox("manual antiaim")
+        for _, v in pairs(ui_handler.anti_aim) do
+            if v and v.depend then v:depend({ interface.search, 'antiaim' }, { ui_handler.navigation.aa_combo, "extensions" }) end
+        end
+    end
+
+    if ui_handler.anti_aim.anti_bruteforce_type and ui_handler.anti_aim.anti_bruteforce_type.depend then
+        ui_handler.anti_aim.anti_bruteforce_type:depend({ interface.search, 'antiaim' }, { ui_handler.navigation.aa_combo, 'extensions' }, { ui_handler.anti_aim.anti_bruteforce, true })
+    end
+
+    do -- manual hotkeys
+        ui_handler.manual_aa_hotkey.manual_left = group:hotkey("manual left")
+        ui_handler.manual_aa_hotkey.manual_right = group:hotkey("manual right")
+        ui_handler.manual_aa_hotkey.manual_forward = group:hotkey("manual forward")
+        ui_handler.manual_aa_hotkey.manual_back = group:hotkey("manual backward")
+        for _, v in pairs(ui_handler.manual_aa_hotkey) do
+            if v and v.depend then v:depend({ interface.search, 'antiaim' }, { ui_handler.navigation.aa_combo, "extensions" }, { ui_handler.anti_aim.manual_aa, true }) end
+        end
+    end
+
+
+    local anti_aim = { features = {}, builder = {}, venture = {} }
+
+    do -- features
+        anti_aim.features.use_aa = false
+        anti_aim.features.stab = false
+        anti_aim.features.fast_ladder = false
+        anti_aim.features.safe_head = false
+        anti_aim.features.manual = 0.0
+        anti_aim.features.defensive = false
+        anti_aim.features.warmup_aa = false
+
+        do -- legit_antiaim
+            local start_time = globals.realtime()
+            function anti_aim.features.legit_run(cmd)
+                local use_cfg = interface.builder['use']
+                if not use_cfg or not use_cfg.allow_use_aa or not use_cfg.allow_use_aa:get() then return false end
+                if cmd.in_use == 0 then start_time = globals.realtime(); return end
+                local player = entity.get_local_player()
+                if player == nil then return end
+                local player_origin = { entity.get_origin(player) }
+                local CPlantedC4 = entity.get_all('CPlantedC4')
+                local dist_to_bomb = 999
+                if #CPlantedC4 > 0 then
+                    local bomb = CPlantedC4[1]
+                    local bomb_origin = { entity.get_origin(bomb) }
+                    dist_to_bomb = vector(player_origin[1], player_origin[2], player_origin[3]):dist(vector(bomb_origin[1], bomb_origin[2], bomb_origin[3]))
+                end
+                local CHostage = entity.get_all('CHostage')
+                local dist_to_hostage = 999
+                if CHostage ~= nil then
+                    if #CHostage > 0 then
+                        local hostage_origin = { entity.get_origin(CHostage[1]) }
+                        dist_to_hostage = math.min(
+                            vector(player_origin[1], player_origin[2], player_origin[3]):dist(vector(hostage_origin[1], hostage_origin[2], hostage_origin[3])),
+                            vector(player_origin[1], player_origin[2], player_origin[3]):dist(vector(hostage_origin[1], hostage_origin[2], hostage_origin[3])))
+                    end
+                end
+                if dist_to_hostage < 65 and entity.get_prop(player, 'm_iTeamNum') ~= 2 then return end
+                if dist_to_bomb < 65 and entity.get_prop(player, 'm_iTeamNum') ~= 2 then return end
+                if cmd.in_use then if globals.realtime() - start_time < 0.02 then return end end
+                cmd.in_use = false
+                return true
+            end
+        end
+
+        function anti_aim.features.anti_backstab()
+            local players = entity.get_players(true)
+            for i = 1, #players do
+                local x, y, z = entity.get_prop(players[i], 'm_vecOrigin')
+                local origin = vector(entity.get_prop(entity.get_local_player(), 'm_vecOrigin'))
+                local distance = math.sqrt((x - origin.x) ^ 2 + (y - origin.y) ^ 2 + (z - origin.z) ^ 2)
+                local weapon = entity.get_player_weapon(players[i])
+                if entity.get_classname(weapon) == 'CKnife' and distance <= 200 then
+                    return true
+                end
+            end
+            return false
+        end
+
+        function anti_aim.features.ladder_run(cmd)
+            if not ui_handler.anti_aim.ladder:get() then return false end
+            if entity.get_prop(entity.get_local_player(), "m_MoveType") ~= 9 or cmd.forwardmove == 0 then return false end
+            local camera_pitch, camera_yaw = client.camera_angles()
+            local descending = cmd.forwardmove < 0 or camera_pitch > 45
+            cmd.in_moveleft, cmd.in_moveright = descending and 1 or 0, not descending and 1 or 0
+            cmd.in_forward, cmd.in_back = descending and 1 or 0, not descending and 1 or 0
+            cmd.pitch, cmd.yaw = 89, u_math.normalize_yaw(cmd.yaw + 90)
+            return true
+        end
+
+        function anti_aim.features.safe_run(cmd)
+            local result = math.huge
+            local heightDifference = 0
+            local localplayer = entity.get_local_player()
+            local entities = entity.get_players(true)
+            for i = 1, #entities do
+                local ent = entities[i]
+                local ent_origin = { entity.get_origin(ent) }
+                local lp_origin = { entity.get_origin(localplayer) }
+                if ent ~= localplayer and entity.is_alive(ent) then
+                    local distance = (vector(ent_origin[1], ent_origin[2], ent_origin[3]) - vector(lp_origin[1], lp_origin[2], lp_origin[3])):length2d()
+                    if distance < result then result = distance; heightDifference = ent_origin[3] - lp_origin[3] end
+                end
+            end
+            local distance_to_enemy = { math.floor(result / 10), math.floor(heightDifference) }
+            local weapon = entity.get_player_weapon(entity.get_local_player())
+            local knife = weapon ~= nil and entity.get_classname(weapon) == 'CKnife'
+            local zeus = weapon ~= nil and entity.get_classname(weapon) == 'CWeaponTaser'
+            local safe_knife = (ui_handler.anti_aim.safe_head:get('knife')) and knife and not u_player.onground
+            local safe_zeus = (ui_handler.anti_aim.safe_head:get('zeus')) and zeus and  not u_player.onground
+            local distance_height = (ui_handler.anti_aim.safe_head:get('height distance')) and distance_to_enemy[2] < -50
+            local distance_hight = (ui_handler.anti_aim.safe_head:get('high distance')) and  distance_to_enemy[1] > 119
+            if safe_knife or safe_zeus  or distance_hight or distance_height then return true end
+            return false
+        end
+
+        do -- manual
+            local manual_cur = nil
+            local manual_keys = {
+                { "left",    yaw = -90, item = ui_handler.manual_aa_hotkey.manual_left },
+                { "right",   yaw = 90,  item = ui_handler.manual_aa_hotkey.manual_right },
+                { "reset",   yaw = nil, item = ui_handler.manual_aa_hotkey.manual_back },
+                { "forward", yaw = 180, item = ui_handler.manual_aa_hotkey.manual_forward },
+            }
+            local toggled = { false, false, false, false }
+            local prev = { false, false, false, false }
+            function anti_aim.features.manual_run()
+                if not ui_handler.anti_aim.manual_aa:get() then
+                    manual_cur = nil
+                    return 0
+                end
+                for i, v in ipairs(manual_keys) do
+                    local active = v.item.get and select(1, v.item:get()) or (v.item.ref and ui.get(v.item.ref)) or false
+                    local pressed = active and not prev[i]
+                    prev[i] = active
+                    if pressed then
+                        if v.yaw == nil then
+                            -- reset to center
+                            for j = 1, #manual_keys do toggled[j] = false end
+                            manual_cur = nil
+                        else
+                            -- switch immediately to this direction, turning others off
+                            for j = 1, #manual_keys do if j ~= i then toggled[j] = false end end
+                            toggled[i] = not toggled[i]
+                            manual_cur = toggled[i] and i or nil
+                        end
+                    end
+                end
+                if manual_cur and not toggled[manual_cur] then manual_cur = nil end
+                if not manual_cur then
+                    if toggled[2] then manual_cur = 2
+                    elseif toggled[1] then manual_cur = 1
+                    elseif toggled[4] then manual_cur = 4 end
+                end
+                return manual_cur and manual_keys[manual_cur].yaw or 0
+            end
+        end
+
+        function anti_aim.features.on_hotkey()
+            local is_allowed_state = u_math.contains(ui_handler.anti_aim.dis_fs:get(), u_player.state)
+            local want_fs = ui_handler.anti_aim.freestanding:get() and (anti_aim.features.manual == 0)
+            local fs_on_hotkey = is_allowed_state and want_fs and (not anti_aim.features.use_aa)
+            local edge_on_hotkey = ui_handler.anti_aim.edge_yaw:get() -- local edge_on_hotkey = ui_handler.anti_aim.edge_yaw:get() or (ui_handler.anti_aim.fd_edge:get() and  u_reference.ragebot.duck:get() )
+            u_reference.antiaim.edge:set(edge_on_hotkey)
+            u_reference.antiaim.freestand:set(fs_on_hotkey)
+            u_reference.antiaim.freestand.hotkey:set(fs_on_hotkey and "Always on" or "On hotkey")
+        end
+
+        function anti_aim.features.defensive_run(cmd)
+            local me = entity.get_local_player()
+            if not me then return false end
+            local wpn = entity.get_player_weapon(me)
+            local function is_exploit_ready_and_active(w)
+                local doubletap_active = u_reference.ragebot.double_tap.hotkey:get()
+                local onshot_active = u_reference.antiaim.onshot.hotkey:get()
+                local fakeduck_active = u_reference.ragebot.duck:get()
+                if fakeduck_active or not (onshot_active or doubletap_active) or doubletap_active and not u_player.shifting then return false end
+                if ok_weapons and w then
+                    local wpn_info = weapons(w)
+                    if wpn_info and wpn_info.is_revolver then return false end
+                end
+                return true
+            end
+            if not is_exploit_ready_and_active(wpn) then return false end
+            local animlayers = u_memory.animlayers:get(me)
+            if not animlayers then return false end
+            local weapon_activity_number = u_memory.activity:get(animlayers[1]['sequence'], me)
+            local flash_activity_number = u_memory.activity:get(animlayers[9]['sequence'], me)
+            local is_reloading = animlayers[1]['weight'] ~= 0.0 and weapon_activity_number == 967
+            local is_flashed = animlayers[9]['weight'] > 0.1 and flash_activity_number == 960
+            local is_under_attack = animlayers[10]['weight'] > 0.1
+            local is_swapping_weapons = cmd.weaponselect > 0
+            if (ui_handler.anti_aim.defensive:get("flashed") and is_flashed)
+            or (ui_handler.anti_aim.defensive:get("damage received") and is_under_attack)
+            or (ui_handler.anti_aim.defensive:get("reloading") and is_reloading)
+            or (ui_handler.anti_aim.defensive:get("weapon switch") and is_swapping_weapons) 
+            or (ui_handler.anti_aim.defensive:get("on shot") and u_reference.antiaim.onshot.hotkey:get() ) then
+                return false
+            end
+            return true
+        end
+
+        function anti_aim.features.warmup_run()
+            local game_rules = entity.get_game_rules()
+            if not game_rules then return false end
+            local warmup_period do
+                local is_active = ui_handler.anti_aim.warmup_aa:get("warmup")
+                local is_warmup = entity.get_prop(game_rules, 'm_bWarmupPeriod') == 1
+                warmup_period = is_active and is_warmup
+            end
+            if not warmup_period then
+                local player_resource = entity.get_player_resource()
+                if player_resource then
+                    local are_all_enemies_dead = true
+                    for i=1, globals.maxplayers() do
+                        if entity.get_prop(player_resource, 'm_bConnected', i) == 1 then
+                            if entity.is_enemy(i) and entity.is_alive(i) then
+                                are_all_enemies_dead = false
+                                break
+                            end
+                        end
+                    end
+            warmup_period = (are_all_enemies_dead and globals.curtime() < (entity.get_prop(game_rules, 'm_flRestartRoundTime') or 0)) and ui_handler.anti_aim.warmup_aa:get("round end")
+                end
+            end
+            return warmup_period and true or false
+        end
+
+        function anti_aim.features.main(cmd)
+            anti_aim.features.use_aa = anti_aim.features.legit_run(cmd)
+            anti_aim.features.stab = ui_handler.anti_aim.anti_backstab:get() and anti_aim.features.anti_backstab() or false
+            anti_aim.features.fast_ladder = anti_aim.features.ladder_run(cmd)
+            anti_aim.features.safe_head = anti_aim.features.safe_run(cmd)
+            anti_aim.features.manual = anti_aim.features.manual_run()
+            anti_aim.features.defensive = anti_aim.features.defensive_run(cmd)
+            anti_aim.features.on_hotkey()
+            anti_aim.features.warmup_aa = anti_aim.features.warmup_run(cmd)
+
+            -- expose runtime flags for crosshair indicators
+            _G.noctua_runtime = _G.noctua_runtime or {}
+            _G.noctua_runtime.manual_active = (anti_aim.features.manual ~= 0)
+            _G.noctua_runtime.safe_head_active = (anti_aim.features.safe_head == true)
+            _G.noctua_runtime.use_active = (anti_aim.features.use_aa == true)
+        end
+    end
+
+    do -- builder core
+        anti_aim.builder.venture = false
+        anti_aim.builder.latest = 0
+        anti_aim.builder.switch = false
+        anti_aim.builder.delay = 0
+        anti_aim.builder.restrict = 0
+        anti_aim.builder.last_packets = 0
+        anti_aim.builder.way = 0
+
+        local function get_state(state)
+            local double_tap = u_reference.ragebot.double_tap.hotkey:get()
+            local onshot = u_reference.antiaim.onshot.hotkey:get()
+            local fake_duck = u_reference.ragebot.duck:get()
+            local freestand_allowed = u_math.contains(ui_handler.anti_aim.dis_fs:get(), u_player.state)
+            local freestand_hotkey = ui_handler.anti_aim.freestanding:get()
+            local freestand = (freestand_hotkey or u_player.is_fs_peek) and freestand_allowed
+            if interface.builder['use'] and interface.builder['use'].enable and interface.builder['use'].enable:get()  and  anti_aim.features.use_aa then return  'use' end
+            if interface.builder['manual'] and interface.builder['manual'].enable and interface.builder['manual'].enable:get() and anti_aim.features.manual ~= 0 then return 'manual' end
+            if interface.builder['freestand'] and interface.builder['freestand'].enable and interface.builder['freestand'].enable:get() and freestand then return 'freestand' end
+            if  interface.builder['safe head'] and interface.builder['safe head'].enable and interface.builder['safe head'].enable:get() and anti_aim.features.safe_head then return 'safe head' end
+            if interface.builder['on shot'] and interface.builder['on shot'].enable and interface.builder['on shot'].enable:get() and onshot and not double_tap and not fake_duck then return 'on shot' end
+            if interface.builder['fakelag'] and interface.builder['fakelag'].enable and interface.builder['fakelag'].enable:get() and not onshot and not double_tap and not fake_duck then return 'fakelag' end
+            return state
+        end
+
+        local choke = 1
+        local function yaw_base_for(this)
+            if  anti_aim.features.use_aa then return 0 , "180" ,this.base.value end
+            if anti_aim.features.stab then return 0 , "off" ,this.base.value end
+            return 'default', "180", (u_reference.antiaim.edge:get() and "local view" or this.base.value)
+        end
+
+        local function modifier(this)
+            local add , expand = this.add.value, this.expand.value
+            local delay = (expand ~= "left/right" or not u_player.shifting)  and 1 or this.delay.value
+            if globals.chokedcommands() == 0 then choke = choke + 1 end
+            local add_ab_left , add_ab_right= 0 , 0
+            if ui_handler.anti_aim.anti_bruteforce:get() and anti_aim.builder.venture then
+                if ui_handler.anti_aim.anti_bruteforce_type:get() == "increase" then
+                    add_ab_right = anti_aim.builder.restrict * 3; add_ab_left= anti_aim.builder.restrict * -3
+                elseif ui_handler.anti_aim.anti_bruteforce_type:get() == "decrease" then
+                    add_ab_right = anti_aim.builder.restrict * -3; add_ab_left= anti_aim.builder.restrict * 3
+                end
+            end
+            if (choke - anti_aim.builder.last_packets >= anti_aim.builder.delay)  then
+                anti_aim.builder.delay = delay
+                anti_aim.builder.switch = not anti_aim.builder.switch
+                anti_aim.builder.last_packets = choke
+            end
+            if expand == "left/right" then
+                local  epd_left , epd_right = this.epd_left.value , this.epd_right.value
+                add = add + ( anti_aim.builder.switch and epd_left +add_ab_left or epd_right + add_ab_right)
+            elseif expand == "x-way" then
+                local x_way , epd_way= this.x_way.value ,this.epd_way.value
+                anti_aim.builder.way = anti_aim.builder.way < (x_way - 1) and (anti_aim.builder.way + 1) or 0
+                if this.ways_manual.value then add = add +  this[anti_aim.builder.way+1]:get()
+                else
+                    local step = (anti_aim.builder.way) / (x_way - 1)
+                    add = add + u_math.lerp(-epd_way, epd_way, step)
+                end
+            elseif expand == "spin" then
+                local  epd_left , epd_right , speed = this.epd_left.value , this.epd_right.value , this.speed.value
+                add = add + u_math.lerp(epd_left, epd_right , globals.curtime() * (speed * 0.1) % 1)
+            end
+            local jitter_mode, jitter_degree = this.jitter.value, this.jitter_add.value
+            if jitter_mode == "offset" then
+                add = add + (anti_aim.builder.switch and jitter_degree +add_ab_left or 0 + add_ab_right)
+            elseif jitter_mode == "center" then
+                add = add + (anti_aim.builder.switch and -jitter_degree / 2 +add_ab_left or jitter_degree / 2 + add_ab_right)
+            elseif jitter_mode == "random" then
+                add = add + (math.random(0, jitter_degree) - jitter_degree / 2)
+            end
+            if not anti_aim.features.use_aa  then
+                add = add + anti_aim.features.manual + math.random(this.yaw_randomize:get() * 0.01 * -add, this.yaw_randomize:get() * 0.01 * add)
+            end
+            if anti_aim.features.use_aa then add = add + 180 end
+            return u_math.normalize_yaw(add)
+        end
+
+        local function body(this)
+            local by_mdoe , by_num , by_tpye  = this.by_mode.value , 0 , "static"
+            if by_mdoe == "static" then
+                by_tpye = "static"; by_num = this.by_num.value
+            elseif by_mdoe == "jitter" then
+                by_tpye = "static"; by_num = anti_aim.builder.switch and this.by_num.value or - this.by_num.value
+            elseif by_mdoe == "opposite" then
+                by_tpye = "static"
+                if u_player.fs_side == 'left' then by_num = 180
+                elseif u_player.fs_side == 'right' then by_num = -180 else by_num = 0 end
+            elseif by_mdoe == "off" then
+                by_tpye = "off"
+            end
+            return u_math.normalize_yaw(by_num)  ,  by_tpye
+        end
+
+        local srx, pitch_srx
+        local function defensive_builder(cmd,this)
+            cmd.force_defensive = this.break_lc.value
+            local yaw , pitch = this.def_yaw.value , this.def_pitch.value
+            local pitch_num , yaw_num , body_tpye , body_num = 'default' ,nil ,nil ,nil
+            if pitch == "up" then pitch_num = -88
+            elseif pitch == "zero" then pitch_num = 0
+            elseif pitch == "up switch" then pitch_num = client.random_int(-45, 65)
+            elseif pitch == "down switch" then pitch_num = client.random_int(45, 65)
+            elseif pitch == "random" then pitch_num =  client.random_int(-89, 89)
+            elseif pitch == "random static" then
+                if not pitch_srx then pitch_srx = client.random_int(-89, 89) end
+                pitch_num = pitch_srx
+            elseif pitch == "custom" then pitch_num = this.def_pitch_num.value end
+            if yaw == "sideways" then
+                yaw_num = (anti_aim.builder.switch and 90 or -90 ) + client.random_int(-15, 15)
+            elseif yaw == "forward" then
+                yaw_num = 180  + client.random_int(-30, 30)
+            elseif yaw == "delayed" then
+                local left ,  right  = this.def_left.value , this.def_right.value
+                yaw_num = (anti_aim.builder.switch and left or right )
+            elseif yaw == "spin" then
+                local left ,  right  , speed = this.def_left.value , this.def_right.value , this.def_speed.value
+                yaw_num =  u_math.lerp(left, right , globals.curtime() * (speed * 0.1) % 1)
+            elseif yaw == "random" then
+                local left ,  right  = this.def_left.value , this.def_right.value
+                yaw_num =  client.random_int(left,right)
+            elseif yaw == "random static" then
+                local left ,  right  = this.def_left.value , this.def_right.value
+                if not srx then srx = client.random_int(left,right) end
+                yaw_num = srx
+            elseif yaw == "flick exploit" then
+                yaw_num = (u_player.fs_side  ==  'left' and -90 or 90) +client.random_int(-20,20)
+            elseif yaw == "custom" then
+                yaw_num = u_player.fs_side  ==  'left' and  this.def_yaw_num.value  or -this.def_yaw_num.value
+            end
+            local body = this.def_body.value
+            if body == "default" then
+                body_tpye = "static"; body_num = 120
+            elseif body == "auto" then
+                if yaw_num ~= nil then body_tpye = "static"; body_num =  yaw_num < 0 and -60 or 60 end
+            elseif  body == "jitter" then
+                body_tpye = "static"; body_num = anti_aim.builder.switch and -120 or 120
+            end
+            return pitch_num , yaw_num , body_tpye , body_num
+        end
+
+        function anti_aim.builder.main(cmd)
+            local state = get_state(u_player.state)
+            -- ensure AA angles are enabled when using builder
+            if reference and reference.antiaim and reference.antiaim.angles and reference.antiaim.angles.enabled then
+                local ok = pcall(function()
+                    if ui.get(reference.antiaim.angles.enabled) ~= true then
+                        ui.set(reference.antiaim.angles.enabled, true)
+                    end
+                end)
+            end
+            local this =  (interface.builder[state] and interface.builder[state].enable and interface.builder[state].enable.value and interface.builder[state]) or interface.builder["default"]
+            local pitch , yaw_type , yaw_base = yaw_base_for(this)
+            local yaw_add = modifier(this)
+            local by_num , by_tpye = body(this)
+            local pitch_num , yaw_num , body_tpye , body_num  = defensive_builder(cmd,this)
+            if  (u_player.defensive  and not anti_aim.features.fast_ladder and not  anti_aim.features.use_aa  and u_player.shifting) and this.defensive.value and anti_aim.features.defensive then
+                pitch = pitch_num ~= nil and pitch_num or pitch
+                yaw_add = yaw_num ~= nil and yaw_num or yaw_add
+                by_num = body_num ~= nil and body_num or by_num
+                by_tpye =  body_tpye ~= nil and body_tpye or by_tpye
+            else
+                srx = nil; pitch_srx = nil
+            end
+            if anti_aim.features.warmup_aa then
+                pitch = 0; yaw_type = "spin"; yaw_add = 42; by_tpye = "off"
+            end
+            if anti_aim.builder.venture then
+                if anti_aim.builder.latest + 2 == globals.curtime() then anti_aim.builder.venture = false end
+            end
+            u_reference.antiaim.pitch[1]:set(type(pitch) == "number" and 'custom' or pitch)
+            u_reference.antiaim.pitch[2]:set(type(pitch) == "number" and pitch or 0 )
+            u_reference.antiaim.yaw[1]:set(yaw_type)
+            u_reference.antiaim.yaw[2]:set( u_math.normalize_yaw(yaw_add) )
+            u_reference.antiaim.base:set(yaw_base)
+            u_reference.antiaim.fs_body:set(false)
+            u_reference.antiaim.jitter[1]:set("off")
+            u_reference.antiaim.jitter[2]:set(0)
+            u_reference.antiaim.body[1]:set(by_tpye)
+            u_reference.antiaim.body[2]:set(by_num)
+        end
+    end
+
+    do -- venture
+        local latest = 0
+        local function trigger(event)
+            -- respect anti-bruteforce toggle: do nothing if disabled
+            if not (ui_handler.anti_aim.anti_bruteforce and ui_handler.anti_aim.anti_bruteforce.get and ui_handler.anti_aim.anti_bruteforce:get()) then
+                return
+            end
+            local me = entity.get_local_player()
+            local valid = (me and entity.is_alive(me))
+            if not valid or latest == globals.tickcount() then return end
+            local attacker = client.userid_to_entindex(event.userid)
+            if not attacker or not entity.is_enemy(attacker) or entity.is_dormant(attacker) then return end
+            local impact = vector(event.x, event.y, event.z)
+            local enemy_view = vector(entity.get_origin(attacker))
+            enemy_view.z = enemy_view.z + 64
+            local dists = {}
+            for i = 1, #u_player.get_players do
+                local v = u_player.get_players[i]
+                if not entity.is_enemy(v) then
+                    local head = vector(entity.hitbox_position(v, 0))
+                    local point = u_math.closest_ray_point(head, enemy_view, impact)
+                    dists[#dists+1] = head:dist(point)
+                    if v == me then dists.mine = dists[#dists] end
+                end
+            end
+            local closest = math.min( unpack(dists) )
+            if (dists.mine and closest) and dists.mine < 40 or (closest == dists.mine and dists.mine < 128) then
+                latest = globals.tickcount()
+                anti_aim.builder.latest = globals.curtime()
+                anti_aim.builder.venture = true
+                anti_aim.builder.restrict = math.random(1, 3)
+
+                -- logging: anti-bruteforce (screen + console)
+                if interface and interface.visuals and interface.visuals.logging and interface.visuals.logging:get() then
+                    local logOptions = interface.visuals.logging_options and interface.visuals.logging_options:get() or {}
+                    local screenOptions = interface.visuals.logging_options_screen and interface.visuals.logging_options_screen:get() or {}
+                    local consoleOptions = interface.visuals.logging_options_console and interface.visuals.logging_options_console:get() or {}
+
+                    local doScreen = utils.contains and utils.contains(logOptions, "screen") and utils.contains(screenOptions, "events")
+                    local doConsole = utils.contains and utils.contains(logOptions, "console") and utils.contains(consoleOptions, "events")
+
+                    local mode = ui_handler.anti_aim.anti_bruteforce_type and ui_handler.anti_aim.anti_bruteforce_type:get() or "increase"
+                    local name = entity.get_player_name(attacker) or "enemy"
+                    local value = tostring(anti_aim.builder.restrict)
+
+                    if doScreen and logging and logging.push then
+                        logging:push(string.format("evaded %s's shot / value: %s - mode: %s", name, value, tostring(mode)))
+                    end
+
+                    if doConsole and argLog then
+                        argLog("evaded %s's shot / value: %s - mode: %s", name, value, tostring(mode))
+                    end
+                end
+            end
+        end
+        client.set_event_callback("bullet_impact", trigger)
+    end
+
+    client.set_event_callback('predict_command', function(cmd) u_player.predict_command(cmd) end)
+    client.set_event_callback('setup_command', function(cmd)
+        u_player.setup_command(cmd)
+        anti_aim.features.main(cmd)
+        anti_aim.builder.main(cmd)
+    end)
+
+    noctua_universeaa_visibility = function(page)
+        local show_builder = (page == 'builder')
+        local show_settings = (page == 'extensions')
+        pui.traverse(interface.builder, function(element)
+            if element and element.set_visible then element:set_visible(show_builder) end
+        end)
+        pui.traverse(ui_handler.anti_aim, function(element)
+            if element and element.set_visible then element:set_visible(show_settings) end
+        end)
+        pui.traverse(ui_handler.manual_aa_hotkey, function(element)
+            if element and element.set_visible then element:set_visible(show_settings and ui_handler.anti_aim.manual_aa:get()) end
+        end)
+    end
+end
+--@endregion: antiaim
