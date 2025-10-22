@@ -7,11 +7,21 @@
 --]]
 
 --@region: information
-local _name = 'noctua debug'
+local _name = 'noctua'
 local _version = '1.4'
 local _nickname = entity.get_player_name(entity.get_local_player())
 
 local update = [[
+what's new (1.4):
+ - added anti aim builder
+ - added extensions for builder
+ - added anti aim support for logging & indicators
+ - added config system
+   * create and store your configs
+   * share with your friends (if you have any)
+ - added tons of balabolka replicas
+ - fixed issue when "fire" event reported mismatch yaw
+
 changelog 1.3a (18/10/2025):
  - added "on death" to balabolka (killsay) mode
  - added crosshair indicator "center" mode
@@ -30,32 +40,7 @@ changelog 1.3a (18/10/2025):
  - fixed stickman shaders
  - removed chat filter
 
-changelog 1.2 (18/03/2025):
- - reworked chat filter, now it blocks crash & noise
- - fixed a bug where the animation of indicators depended on client fps
- 
-changelog 1.1.2 (08/03/2025):
- - added clantag
- - added killsay
- - added yaw display fallback
- - optimized vgui color manipulation
- - fixed stickman reset on shutdown
- - fixed vgui reset on shutdown
-
-changelog 1.1.1 (05/03/2025):
- - added aspect ratio override
- - added third person distance override
- - added viewmodel override
- - added animations to stickman
- - added new animations to crosshair indicators
- - added vgui color manipulation
- - reworked stickman
- - reworked crosshair indicators
- - reworked logging animations
- - fixed a bug when smart safety was always working
- - fixed color of air stop indicator
- - fixed model changer bug that failed to properly restore weapon world models
- - removed builder (temporary)
+.. 3 changelogs behind
 ]]
 --@endregion
 
@@ -543,14 +528,14 @@ interface = {} do
     pui.macros.title = _name
 
     interface.header = {
-        general = pui.group('players', 'adjustments')
+        general = pui.group('AA', 'Anti-Aimbot angles')
     }
 
     interface.additional = {
         empty = '⠀'
     }
  
-    interface.search = interface.header.general:combobox(pui.macros.title .. ' - '.. _version, 'aimbot', 'antiaim', 'visuals', 'utility', 'models', 'other')
+    interface.search = interface.header.general:combobox(pui.macros.title .. ' - '.. _version, 'aimbot', 'antiaim', 'visuals', 'utility', 'models', 'config', 'other')
 
     interface.aa = {
         page = interface.header.general:combobox('\n', 'builder', 'extensions')
@@ -607,6 +592,17 @@ interface = {} do
         delete_model_button = interface.header.general:button('delete model'),
         tip = interface.header.general:label('example: models/weapons/weapon_name.mdl'),
         tip2 = interface.header.general:label('you can configure models in noctua-models.json from game directory'),
+    }
+
+    interface.config = {
+        list = interface.header.general:listbox('configs', 300),
+        name = (interface.header.general.textbox and interface.header.general:textbox('config name')) or interface.header.general:combobox('config name', ''),
+        create_button = interface.header.general:button('create'),
+        save_button = interface.header.general:button('save'),
+        load_button = interface.header.general:button('load'),
+        delete_button = interface.header.general:button('delete'),
+        import_button = interface.header.general:button('import'),
+        export_button = interface.header.general:button('export'),
     }
 
     interface.utility = {
@@ -699,22 +695,50 @@ interface = {} do
         end
     end
 
+    interface.builder.extensions = {} do
+        local group = interface.header.general
+        local extensions = interface.builder.extensions
+        extensions.edge_yaw = group:hotkey("edge yaw")
+        extensions.freestanding = group:hotkey("freestanding")
+        extensions.dis_fs = group:multiselect("allow freestand on",{"idle","run","air","airc","duck","duck move","slow"})
+        extensions.anti_backstab = group:checkbox("avoid backstab")
+        -- extensions.fd_edge = group:checkbox("fakeduck edge")
+        extensions.ladder = group:checkbox("fast ladder")
+        extensions.anti_bruteforce = group:checkbox("anti-bruteforce")
+        extensions.anti_bruteforce_type = group:combobox("anti bruteforce type","increase","decrease")
+        extensions.defensive = group:multiselect("defensive",{"on shot","flashed","damage received","reloading","weapon switch"})
+        extensions.safe_head = group:multiselect("safe head",{ "height distance", "high distance", "knife", "zeus" })
+        extensions.warmup_aa = group:multiselect("warmup aa",{"warmup","round end"})
+        extensions.manual_aa = group:checkbox("manual antiaim")
+        for _, v in pairs(extensions) do
+            if v and v.depend then v:depend({ interface.search, 'antiaim' }, { interface.aa.page, "extensions" }) end
+        end
+        if extensions.anti_bruteforce_type and extensions.anti_bruteforce_type.depend then
+            extensions.anti_bruteforce_type:depend({ interface.search, 'antiaim' }, { interface.aa.page, 'extensions' }, { extensions.anti_bruteforce, true })
+        end
+        extensions.manual_aa_hotkey = extensions.manual_aa_hotkey or {}
+        extensions.manual_aa_hotkey.manual_left = group:hotkey("manual left")
+        extensions.manual_aa_hotkey.manual_right = group:hotkey("manual right")
+        extensions.manual_aa_hotkey.manual_forward = group:hotkey("manual forward")
+        extensions.manual_aa_hotkey.manual_back = group:hotkey("manual backward")
+        for _, v in pairs(extensions.manual_aa_hotkey) do
+            if v and v.depend then v:depend({ interface.search, 'antiaim' }, { interface.aa.page, "extensions" }, { extensions.manual_aa, true }) end
+        end
+    end
+
     -- interface.utility.item_anti_crash:override(true) -- uncomment later
 
     interface.hide_references = {
-        pui.reference('players', 'adjustments', 'add to whitelist'),
-        pui.reference('players', 'adjustments', 'allow shared ESP updates'),
-        pui.reference('players', 'adjustments', 'disable visuals'),
-        pui.reference('players', 'adjustments', 'high priority'),
-        pui.reference('players', 'adjustments', 'override prefer body aim'),
-        pui.reference('players', 'adjustments', 'override safe point'),
-        pui.reference('players', 'adjustments', 'apply to all'),
-        pui.reference('players', 'adjustments', 'force pitch'),
-        pui.reference('players', 'adjustments', 'force body yaw'),
-        pui.reference('players', 'adjustments', 'correction active'),
-        pui.reference('players', 'adjustments', 'force body yaw value'),
-        pui.reference('players', 'adjustments', 'force pitch value'),
-        pui.reference('players', 'adjustments', 'apply to all')
+        pui.reference("AA", "Anti-Aimbot angles", "Enabled"),
+        { pui.reference("AA", "Anti-Aimbot angles", "Pitch") },
+        { pui.reference("AA", "Anti-Aimbot angles", "Yaw") },
+        pui.reference("AA", "Anti-Aimbot angles", "Yaw base"),
+        { pui.reference("AA", "Anti-Aimbot angles", "Yaw jitter") },
+        { pui.reference("AA", "Anti-Aimbot angles", "Body yaw") },
+        pui.reference("AA", "Anti-Aimbot angles", "Edge yaw"),
+        pui.reference("AA", "Anti-Aimbot angles", "Freestanding body yaw"),
+        pui.reference("AA", "Anti-Aimbot angles", "Freestanding"),
+        pui.reference("AA", "Anti-Aimbot angles", "Roll")
     }
 
     interface.hide = function()
@@ -755,13 +779,14 @@ interface = {} do
             visuals = interface.visuals,
             builder = interface.builder,
             models = interface.models,
-            utility = interface.utility
+            utility = interface.utility,
+            config = interface.config
         }
 
         local visibility_config = {
             aimbot = {
                 groups_to_show = { groups.aimbot },
-                groups_to_hide = { groups.visuals, groups.models, groups.utility },
+                groups_to_hide = { groups.visuals, groups.models, groups.utility, groups.config },
                 element_visibility_logic = function(element, path)
                     local key = path[#path]
                     if key == 'enabled_aimbot' then
@@ -777,7 +802,7 @@ interface = {} do
             },
             visuals = {
                 groups_to_show = { groups.visuals },
-                groups_to_hide = { groups.aimbot, groups.models, groups.utility },
+                groups_to_hide = { groups.aimbot, groups.models, groups.utility, groups.config },
                 element_visibility_logic = function(element, path)
                     local key = path[#path]
                     local is_other_selected = interface.visuals.group:get() == 'other'
@@ -907,27 +932,27 @@ interface = {} do
             },
             models = {
                 groups_to_show = { groups.models },
-                groups_to_hide = { groups.aimbot, groups.visuals, groups.utility }
+                groups_to_hide = { groups.aimbot, groups.visuals, groups.utility, groups.config }
             },
             utility = {
                 groups_to_show = { groups.utility },
-                groups_to_hide = { groups.aimbot, groups.visuals, groups.models },
+                groups_to_hide = { groups.aimbot, groups.visuals, groups.models, groups.config },
                 element_visibility_logic = function(element, path)
                     if element and element.set_visible then
                         local key = path[#path]
                         
                         if key == "animation_breakers_global" then
-                            element:set_visible(interface.utility.animation_breakers:get("global"))
+                            element:set_visible(interface.utility.animation_breakers and interface.utility.animation_breakers.get and interface.utility.animation_breakers:get("global"))
                             return
                         end
                         
                         if key == "animation_breakers_ground" then
-                            element:set_visible(interface.utility.animation_breakers:get("ground"))
+                            element:set_visible(interface.utility.animation_breakers and interface.utility.animation_breakers.get and interface.utility.animation_breakers:get("ground"))
                             return
                         end
                         
                         if key == "animation_breakers_air" then
-                            element:set_visible(interface.utility.animation_breakers:get("air"))
+                            element:set_visible(interface.utility.animation_breakers and interface.utility.animation_breakers.get and interface.utility.animation_breakers:get("air"))
                             return
                         end
                         
@@ -945,8 +970,12 @@ interface = {} do
                     end
                 end
             },
-            default = {
+            config = {
+                groups_to_show = { groups.config },
                 groups_to_hide = { groups.aimbot, groups.visuals, groups.models, groups.utility }
+            },
+            default = {
+                groups_to_hide = { groups.aimbot, groups.visuals, groups.models, groups.utility, groups.config }
             }
         }
 
@@ -955,6 +984,7 @@ interface = {} do
             pui.traverse(interface.visuals, function(element) if element and element.set_visible then element:set_visible(false) end end)
             pui.traverse(interface.models, function(element) if element and element.set_visible then element:set_visible(false) end end)
             pui.traverse(interface.utility, function(element) if element and element.set_visible then element:set_visible(false) end end)
+            pui.traverse(interface.config, function(element) if element and element.set_visible then element:set_visible(false) end end)
 
             if interface.aa and interface.aa.page and interface.aa.page.set_visible then
                 interface.aa.page:set_visible(true)
@@ -1016,7 +1046,6 @@ end)
 
 client.set_event_callback('shutdown', interface.show)
 
--- 1:1 thirdperson distance: apply only on slider change
 interface.visuals.thirdperson_slider:set_callback(function()
     client.exec("cam_idealdist " .. interface.visuals.thirdperson_slider:get())
 end)
@@ -2518,7 +2547,6 @@ widgets = {} do
 
         local allow_interact = menuOpen
 
-        -- Dim the screen while dragging (animated)
         local target_dim = (allow_interact and widgets.is_dragging) and DIM_ALPHA or 0
         widgets.dim_alpha = mathematic.lerp(widgets.dim_alpha or 0, target_dim, globals.frametime() * 12)
         do
@@ -2528,7 +2556,6 @@ widgets = {} do
             end
         end
 
-        -- Draw snapping guide lines above the dim layer with animated alpha
         local a = math.floor(widgets.lines_alpha + 0.5)
         local any_enabled_draw = false
         for _, id in ipairs(widgets.order) do
@@ -2850,7 +2877,6 @@ visuals.window = function(self, base_x, base_y, align)
         self.animated_text.colors[2] = { r = r2, g = g2, b = b2, a = a2 }
 
         local state = utils.get_state()
-        -- override crosshair state when use, manual AA or safe head are active
         if _G.noctua_runtime and _G.noctua_runtime.use_active then
             state = "use"
         elseif _G.noctua_runtime and _G.noctua_runtime.manual_active then
@@ -4676,6 +4702,323 @@ model_changer = {} do
 end
 --@endregion
 
+--@region: configs
+configs = {} do
+    local DB_KEY = 'noctua.configs'
+    local default_config = ""
+
+    local b64_chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+    local function b64_encode_fallback(str)
+        return ((str:gsub('.', function(x)
+            local r,b='',x:byte()
+            for i=8,1,-1 do r=r..(b%2^i-b%2^(i-1)>0 and '1' or '0') end
+            return r
+        end)..'0000'):gsub('%d%d%d?%d?%d?%d?', function(x)
+            if (#x < 6) then return '' end
+            local c=0
+            for i=1,6 do c=c+(x:sub(i,i)=='1' and 2^(6-i) or 0) end
+            return b64_chars:sub(c+1,c+1)
+        end)..({ '', '==', '=' })[#str%3+1])
+    end
+
+    local function b64_decode_fallback(str)
+        str = string.gsub(str, '[^'..b64_chars..'=]', '')
+        return (str:gsub('.', function(x)
+            if (x == '=') then return '' end
+            local r,f='',(b64_chars:find(x)-1)
+            for i=6,1,-1 do r=r..(f%2^i-f%2^(i-1)>0 and '1' or '0') end
+            return r
+        end):gsub('%d%d%d?%d?%d?%d?%d?%d?', function(x)
+            if (#x ~= 8) then return '' end
+            local c=0
+            for i=1,8 do c=c+(x:sub(i,i)=='1' and 2^(8-i) or 0) end
+            return string.char(c)
+        end))
+    end
+
+    local function b64_encode(str)
+        if ok_base64 and base64 and base64.encode then
+            local ok, out = pcall(base64.encode, str)
+            if ok and out then return out end
+        end
+        return b64_encode_fallback(str)
+    end
+
+    local function b64_decode(str)
+        if ok_base64 and base64 and base64.decode then
+            local ok, out = pcall(base64.decode, str)
+            if ok and out then return out end
+        end
+        return b64_decode_fallback(str)
+    end
+
+    local state = { list = {}, data = {} }
+
+    local function screen_key()
+        local w, h = client.screen_size()
+        return tostring(w) .. 'x' .. tostring(h)
+    end
+
+    function configs.load_db()
+        local ok, data = pcall(database.read, DB_KEY)
+        if ok and type(data) == 'table' then
+            state = {
+                list = data.list or {},
+                data = data.data or {}
+            }
+        else
+            state = { list = {}, data = {} }
+        end
+    end
+
+    function configs.save_db()
+        pcall(database.write, DB_KEY, { list = state.list, data = state.data })
+    end
+
+    function configs.update_list_ui()
+        if not (interface and interface.config and interface.config.list) then return end
+        local items = {}
+        if type(state.list) == 'table' and #state.list > 0 then
+            items = state.list
+        else
+            items = { '<no configs>' }
+        end
+        if interface.config.list.update then
+            pcall(function() interface.config.list:update(items) end)
+        end
+        if interface.config.list.set then
+            pcall(function() interface.config.list:set(0) end)
+        end
+    end
+
+    local function collect_group(prefix, group, out)
+        if not group then return end
+        pui.traverse(group, function(element, path)
+            if not element then return end
+            local key = prefix .. '.' .. table.concat(path, '.')
+            local val = nil
+            if element.get then
+                local ok, v = pcall(function() return element:get() end)
+                if ok then val = v end
+            end
+            if val == nil and element.color and element.color.value then
+                val = element.color.value
+            end
+            if val ~= nil then
+                out.values[key] = val
+            end
+        end)
+    end
+
+    function configs.collect()
+        local out = { version = 1, values = {}, widgets = {} }
+        collect_group('aimbot', interface.aimbot, out)
+        collect_group('visuals', interface.visuals, out)
+        collect_group('utility', interface.utility, out)
+        collect_group('builder', interface.builder, out)
+        -- widgets positions (per-screen)
+        local wkey = screen_key()
+        local ok, wpos = pcall(database.read, (widgets and widgets.db_key_prefix or 'noctua.widgets.positions') .. '.' .. wkey)
+        if ok and type(wpos) == 'table' then
+            out.widgets = wpos
+        end
+        return out
+    end
+
+    local function apply_group(prefix, group, values)
+        if not group then return end
+        pui.traverse(group, function(element, path)
+            if not element then return end
+            local key = prefix .. '.' .. table.concat(path, '.')
+            local val = values[key]
+            if val == nil then return end
+            if element.set then
+                pcall(function() element:set(val) end)
+            elseif element.color then
+                if type(val) == 'table' then element.color.value = val end
+            end
+        end)
+    end
+
+    function configs.apply(data)
+        if type(data) ~= 'table' then return end
+        local values = data.values or {}
+        apply_group('aimbot', interface.aimbot, values)
+        apply_group('visuals', interface.visuals, values)
+        apply_group('utility', interface.utility, values)
+        apply_group('builder', interface.builder, values)
+        if data.widgets then
+            local key = (widgets and widgets.db_key_prefix or 'noctua.widgets.positions') .. '.' .. screen_key()
+            pcall(database.write, key, data.widgets)
+            if widgets and widgets.load_from_db then widgets.load_from_db() end
+        end
+    end
+
+    function configs.export_to_clipboard()
+        local payload = configs.collect()
+        local ok, json_str = pcall(json.encode, payload, false)
+        if not ok or not json_str then
+            logMessage('[noctua]', '', 'failed to encode config!')
+            return
+        end
+        -- print(json_str)
+        local enc = b64_encode(json_str)
+        clipboard.set('noctua:' .. enc)
+        logMessage('[noctua]', '', 'config exported to clipboard!')
+    end
+
+    function configs.import_from_clipboard()
+        local clip = clipboard.get() or ''
+        if clip:find('^noctua:') then clip = clip:sub(8) end
+        if clip == '' then
+            logMessage('[noctua]', '', 'clipboard is empty!')
+            return
+        end
+        local decoded = b64_decode(clip)
+        if not decoded or decoded == '' then
+            logMessage('[noctua]', '', 'failed to decode base64!')
+            return
+        end
+        local data = json.decode(decoded)
+        if type(data) ~= 'table' or not data.values then
+            logMessage('[noctua]', '', 'failed to parse config!')
+            return
+        end
+        configs.apply(data)
+        logMessage('[noctua]', '', 'config imported successfully!')
+    end
+
+    function configs.load_default()
+        if not default_config or default_config == '' then
+            logMessage('[noctua]', '', 'default config is empty!')
+            return
+        end
+        local clip = default_config
+        if clip:find('^noctua:') then clip = clip:sub(8) end
+        local decoded = b64_decode(clip)
+        if not decoded or decoded == '' then
+            logMessage('[noctua]', '', 'failed to decode default base64!')
+            return
+        end
+        local data = json.decode(decoded)
+        if type(data) ~= 'table' or not data.values then
+            logMessage('[noctua]', '', 'failed to parse default config!')
+            return
+        end
+        configs.apply(data)
+        logMessage('[noctua]', '', 'default config loaded successfully!')
+    end
+
+    function configs.create(name)
+        if type(name) ~= 'string' then name = '' end
+        name = name:gsub('^%s+', ''):gsub('%s+$', '')
+        if name == '' or name == '<no configs>' or not name:match('%S') then
+            logMessage('[noctua]', '', 'enter config name first!')
+            return
+        end
+        if state.data[name] ~= nil then
+            logMessage('[noctua]', '', 'config already exists!')
+            return
+        end
+        state.data[name] = configs.collect()
+        table.insert(state.list, name)
+        configs.save_db()
+        configs.update_list_ui()
+        logMessage('[noctua]', '', 'config created!')
+    end
+
+    local function get_selected_name()
+        local idx0 = tonumber(interface.config.list:get()) or 0
+        local idx = idx0 + 1
+        local name = state.list[idx]
+        if name == '<no configs>' then return nil end
+        return name
+    end
+
+    function configs.save_selected()
+        local name = get_selected_name()
+        if not name then
+            logMessage('[noctua]', '', 'select a config first!')
+            return
+        end
+        state.data[name] = configs.collect()
+        configs.save_db()
+        logMessage('[noctua]', '', 'config saved!')
+    end
+
+    function configs.load_selected()
+        local name = get_selected_name()
+        if not name then
+            logMessage('[noctua]', '', 'select a config first!')
+            return
+        end
+        local data = state.data[name]
+        if type(data) ~= 'table' then
+            logMessage('[noctua]', '', 'config data is invalid!')
+            return
+        end
+        configs.apply(data)
+        logMessage('[noctua]', '', 'config loaded!')
+    end
+
+    function configs.delete_selected()
+        local name = get_selected_name()
+        if not name then
+            logMessage('[noctua]', '', 'select a config first!')
+            return
+        end
+        state.data[name] = nil
+        local new_list = {}
+        for _, n in ipairs(state.list) do
+            if n ~= name then table.insert(new_list, n) end
+        end
+        state.list = new_list
+        configs.save_db()
+        configs.update_list_ui()
+        if interface and interface.config and interface.config.list and interface.config.list.set then
+            interface.config.list:set(0)
+        end
+        logMessage('[noctua]', '', 'config deleted!')
+    end
+
+    function configs.init()
+        configs.load_db()
+        configs.update_list_ui()
+        if interface and interface.config then
+            if interface.config.create_button and interface.config.create_button.set_callback then
+                interface.config.create_button:set_callback(function()
+                    local name = ''
+                    if interface.config.name and interface.config.name.get then
+                        name = interface.config.name:get() or ''
+                    end
+                    if type(name) ~= 'string' then name = tostring(name or '') end
+                    name = name:gsub('^%s+', ''):gsub('%s+$', '')
+                    configs.create(name)
+                end)
+            end
+            if interface.config.save_button and interface.config.save_button.set_callback then
+                interface.config.save_button:set_callback(configs.save_selected)
+            end
+            if interface.config.load_button and interface.config.load_button.set_callback then
+                interface.config.load_button:set_callback(configs.load_selected)
+            end
+            if interface.config.delete_button and interface.config.delete_button.set_callback then
+                interface.config.delete_button:set_callback(configs.delete_selected)
+            end
+            if interface.config.export_button and interface.config.export_button.set_callback then
+                interface.config.export_button:set_callback(configs.export_to_clipboard)
+            end
+            if interface.config.import_button and interface.config.import_button.set_callback then
+                interface.config.import_button:set_callback(configs.import_from_clipboard)
+            end
+        end
+    end
+end
+
+configs.init()
+client.set_event_callback('shutdown', function() pcall(database.flush) end)
+--@endregion
+
 --@region: lethal_shot_handler
 lethal_shot_handler = {} do
     lethal_shot_handler.cache = {}
@@ -6314,41 +6657,6 @@ do
         end
     end
 
-    local group = interface.header.general
-    local ui_handler = { navigation = {}, anti_aim = {}, manual_aa_hotkey = {}, builder = {} }
-    ui_handler.navigation.aa_combo = interface.aa.page
-
-    do -- extensions
-        ui_handler.anti_aim.edge_yaw = group:hotkey("edge yaw")
-        ui_handler.anti_aim.freestanding = group:hotkey("freestanding")
-        ui_handler.anti_aim.dis_fs = group:multiselect("allow freestand on",{"idle","run","air","airc","duck","duck move","slow"})
-        ui_handler.anti_aim.anti_backstab = group:checkbox("avoid backstab")
-        -- ui_handler.anti_aim.fd_edge = group:checkbox("fakeduck edge")
-        ui_handler.anti_aim.ladder = group:checkbox("fast ladder")
-        ui_handler.anti_aim.anti_bruteforce = group:checkbox("anti-bruteforce")
-        ui_handler.anti_aim.anti_bruteforce_type = group:combobox("anti bruteforce type","increase","decrease")
-        ui_handler.anti_aim.defensive = group:multiselect("defensive",{"on shot","flashed","damage received","reloading","weapon switch"})
-        ui_handler.anti_aim.safe_head = group:multiselect("safe head",{ "height distance", "high distance", "knife", "zeus" })
-        ui_handler.anti_aim.warmup_aa = group:multiselect("warmup aa",{"warmup","round end"})
-        ui_handler.anti_aim.manual_aa = group:checkbox("manual antiaim")
-        for _, v in pairs(ui_handler.anti_aim) do
-            if v and v.depend then v:depend({ interface.search, 'antiaim' }, { ui_handler.navigation.aa_combo, "extensions" }) end
-        end
-    end
-
-    if ui_handler.anti_aim.anti_bruteforce_type and ui_handler.anti_aim.anti_bruteforce_type.depend then
-        ui_handler.anti_aim.anti_bruteforce_type:depend({ interface.search, 'antiaim' }, { ui_handler.navigation.aa_combo, 'extensions' }, { ui_handler.anti_aim.anti_bruteforce, true })
-    end
-
-    do -- manual hotkeys
-        ui_handler.manual_aa_hotkey.manual_left = group:hotkey("manual left")
-        ui_handler.manual_aa_hotkey.manual_right = group:hotkey("manual right")
-        ui_handler.manual_aa_hotkey.manual_forward = group:hotkey("manual forward")
-        ui_handler.manual_aa_hotkey.manual_back = group:hotkey("manual backward")
-        for _, v in pairs(ui_handler.manual_aa_hotkey) do
-            if v and v.depend then v:depend({ interface.search, 'antiaim' }, { ui_handler.navigation.aa_combo, "extensions" }, { ui_handler.anti_aim.manual_aa, true }) end
-        end
-    end
 
 
     local anti_aim = { features = {}, builder = {}, venture = {} }
@@ -6411,7 +6719,7 @@ do
         end
 
         function anti_aim.features.ladder_run(cmd)
-            if not ui_handler.anti_aim.ladder:get() then return false end
+            if not interface.builder.extensions.ladder:get() then return false end
             if entity.get_prop(entity.get_local_player(), "m_MoveType") ~= 9 or cmd.forwardmove == 0 then return false end
             local camera_pitch, camera_yaw = client.camera_angles()
             local descending = cmd.forwardmove < 0 or camera_pitch > 45
@@ -6439,10 +6747,10 @@ do
             local weapon = entity.get_player_weapon(entity.get_local_player())
             local knife = weapon ~= nil and entity.get_classname(weapon) == 'CKnife'
             local zeus = weapon ~= nil and entity.get_classname(weapon) == 'CWeaponTaser'
-            local safe_knife = (ui_handler.anti_aim.safe_head:get('knife')) and knife and not u_player.onground
-            local safe_zeus = (ui_handler.anti_aim.safe_head:get('zeus')) and zeus and  not u_player.onground
-            local distance_height = (ui_handler.anti_aim.safe_head:get('height distance')) and distance_to_enemy[2] < -50
-            local distance_hight = (ui_handler.anti_aim.safe_head:get('high distance')) and  distance_to_enemy[1] > 119
+            local safe_knife = (interface.builder.extensions.safe_head:get('knife')) and knife and not u_player.onground
+            local safe_zeus = (interface.builder.extensions.safe_head:get('zeus')) and zeus and  not u_player.onground
+            local distance_height = (interface.builder.extensions.safe_head:get('height distance')) and distance_to_enemy[2] < -50
+            local distance_hight = (interface.builder.extensions.safe_head:get('high distance')) and  distance_to_enemy[1] > 119
             if safe_knife or safe_zeus  or distance_hight or distance_height then return true end
             return false
         end
@@ -6450,15 +6758,15 @@ do
         do -- manual
             local manual_cur = nil
             local manual_keys = {
-                { "left",    yaw = -90, item = ui_handler.manual_aa_hotkey.manual_left },
-                { "right",   yaw = 90,  item = ui_handler.manual_aa_hotkey.manual_right },
-                { "reset",   yaw = nil, item = ui_handler.manual_aa_hotkey.manual_back },
-                { "forward", yaw = 180, item = ui_handler.manual_aa_hotkey.manual_forward },
+                { "left",    yaw = -90, item = interface.builder.extensions.manual_aa_hotkey.manual_left },
+                { "right",   yaw = 90,  item = interface.builder.extensions.manual_aa_hotkey.manual_right },
+                { "reset",   yaw = nil, item = interface.builder.extensions.manual_aa_hotkey.manual_back },
+                { "forward", yaw = 180, item = interface.builder.extensions.manual_aa_hotkey.manual_forward },
             }
             local toggled = { false, false, false, false }
             local prev = { false, false, false, false }
             function anti_aim.features.manual_run()
-                if not ui_handler.anti_aim.manual_aa:get() then
+                if not interface.builder.extensions.manual_aa:get() then
                     manual_cur = nil
                     return 0
                 end
@@ -6490,10 +6798,10 @@ do
         end
 
         function anti_aim.features.on_hotkey()
-            local is_allowed_state = u_math.contains(ui_handler.anti_aim.dis_fs:get(), u_player.state)
-            local want_fs = ui_handler.anti_aim.freestanding:get() and (anti_aim.features.manual == 0)
+            local is_allowed_state = u_math.contains(interface.builder.extensions.dis_fs:get(), u_player.state)
+            local want_fs = interface.builder.extensions.freestanding:get() and (anti_aim.features.manual == 0)
             local fs_on_hotkey = is_allowed_state and want_fs and (not anti_aim.features.use_aa)
-            local edge_on_hotkey = ui_handler.anti_aim.edge_yaw:get() -- local edge_on_hotkey = ui_handler.anti_aim.edge_yaw:get() or (ui_handler.anti_aim.fd_edge:get() and  u_reference.ragebot.duck:get() )
+            local edge_on_hotkey = interface.builder.extensions.edge_yaw:get() -- local edge_on_hotkey = interface.builder.extensions.edge_yaw:get() or (interface.builder.extensions.fd_edge:get() and  u_reference.ragebot.duck:get() )
             u_reference.antiaim.edge:set(edge_on_hotkey)
             u_reference.antiaim.freestand:set(fs_on_hotkey)
             u_reference.antiaim.freestand.hotkey:set(fs_on_hotkey and "Always on" or "On hotkey")
@@ -6523,11 +6831,11 @@ do
             local is_flashed = animlayers[9]['weight'] > 0.1 and flash_activity_number == 960
             local is_under_attack = animlayers[10]['weight'] > 0.1
             local is_swapping_weapons = cmd.weaponselect > 0
-            if (ui_handler.anti_aim.defensive:get("flashed") and is_flashed)
-            or (ui_handler.anti_aim.defensive:get("damage received") and is_under_attack)
-            or (ui_handler.anti_aim.defensive:get("reloading") and is_reloading)
-            or (ui_handler.anti_aim.defensive:get("weapon switch") and is_swapping_weapons) 
-            or (ui_handler.anti_aim.defensive:get("on shot") and u_reference.antiaim.onshot.hotkey:get() ) then
+            if (interface.builder.extensions.defensive:get("flashed") and is_flashed)
+            or (interface.builder.extensions.defensive:get("damage received") and is_under_attack)
+            or (interface.builder.extensions.defensive:get("reloading") and is_reloading)
+            or (interface.builder.extensions.defensive:get("weapon switch") and is_swapping_weapons) 
+            or (interface.builder.extensions.defensive:get("on shot") and u_reference.antiaim.onshot.hotkey:get() ) then
                 return false
             end
             return true
@@ -6537,7 +6845,7 @@ do
             local game_rules = entity.get_game_rules()
             if not game_rules then return false end
             local warmup_period do
-                local is_active = ui_handler.anti_aim.warmup_aa:get("warmup")
+                local is_active = interface.builder.extensions.warmup_aa:get("warmup")
                 local is_warmup = entity.get_prop(game_rules, 'm_bWarmupPeriod') == 1
                 warmup_period = is_active and is_warmup
             end
@@ -6553,7 +6861,7 @@ do
                             end
                         end
                     end
-            warmup_period = (are_all_enemies_dead and globals.curtime() < (entity.get_prop(game_rules, 'm_flRestartRoundTime') or 0)) and ui_handler.anti_aim.warmup_aa:get("round end")
+            warmup_period = (are_all_enemies_dead and globals.curtime() < (entity.get_prop(game_rules, 'm_flRestartRoundTime') or 0)) and interface.builder.extensions.warmup_aa:get("round end")
                 end
             end
             return warmup_period and true or false
@@ -6561,7 +6869,7 @@ do
 
         function anti_aim.features.main(cmd)
             anti_aim.features.use_aa = anti_aim.features.legit_run(cmd)
-            anti_aim.features.stab = ui_handler.anti_aim.anti_backstab:get() and anti_aim.features.anti_backstab() or false
+            anti_aim.features.stab = interface.builder.extensions.anti_backstab:get() and anti_aim.features.anti_backstab() or false
             anti_aim.features.fast_ladder = anti_aim.features.ladder_run(cmd)
             anti_aim.features.safe_head = anti_aim.features.safe_run(cmd)
             anti_aim.features.manual = anti_aim.features.manual_run()
@@ -6589,8 +6897,8 @@ do
             local double_tap = u_reference.ragebot.double_tap.hotkey:get()
             local onshot = u_reference.antiaim.onshot.hotkey:get()
             local fake_duck = u_reference.ragebot.duck:get()
-            local freestand_allowed = u_math.contains(ui_handler.anti_aim.dis_fs:get(), u_player.state)
-            local freestand_hotkey = ui_handler.anti_aim.freestanding:get()
+            local freestand_allowed = u_math.contains(interface.builder.extensions.dis_fs:get(), u_player.state)
+            local freestand_hotkey = interface.builder.extensions.freestanding:get()
             local freestand = (freestand_hotkey or u_player.is_fs_peek) and freestand_allowed
             if interface.builder['use'] and interface.builder['use'].enable and interface.builder['use'].enable:get()  and  anti_aim.features.use_aa then return  'use' end
             if interface.builder['manual'] and interface.builder['manual'].enable and interface.builder['manual'].enable:get() and anti_aim.features.manual ~= 0 then return 'manual' end
@@ -6613,10 +6921,10 @@ do
             local delay = (expand ~= "left/right" or not u_player.shifting)  and 1 or this.delay.value
             if globals.chokedcommands() == 0 then choke = choke + 1 end
             local add_ab_left , add_ab_right= 0 , 0
-            if ui_handler.anti_aim.anti_bruteforce:get() and anti_aim.builder.venture then
-                if ui_handler.anti_aim.anti_bruteforce_type:get() == "increase" then
+            if interface.builder.extensions.anti_bruteforce:get() and anti_aim.builder.venture then
+                if interface.builder.extensions.anti_bruteforce_type:get() == "increase" then
                     add_ab_right = anti_aim.builder.restrict * 3; add_ab_left= anti_aim.builder.restrict * -3
-                elseif ui_handler.anti_aim.anti_bruteforce_type:get() == "decrease" then
+                elseif interface.builder.extensions.anti_bruteforce_type:get() == "decrease" then
                     add_ab_right = anti_aim.builder.restrict * -3; add_ab_left= anti_aim.builder.restrict * 3
                 end
             end
@@ -6815,7 +7123,7 @@ do
         end
 
         local function trigger(event)
-            if not (ui_handler.anti_aim.anti_bruteforce and ui_handler.anti_aim.anti_bruteforce.get and ui_handler.anti_aim.anti_bruteforce:get()) then
+            if not (interface.builder.extensions.anti_bruteforce and interface.builder.extensions.anti_bruteforce.get and interface.builder.extensions.anti_bruteforce:get()) then
                 return
             end
 
@@ -6855,7 +7163,7 @@ do
                 anti_aim.builder.venture = true
                 anti_aim.builder.restrict = math.random(1, 3)
 
-                local mode = ui_handler.anti_aim.anti_bruteforce_type and ui_handler.anti_aim.anti_bruteforce_type:get() or "increase"
+                local mode = interface.builder.extensions.anti_bruteforce_type and interface.builder.extensions.anti_bruteforce_type:get() or "increase"
                 local name = entity.get_player_name(attacker) or "enemy"
                 local value = tostring(anti_aim.builder.restrict)
 
@@ -6879,11 +7187,11 @@ do
         pui.traverse(interface.builder, function(element)
             if element and element.set_visible then element:set_visible(show_builder) end
         end)
-        pui.traverse(ui_handler.anti_aim, function(element)
+        pui.traverse(interface.builder.extensions, function(element)
             if element and element.set_visible then element:set_visible(show_settings) end
         end)
-        pui.traverse(ui_handler.manual_aa_hotkey, function(element)
-            if element and element.set_visible then element:set_visible(show_settings and ui_handler.anti_aim.manual_aa:get()) end
+        pui.traverse(interface.builder.extensions.manual_aa_hotkey, function(element)
+            if element and element.set_visible then element:set_visible(show_settings and interface.builder.extensions.manual_aa:get()) end
         end)
     end
 end
