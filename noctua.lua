@@ -12,10 +12,6 @@ local _version = '1.4'
 local _nickname = entity.get_player_name(entity.get_local_player())
 
 local update = [[
-changelog 1.4 (21/20/2025):
- - added anti-aim build
- - added extensions for anti-aim's
- - reworked logging t
 changelog 1.3a (18/10/2025):
  - added "on death" to balabolka (killsay) mode
  - added crosshair indicator "center" mode
@@ -674,9 +670,9 @@ interface = {} do
             this.by_num = interface.header.general:slider("\n", -180, 180, 0, true, "°", 1, tooltips.body):depend({ this.by_mode, "off", true }, { this.by_mode, "opposite", true })
             this.break_lc = interface.header.general:checkbox("\aa5ab55ffforce break lc")
             this.defensive = interface.header.general:checkbox("defensive")
-            if this.defensive and this.defensive.depend then
-                this.defensive:depend({ this.break_lc, true })
-            end
+            -- if this.defensive and this.defensive.depend then
+            --     this.defensive:depend({ this.break_lc, true })
+            -- end
             this.def_pitch = interface.header.general:combobox("pitch defensive ",{ "default", "up", "zero", "up switch","down switch", "random static","random","custom"}):depend({this.defensive,true})
             this.def_pitch_num = interface.header.general:slider("\n", -89, 89, 0, true, "°", 1):depend({this.defensive,true},{this.def_pitch,"custom"})
             this.def_yaw = interface.header.general:combobox("yaw defensive ",{ "default", "forward", "sideways", "delayed","spin","random", "random static","flick exploit","custom"}):depend({this.defensive,true})
@@ -1565,6 +1561,27 @@ utils = {} do
         end
 
         return true
+    end
+
+    utils.get_player_kd = function(player)
+        if player == nil then
+            return nil
+        end
+
+        local player_resource = entity.get_player_resource()
+
+        if player_resource == nil then
+            return nil
+        end
+
+        local kills = entity.get_prop(player_resource, 'm_iKills', player)
+        local deaths = entity.get_prop(player_resource, 'm_iDeaths', player)
+
+        if deaths > 0 then
+            return kills / deaths
+        end
+
+        return kills
     end
 
     utils.get_state = (function()
@@ -2839,7 +2856,7 @@ visuals.window = function(self, base_x, base_y, align)
         elseif _G.noctua_runtime and _G.noctua_runtime.manual_active then
             state = "manual"
         elseif _G.noctua_runtime and _G.noctua_runtime.safe_head_active then
-            state = "safe"
+            state = "safe head"
         end
         local isOS = ui.get(ui_references.on_shot_anti_aim[1]) and ui.get(ui_references.on_shot_anti_aim[2])
         local isDT = ui.get(ui_references.double_tap[1]) and ui.get(ui_references.double_tap[2])
@@ -5663,6 +5680,71 @@ killsay = {} do
         },
         {
             "ОЙ"
+        },
+        {
+            "бро ты выебан и т.д."
+        },
+        {
+            "давненько ты порох не нюхал"
+        },
+        {
+            "ноктаметр сегодня зашкаливает"
+        },
+        {
+            "это вы еще мои НОКТАХОДЫ не видели!!!! арряяя а когда еще НОКТУ гхасчеслю сгхазу всем пизда будет!!!!!"
+        },
+        {
+            "С вами хочет связаться смерть от нокты. - Принять / Принять?"
+        },
+        {
+            "1 пиздарик на воздушном шарике"
+        },
+        {
+            "активация трештолка через 3...2...1...",
+            "ты пидорас"
+        },
+        {
+            "фух повезло",
+        },
+        {
+            "1ъ"
+        },
+        {
+            "нокта. зарезольвить."
+        },
+        {
+            "хули пытаться если с бугорок?"
+        },
+        {
+            "мясо для нокты"
+        },
+        {
+            "и в хуй и в яйца мужик"
+        },
+        {
+            "если есть нокта, мне поебать какие у тебя анти аимы"
+        },
+        {
+            "метр с кепкой тебе до меня далеко"
+        },
+        {
+            "1 зяблик ебаный"
+        },
+        {
+            "анти аимы - В С Е! нокта жестко об анти аимах"
+        },
+        {
+            "нет игры - нет нокты"
+        },
+        {
+            "бубубубебебе",
+            "шлюха"
+        },
+        {
+            "мечтают ли киберхачи о робоовцах?"
+        },
+        {
+            "шуруй отсюда"
         }
     }
 
@@ -5744,12 +5826,94 @@ killsay = {} do
         {
             "опять анрег",
             "что за пиздец"
+        },
+        {
+            "ЫЯСВЧЛДЬБ.ЫЯФВЧСДОЩ.ЖЗЮ",
+            "Я НЕ МОГУ",
+            "ОНО ПОЖИРАЕТ МЕНЯ"
+        },
+        {
+            "ебаная нотка"
+        },
+        {
+            "блять все",
+            "отмена"
+        },
+        {
+            "парализованный цыган убил это пиздец"
+        },
+        {
+            "ок"
+        },
+        {
+            "бля я просто похлопаю тебе долбаеб",
+            "*хлоп хлоп*"
+        },
+        {
+            "меж яиц пуля пролетела всем спасибо"
+        },
+        {
+            "ОКУНЬ СОРВАЛСЯ СУКААА",
+            "такой улов был пиздец"
+        },
+        {
+            "ыкоыоыоыоыо",
+            "опять еблан убил",
+            "почему так?"
+        },
+        {
+            "я не виноват, что мой толстый хуй делает мои антиаимы хуже"
+        },
+        {
+            "ебаный хамелеон с периферийным зрением убил"
+        },
+        {
+            "да успокоится моя душа в нокта-раю, аминь."
+        },
+        {
+            "монголоидная чурка убила",
+            "фу нахуй"
+        },
+        {
+            "а ничо тот факт что missed shot due to resolver блять"
+        },
+        {
+            "карлсон ебаный вместо пропелера у тя кишки ебаные"
+        },
+        {
+            "нокта. мисснуть."
+        },
+        {
+           "<KZNM",
+           "УЖЕ ЗАЕБАЛ МЕНЯ ",
+           "МРАЗЬ ЕБАНАЯ"
+        },
+        {
+            "пмдорас ебанный",
+            "в жизни мог бы тя как гнома нбаного садового в землю воткнуть"
+        },
+        {
+            "вот бы аниме где я переродился в твоем поселке ебаном и расхуярил твою семейку"
+        },
+        {
+            "шьюха ебаная"
+        },
+        {
+            "не стреляет хуета"
+        },
+        {
+            "ну быстрее играйте нахуй",
+            "у меня уроки через 30 мин"
+        },
+        {
+            "ай виш ай вос борн ёбырь твоей матери",
+            "пидорас ебанный"
         }
     }
     
     killsay.get_random_phrase = function(phrase_type)
         local current_time = globals.realtime()
-        math.randomseed(current_time * 1000)
+        math.randomseed(current_time * 9182)
         
         local phrases_table = phrase_type == "death" and killsay.multi_phrases_death or killsay.multi_phrases_kill
         local index = math.random(1, #phrases_table)
@@ -5811,6 +5975,10 @@ killsay = {} do
     
     killsay.on_player_death = function(e)
         if not interface.utility.killsay:get() then return end
+
+        local local_player = entity.get_local_player()
+        local kd = utils.get_player_kd(local_player)
+        if kd ~= nil and kd <= 1.0 then return end
         
         local now = globals.realtime()
         if now - killsay.last_say_time < killsay.cooldown then
@@ -5819,7 +5987,6 @@ killsay = {} do
         
         local attacker = client.userid_to_entindex(e.attacker)
         local victim = client.userid_to_entindex(e.userid)
-        local local_player = entity.get_local_player()
         local modes = interface.utility.killsay_modes:get()
         
         if attacker == local_player and victim ~= local_player then
@@ -5847,8 +6014,6 @@ killsay = {} do
 end
 --@endregion
 
-logging:push("checkout latest update in console")
-logging:push("nice to see you at " .. _name .. " " .. _version .. " (" .. _nickname .. ")")
 
 do
     local u_reference = {} do
@@ -6404,7 +6569,6 @@ do
             anti_aim.features.on_hotkey()
             anti_aim.features.warmup_aa = anti_aim.features.warmup_run(cmd)
 
-            -- expose runtime flags for crosshair indicators
             _G.noctua_runtime = _G.noctua_runtime or {}
             _G.noctua_runtime.manual_active = (anti_aim.features.manual ~= 0)
             _G.noctua_runtime.safe_head_active = (anti_aim.features.safe_head == true)
@@ -6431,7 +6595,7 @@ do
             if interface.builder['use'] and interface.builder['use'].enable and interface.builder['use'].enable:get()  and  anti_aim.features.use_aa then return  'use' end
             if interface.builder['manual'] and interface.builder['manual'].enable and interface.builder['manual'].enable:get() and anti_aim.features.manual ~= 0 then return 'manual' end
             if interface.builder['freestand'] and interface.builder['freestand'].enable and interface.builder['freestand'].enable:get() and freestand then return 'freestand' end
-            if  interface.builder['safe head'] and interface.builder['safe head'].enable and interface.builder['safe head'].enable:get() and anti_aim.features.safe_head then return 'safe head' end
+            if interface.builder['safe head'] and interface.builder['safe head'].enable and interface.builder['safe head'].enable:get() and anti_aim.features.safe_head then return 'safe head' end
             if interface.builder['on shot'] and interface.builder['on shot'].enable and interface.builder['on shot'].enable:get() and onshot and not double_tap and not fake_duck then return 'on shot' end
             if interface.builder['fakelag'] and interface.builder['fakelag'].enable and interface.builder['fakelag'].enable:get() and not onshot and not double_tap and not fake_duck then return 'fakelag' end
             return state
@@ -6556,7 +6720,6 @@ do
 
         function anti_aim.builder.main(cmd)
             local state = get_state(u_player.state)
-            -- ensure AA angles are enabled when using builder
             if reference and reference.antiaim and reference.antiaim.angles and reference.antiaim.angles.enabled then
                 local ok = pcall(function()
                     if ui.get(reference.antiaim.angles.enabled) ~= true then
@@ -6598,16 +6761,78 @@ do
 
     do -- venture
         local latest = 0
+        local last_hurt_by = {}
+        local last_death_tick = 0
+        local pending_evade_logs = {}
+
+        client.set_event_callback('player_hurt', function(e)
+            local me = entity.get_local_player()
+            if not me then return end
+            local victim = client.userid_to_entindex(e.userid)
+            local attacker = client.userid_to_entindex(e.attacker)
+            if victim == me and attacker and entity.is_enemy(attacker) then
+                last_hurt_by[attacker] = globals.tickcount()
+            end
+        end)
+
+        client.set_event_callback('player_death', function(e)
+            local me = entity.get_local_player()
+            if not me then return end
+            local victim = client.userid_to_entindex(e.userid)
+            if victim == me then
+                last_death_tick = globals.tickcount()
+            end
+        end)
+
+        local function process_pending()
+            local tick = globals.tickcount()
+            for attacker, data in pairs(pending_evade_logs) do
+                if tick > data.created_tick then
+                    local hurt_tick = last_hurt_by[attacker] or 0
+                    local killed_recently = (last_death_tick ~= 0) and (last_death_tick >= data.created_tick) and (last_death_tick <= data.created_tick + 2)
+                    local hurt_recently = (hurt_tick >= data.created_tick) and (hurt_tick <= data.created_tick + 2)
+                    if not hurt_recently and not killed_recently then
+                        if interface and interface.visuals and interface.visuals.logging and interface.visuals.logging:get() then
+                            local logOptions = interface.visuals.logging_options and interface.visuals.logging_options:get() or {}
+                            local screenOptions = interface.visuals.logging_options_screen and interface.visuals.logging_options_screen:get() or {}
+                            local consoleOptions = interface.visuals.logging_options_console and interface.visuals.logging_options_console:get() or {}
+
+                            local doScreen = utils.contains and utils.contains(logOptions, 'screen') and utils.contains(screenOptions, 'events')
+                            local doConsole = utils.contains and utils.contains(logOptions, 'console') and utils.contains(consoleOptions, 'events')
+
+                            if doScreen and logging and logging.push then
+                                logging:push(string.format("evaded %s's shot / value: %s - mode: %s", data.name, data.value, tostring(data.mode)))
+                            end
+
+                            if doConsole and argLog then
+                                argLog("evaded %s's shot / value: %s - mode: %s", data.name, data.value, tostring(data.mode))
+                            end
+                        end
+                    end
+                    pending_evade_logs[attacker] = nil
+                end
+            end
+        end
+
         local function trigger(event)
-            -- respect anti-bruteforce toggle: do nothing if disabled
             if not (ui_handler.anti_aim.anti_bruteforce and ui_handler.anti_aim.anti_bruteforce.get and ui_handler.anti_aim.anti_bruteforce:get()) then
                 return
             end
+
             local me = entity.get_local_player()
             local valid = (me and entity.is_alive(me))
             if not valid or latest == globals.tickcount() then return end
             local attacker = client.userid_to_entindex(event.userid)
             if not attacker or not entity.is_enemy(attacker) or entity.is_dormant(attacker) then return end
+
+            local curtick = globals.tickcount()
+            local hurt_tick = last_hurt_by[attacker] or 0
+            if (hurt_tick ~= 0 and (curtick - hurt_tick) <= 2) or (last_death_tick ~= 0 and (curtick - last_death_tick) <= 2) then
+                return
+            end
+
+            if not u_player.get_players or #u_player.get_players == 0 then return end
+
             local impact = vector(event.x, event.y, event.z)
             local enemy_view = vector(entity.get_origin(attacker))
             enemy_view.z = enemy_view.z + 64
@@ -6621,6 +6846,8 @@ do
                     if v == me then dists.mine = dists[#dists] end
                 end
             end
+
+            if #dists == 0 then return end
             local closest = math.min( unpack(dists) )
             if (dists.mine and closest) and dists.mine < 40 or (closest == dists.mine and dists.mine < 128) then
                 latest = globals.tickcount()
@@ -6628,30 +6855,15 @@ do
                 anti_aim.builder.venture = true
                 anti_aim.builder.restrict = math.random(1, 3)
 
-                -- logging: anti-bruteforce (screen + console)
-                if interface and interface.visuals and interface.visuals.logging and interface.visuals.logging:get() then
-                    local logOptions = interface.visuals.logging_options and interface.visuals.logging_options:get() or {}
-                    local screenOptions = interface.visuals.logging_options_screen and interface.visuals.logging_options_screen:get() or {}
-                    local consoleOptions = interface.visuals.logging_options_console and interface.visuals.logging_options_console:get() or {}
+                local mode = ui_handler.anti_aim.anti_bruteforce_type and ui_handler.anti_aim.anti_bruteforce_type:get() or "increase"
+                local name = entity.get_player_name(attacker) or "enemy"
+                local value = tostring(anti_aim.builder.restrict)
 
-                    local doScreen = utils.contains and utils.contains(logOptions, "screen") and utils.contains(screenOptions, "events")
-                    local doConsole = utils.contains and utils.contains(logOptions, "console") and utils.contains(consoleOptions, "events")
-
-                    local mode = ui_handler.anti_aim.anti_bruteforce_type and ui_handler.anti_aim.anti_bruteforce_type:get() or "increase"
-                    local name = entity.get_player_name(attacker) or "enemy"
-                    local value = tostring(anti_aim.builder.restrict)
-
-                    if doScreen and logging and logging.push then
-                        logging:push(string.format("evaded %s's shot / value: %s - mode: %s", name, value, tostring(mode)))
-                    end
-
-                    if doConsole and argLog then
-                        argLog("evaded %s's shot / value: %s - mode: %s", name, value, tostring(mode))
-                    end
-                end
+                pending_evade_logs[attacker] = { name = name, value = value, mode = mode, created_tick = curtick }
             end
         end
         client.set_event_callback("bullet_impact", trigger)
+        client.set_event_callback("run_command", process_pending)
     end
 
     client.set_event_callback('predict_command', function(cmd) u_player.predict_command(cmd) end)
@@ -6676,3 +6888,6 @@ do
     end
 end
 --@endregion: antiaim
+
+logging:push("checkout latest update in console")
+logging:push("nice to see you at " .. _name .. " " .. _version .. " (" .. _nickname .. ")")
