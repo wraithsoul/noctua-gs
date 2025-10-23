@@ -564,8 +564,8 @@ interface = {} do
         -- shared = interface.header.general:checkbox('shared identity (wip)'),
         logging = interface.header.general:checkbox('logging'),
         logging_options = interface.header.general:multiselect('options', 'console', 'screen'),
-        logging_options_console = interface.header.general:multiselect('console', 'fire', 'hit', 'miss', 'buy', 'events'),
-        logging_options_screen = interface.header.general:multiselect('screen', 'fire', 'hit', 'miss', 'events'),
+        logging_options_console = interface.header.general:multiselect('console', 'fire', 'hit', 'miss', 'buy', 'aimbot', 'anti aim'),
+        logging_options_screen = interface.header.general:multiselect('screen', 'fire', 'hit', 'miss', 'aimbot', 'anti aim'),
         logging_slider = interface.header.general:slider('slider', 40, 450, 240),
         aspect_ratio = interface.header.general:checkbox('override aspect ratio'),
         aspect_ratio_slider = interface.header.general:slider('value', 0, aspect_ratio.steps, aspect_ratio.steps/2, true, '', 1, aspect_ratio.ratio_table),
@@ -597,9 +597,10 @@ interface = {} do
     interface.config = {
         list = interface.header.general:listbox('configs', 300),
         name = (interface.header.general.textbox and interface.header.general:textbox('config name')) or interface.header.general:combobox('config name', ''),
+        load_on_startup = interface.header.general:checkbox('load on startup'),
         create_button = interface.header.general:button('create'),
-        save_button = interface.header.general:button('save'),
         load_button = interface.header.general:button('load'),
+        save_button = interface.header.general:button('save'),
         delete_button = interface.header.general:button('delete'),
         import_button = interface.header.general:button('import'),
         export_button = interface.header.general:button('export'),
@@ -616,6 +617,7 @@ interface = {} do
         evaded = interface.header.general:label(' · evaded shots: 0'),
         ratio = interface.header.general:label(' · ratio: 0'),
         reset = interface.header.general:button('reset'),
+        confetti = interface.header.general:button('confetti'),
     }
 
     interface.utility = {
@@ -986,7 +988,10 @@ interface = {} do
             },
             config = {
                 groups_to_show = { groups.config },
-                groups_to_hide = { groups.home, groups.aimbot, groups.visuals, groups.models, groups.utility }
+                groups_to_hide = { groups.home, groups.aimbot, groups.visuals, groups.models, groups.utility },
+                element_visibility_logic = function(element, path)
+                    element:set_visible(true)
+                end
             },
             default = {
                 groups_to_hide = { groups.home, groups.aimbot, groups.visuals, groups.models, groups.utility, groups.config }
@@ -2584,15 +2589,18 @@ widgets = {} do
         if not allow_interact and (widgets.frames_alpha or 0) < 0.01 then return end
 
         if allow_interact and m1 and not widgets.is_dragging then
-            for idx = #widgets.order, 1, -1 do
-                local id = widgets.order[idx]
-                if widget_enabled(id) and hit_test(id, mx, my) then
-                    widgets.is_dragging = true
-                    widgets.active_id = id
-                    local _, _, _, _, cx, cy = get_rect(id)
-                    widgets.drag_dx = cx - mx
-                    widgets.drag_dy = cy - my
-                    break
+            local menu_x, menu_y, menu_w, menu_h = get_menu_rect()
+            if not point_in_rect(mx, my, menu_x, menu_y, menu_w, menu_h) then
+                for idx = #widgets.order, 1, -1 do
+                    local id = widgets.order[idx]
+                    if widget_enabled(id) and hit_test(id, mx, my) then
+                        widgets.is_dragging = true
+                        widgets.active_id = id
+                        local _, _, _, _, cx, cy = get_rect(id)
+                        widgets.drag_dx = cx - mx
+                        widgets.drag_dy = cy - my
+                        break
+                    end
                 end
             end
         elseif allow_interact and widgets.is_dragging and m1 then
@@ -2627,7 +2635,6 @@ widgets = {} do
                     st.anchor_y = nil; st.offset_y = cy
                 end
                 widgets.state[id] = st
-                widgets.save_all()
             end
             widgets.is_dragging = false
             widgets.active_id = nil
@@ -2687,7 +2694,10 @@ widgets = {} do
             local hovered = false
             if allow_interact and enabled then
                 local mx3, my3 = ui.mouse_position()
-                hovered = hit_test(id, mx3, my3)
+                local menu_x, menu_y, menu_w, menu_h = get_menu_rect()
+                if not point_in_rect(mx3, my3, menu_x, menu_y, menu_w, menu_h) then
+                    hovered = hit_test(id, mx3, my3)
+                end
             end
 
             local base_alpha = 20
@@ -3281,9 +3291,159 @@ stickman = {} do
     end)
 end
 
-client.set_event_callback('paint', function()
+--@region: confetti
+confetti = {} do
+    confetti.particles = {}
+    confetti.active = false
+    confetti.last_time = nil
+    confetti.colors = {
+        {255, 0, 0},
+        {0, 255, 0},
+        {0, 0, 255},
+        {255, 255, 0},
+        {255, 0, 255},
+        {0, 255, 255},
+        {255, 128, 0},
+        {128, 0, 255}
+    }
+    
+    confetti.start = function(self)
+        self.last_time = nil
+        local sw, sh = client.screen_size()
+        local per_side = 300
+
+        local function spawn_side(side)
+            for i = 1, per_side do
+                local spawn_x, spawn_y
+                local target_x
+
+                if side == 'left' then
+                    spawn_x = math.random(-100, -20)
+                    spawn_y = math.random(sh * 0.3, sh * 0.7)
+                    target_x = math.random(sw * 0.1, sw * 0.45)
+                else
+                    spawn_x = math.random(sw + 20, sw + 100)
+                    spawn_y = math.random(sh * 0.3, sh * 0.7)
+                    target_x = math.random(sw * 0.55, sw * 0.9)
+                end
+
+                local target_y = -100
+                local dx = target_x - spawn_x
+                local dy = target_y - spawn_y
+                local angle_rad = math.atan2(dy, dx)
+                local speed = math.random(100, 140) / 19
+                local vx = math.cos(angle_rad) * speed
+                local vy = math.sin(angle_rad) * speed
+                
+                local p = {
+                    x = spawn_x,
+                    y = spawn_y,
+                    vx = vx + (math.random(-20, 20) / 100),
+                    vy = vy + (math.random(-20, 20) / 100),
+                    gravity = 0.008,
+                    air = 0.994,
+                    wind = (math.random(-1, 1) / 1000),
+                    sway = math.random() * 0.05,
+                    sway_speed = math.random(5, 10) / 1000,
+                    sway_time = 0,
+                    rotation = math.random(0, 360),
+                    rotation_speed = math.random(-3, 3),
+                    size = math.random(5, 9),
+                    len = math.random(14, 24),
+                    color = self.colors[math.random(1, #self.colors)],
+                    lifetime = math.random(1000, 1250),
+                    max_life = 3000,
+                    bounce = 0.2
+                }
+                p.max_life = p.lifetime
+                table.insert(self.particles, p)
+            end
+        end
+        
+        spawn_side('left')
+        spawn_side('right')
+        
+        self.active = true
+        -- client.exec("play weapons/party_horn_01.wav")
+    end
+    
+    confetti.update = function(self)
+        if not self.active then return end
+        
+        local current_time = globals.realtime()
+        if not self.last_time then self.last_time = current_time end
+        local frame_time = current_time - self.last_time
+        self.last_time = current_time
+        
+        local dt = frame_time * 300
+        if dt <= 0 or dt > 5 then dt = 1 end
+        
+        local sw, sh = client.screen_size()
+        local ground = sh - 6
+        for i = #self.particles, 1, -1 do
+            local p = self.particles[i]
+            p.sway_time = (p.sway_time or 0) + (p.sway_speed or 0.008) * dt
+            local sway_offset = math.sin(p.sway_time) * (p.sway or 0.003)
+            
+            local air = math.pow(p.air or 0.98, dt)
+            p.vx = p.vx * air + (p.wind or 0) * dt
+            
+            p.vy = p.vy * air
+            p.vy = p.vy + (p.gravity or 0.01) * dt
+            
+            p.x = p.x + p.vx * dt + sway_offset
+            p.y = p.y + p.vy * dt
+            p.rotation = (p.rotation or 0) + (p.rotation_speed or 0) * 0.5 * dt
+            p.lifetime = p.lifetime - 1 * dt
+            
+            if p.y >= ground then
+                p.y = ground
+                if math.abs(p.vy) > 0.15 then
+                    p.vy = -p.vy * (p.bounce or 0.35)
+                    p.vx = p.vx * 0.8
+                else
+                    p.vy = 0
+                    p.vx = p.vx * 0.92
+                end
+                p.rotation_speed = (p.rotation_speed or 0) * 0.88
+            end
+            
+            if p.lifetime <= 0 or p.y > sh + 100 then
+                table.remove(self.particles, i)
+            end
+        end
+        if #self.particles == 0 then
+            self.active = false
+        end
+    end
+    
+    confetti.draw = function(self)
+        if not self.active then return end
+        
+        for _, p in ipairs(self.particles) do
+            local life = (p.max_life or 1)
+            local alpha = math.floor(255 * math.max(0, math.min(1, (p.lifetime or 0) / life)))
+            local rad = math.rad(p.rotation or 0)
+            local len = (p.len or (p.size or 6) * 2)
+            local x1 = math.floor(p.x + 0.5)
+            local y1 = math.floor(p.y + 0.5)
+            local x2 = math.floor(p.x + math.cos(rad) * len + 0.5)
+            local y2 = math.floor(p.y + math.sin(rad) * len + 0.5)
+            renderer.line(x1, y1, x2, y2, p.color[1], p.color[2], p.color[3], alpha)
+        end
+    end
+end
+--@endregion
+
+interface.home.confetti:set_callback(function()
+    confetti:start()
+end)
+
+client.set_event_callback('paint_ui', function()
     widgets.paint()
     stickman:setup()
+    confetti:update()
+    confetti:draw()
 end)
 
 logging = {} do
@@ -3818,7 +3978,8 @@ widgets.register({
 
 widgets.load_from_db()
 client.set_event_callback("paint_ui", function() widgets.paint_ui() end)
-client.set_event_callback("shutdown", function() widgets.save_all() end)
+client.set_event_callback('pre_config_save', function() widgets.save_all() end)
+client.set_event_callback('post_config_load', function() widgets.load_from_db() end)
 
 
 client.set_event_callback("shutdown", function()
@@ -4720,7 +4881,7 @@ end
 --@region: configs
 configs = {} do
     local DB_KEY = 'noctua.configs'
-    local default_config = "noctua:eyJ3aWRnZXRzIjogeyJkZWJ1Z193aW5kb3ciOiB7ImFuY2hvcl95IjogImNlbnRlciIsIm9mZnNldF95IjogMCwib2Zmc2V0X3giOiA4Mn0sInNjcmVlbl9sb2dnaW5nIjogeyJvZmZzZXRfeSI6IDczMywiYW5jaG9yX3giOiAiY2VudGVyIiwib2Zmc2V0X3giOiAwfSwiY3Jvc3NoYWlyX2luZGljYXRvcnMiOiB7Im9mZnNldF95IjogNTY1LCJhbmNob3JfeCI6ICJjZW50ZXIiLCJvZmZzZXRfeCI6IDB9fSwidmVyc2lvbiI6IDEsInZhbHVlcyI6IHsiYnVpbGRlci5mcmVlc3RhbmQuZGVsYXkiOiAxLCJ2aXN1YWxzLnNlY29uZGFyeSI6ICJzZWNvbmRhcnkgY29sb3IiLCJidWlsZGVyLmFpci5kZWZfeWF3IjogImRlZmF1bHQiLCJ2aXN1YWxzLnZpZXdtb2RlbCI6IHRydWUsImJ1aWxkZXIuZnJlZXN0YW5kLmRlZl9zcGVlZCI6IDEsImJ1aWxkZXIuZGVmYXVsdC4yIjogMCwiYnVpbGRlci5haXIuYnlfbnVtIjogMCwiYnVpbGRlci5zYWZlIGhlYWQuZW5hYmxlIjogZmFsc2UsImJ1aWxkZXIub24gc2hvdC5kZWZlbnNpdmUiOiBmYWxzZSwiYnVpbGRlci5zbG93LmRlZl9waXRjaF9udW0iOiAwLCJidWlsZGVyLmFpcmMuYWRkIjogMCwiYnVpbGRlci5mcmVlc3RhbmQuZXhwYW5kIjogIm9mZiIsImJ1aWxkZXIuZmFrZWxhZy5lbmFibGUiOiBmYWxzZSwiYnVpbGRlci51c2UuZW5hYmxlIjogZmFsc2UsInV0aWxpdHkuYnV5Ym90X3V0aWxpdHkiOiBbImtldmxhciIsImhlbG1ldCIsImRlZnVzZXIiLCJ0YXNlciIsImhlIiwibW9sb3RvdiIsInNtb2tlIl0sImJ1aWxkZXIuaWRsZS5kZWZlbnNpdmUiOiBmYWxzZSwiYnVpbGRlci5mYWtlbGFnLmRlZl9sZWZ0IjogMCwiYnVpbGRlci5zYWZlIGhlYWQuMiI6IDAsImJ1aWxkZXIub24gc2hvdC5iYXNlIjogImxvY2FsIHZpZXciLCJidWlsZGVyLmZha2VsYWcud2F5c19tYW51YWwiOiBmYWxzZSwiYnVpbGRlci51c2UuZGVmZW5zaXZlIjogZmFsc2UsImJ1aWxkZXIubWFudWFsLmVuYWJsZSI6IGZhbHNlLCJidWlsZGVyLmZha2VsYWcuYWRkIjogMCwiYnVpbGRlci5zbG93Lnhfd2F5bGFiZWwiOiAid2F5IDMiLCJidWlsZGVyLmlkbGUuZGVmX3lhdyI6ICJkZWZhdWx0IiwiYnVpbGRlci5kdWNrLjIiOiAwLCJidWlsZGVyLmZyZWVzdGFuZC5kZWZfeWF3IjogImRlZmF1bHQiLCJidWlsZGVyLmFpci43IjogMCwiYnVpbGRlci5mcmVlc3RhbmQueF93YXlsYWJlbCI6ICJ3YXkgMyIsImJ1aWxkZXIuZnJlZXN0YW5kLmJ5X251bSI6IDAsImJ1aWxkZXIuc2xvdy41IjogMCwiYnVpbGRlci51c2Uud2F5c19tYW51YWwiOiBmYWxzZSwiYnVpbGRlci5vbiBzaG90LjMiOiAwLCJidWlsZGVyLnJ1bi55YXdfcmFuZG9taXplIjogMCwiYnVpbGRlci5kdWNrIG1vdmUuZGVmX3lhdyI6ICJkZWZhdWx0IiwiYnVpbGRlci5haXJjLjEiOiAwLCJidWlsZGVyLmR1Y2sgbW92ZS5ieV9tb2RlIjogIm9mZiIsImJ1aWxkZXIuZHVjayBtb3ZlLmVwZF93YXkiOiAwLCJidWlsZGVyLnVzZS5qaXR0ZXIiOiAib2ZmIiwiYnVpbGRlci5kdWNrIG1vdmUuZGVmZW5zaXZlIjogZmFsc2UsImJ1aWxkZXIuZmFrZWxhZy5kZWZfcmlnaHQiOiAwLCJidWlsZGVyLnVzZS43IjogMCwiYnVpbGRlci5mcmVlc3RhbmQuZGVmX3lhd19udW0iOiAwLCJidWlsZGVyLmFpcmMuZGVmX2JvZHkiOiAiZGVmYXVsdCIsImJ1aWxkZXIuZmFrZWxhZy5ieV9tb2RlIjogIm9mZiIsInZpc3VhbHMuem9vbV9hbmltYXRpb25fc3BlZWQiOiA2MCwiYnVpbGRlci5vbiBzaG90LmRlZl95YXdfbnVtIjogMCwiYnVpbGRlci5haXIueF93YXlsYWJlbCI6ICJ3YXkgMyIsImJ1aWxkZXIuaWRsZS5qaXR0ZXIiOiAib2ZmIiwiYnVpbGRlci5mcmVlc3RhbmQuNSI6IDAsImJ1aWxkZXIub24gc2hvdC5qaXR0ZXIiOiAib2ZmIiwiYnVpbGRlci5pZGxlLmppdHRlcl9hZGQiOiAwLCJidWlsZGVyLnJ1bi54X3dheWxhYmVsIjogIndheSAzIiwiYnVpbGRlci5ydW4ud2F5c19tYW51YWwiOiBmYWxzZSwiYnVpbGRlci5haXIuc3BlZWQiOiAxLCJidWlsZGVyLmZha2VsYWcueF93YXlsYWJlbCI6ICJ3YXkgMyIsImJ1aWxkZXIuc2FmZSBoZWFkLmRlZl9ib2R5IjogImRlZmF1bHQiLCJidWlsZGVyLm9uIHNob3QuZGVmX3BpdGNoIjogImRlZmF1bHQiLCJidWlsZGVyLm1hbnVhbC5kZWZfc3BlZWQiOiAxLCJidWlsZGVyLmZha2VsYWcuMyI6IDAsImJ1aWxkZXIuZHVjay53YXlzX21hbnVhbCI6IGZhbHNlLCJidWlsZGVyLm1hbnVhbC5ieV9tb2RlIjogIm9mZiIsImJ1aWxkZXIuaWRsZS54X3dheWxhYmVsIjogIndheSAzIiwidmlzdWFscy52aWV3bW9kZWxfeSI6IDAsImJ1aWxkZXIubWFudWFsLndheXNfbWFudWFsIjogZmFsc2UsImJ1aWxkZXIucnVuLmRlZl95YXciOiAiZGVmYXVsdCIsImJ1aWxkZXIuc2FmZSBoZWFkLmRlbGF5IjogMSwidmlzdWFscy5zdGlja21hbiI6IHRydWUsImJ1aWxkZXIuZGVmYXVsdC5kZWZfcGl0Y2giOiAiZGVmYXVsdCIsImJ1aWxkZXIuZXh0ZW5zaW9ucy53YXJtdXBfYWEiOiBbIndhcm11cCJdLCJ1dGlsaXR5LmtpbGxzYXlfbW9kZXMiOiBbXSwiYnVpbGRlci51c2UueF93YXlsYWJlbCI6ICJ3YXkgMyIsImJ1aWxkZXIuc2FmZSBoZWFkLmRlZmVuc2l2ZSI6IGZhbHNlLCJidWlsZGVyLmR1Y2sueWF3X3JhbmRvbWl6ZSI6IDAsImJ1aWxkZXIuZGVmYXVsdC5zcGVlZCI6IDEsImFpbWJvdC5lbmFibGVkX3Jlc29sdmVyX3R3ZWFrcyI6IHRydWUsImJ1aWxkZXIudXNlLmRlZl95YXdfbnVtIjogMCwiYnVpbGRlci5kdWNrLmppdHRlcl9hZGQiOiAwLCJidWlsZGVyLmFpcmMud2F5c19tYW51YWwiOiBmYWxzZSwiYnVpbGRlci5zYWZlIGhlYWQuNiI6IDAsImJ1aWxkZXIuYWlyLmJhc2UiOiAibG9jYWwgdmlldyIsImJ1aWxkZXIuZHVjay5kZWZfeWF3IjogImRlZmF1bHQiLCJidWlsZGVyLnJ1bi42IjogMCwiYnVpbGRlci5kdWNrIG1vdmUuMSI6IDAsImJ1aWxkZXIuZmFrZWxhZy5qaXR0ZXJfYWRkIjogMCwiYnVpbGRlci5pZGxlLnhfd2F5IjogMywiYnVpbGRlci5kdWNrLmRlZmVuc2l2ZSI6IGZhbHNlLCJidWlsZGVyLmV4dGVuc2lvbnMuYW50aV9icnV0ZWZvcmNlIjogdHJ1ZSwiYnVpbGRlci5haXIuZXBkX2xlZnQiOiAwLCJidWlsZGVyLnNsb3cuZGVsYXkiOiAxLCJidWlsZGVyLmZha2VsYWcuaml0dGVyIjogIm9mZiIsImJ1aWxkZXIubWFudWFsLjciOiAwLCJhaW1ib3QucXVpY2tfc3RvcCI6IGZhbHNlLCJidWlsZGVyLmV4dGVuc2lvbnMuYW50aV9icnV0ZWZvcmNlX3R5cGUiOiAiaW5jcmVhc2UiLCJidWlsZGVyLmRlZmF1bHQuNiI6IDAsInZpc3VhbHMuYWNjZW50IjogImFjY2VudCBjb2xvciIsImJ1aWxkZXIuc2FmZSBoZWFkLnhfd2F5bGFiZWwiOiAid2F5IDMiLCJidWlsZGVyLmlkbGUuYnlfbW9kZSI6ICJvZmYiLCJidWlsZGVyLm9uIHNob3Quc3BlZWQiOiAxLCJ2aXN1YWxzLmxvZ2dpbmdfb3B0aW9uc19zY3JlZW4iOiBbImhpdCIsIm1pc3MiLCJldmVudHMiXSwidmlzdWFscy5sb2dnaW5nX29wdGlvbnMiOiBbImNvbnNvbGUiLCJzY3JlZW4iXSwiYnVpbGRlci5vbiBzaG90LndheXNfbWFudWFsIjogZmFsc2UsImJ1aWxkZXIuYWlyYy40IjogMCwidmlzdWFscy5jcm9zc2hhaXJfaW5kaWNhdG9ycyI6IHRydWUsImJ1aWxkZXIuZHVjayBtb3ZlLmppdHRlcl9hZGQiOiAwLCJidWlsZGVyLmRlZmF1bHQuZXBkX3dheSI6IDAsInZpc3VhbHMubG9nZ2luZ19zbGlkZXIiOiAyNDAsImJ1aWxkZXIuYWlyLmRlZl9waXRjaF9udW0iOiAwLCJidWlsZGVyLnNhZmUgaGVhZC41IjogMCwiYnVpbGRlci5kdWNrLmRlZl9waXRjaF9udW0iOiAwLCJidWlsZGVyLmZyZWVzdGFuZC5icmVha19sYyI6IGZhbHNlLCJidWlsZGVyLnNsb3cuZGVmX3BpdGNoIjogImRlZmF1bHQiLCJidWlsZGVyLnNsb3cuaml0dGVyIjogIm9mZiIsImJ1aWxkZXIuZHVjayBtb3ZlLmJhc2UiOiAibG9jYWwgdmlldyIsImJ1aWxkZXIuaWRsZS53YXlzX21hbnVhbCI6IGZhbHNlLCJidWlsZGVyLmFpcmMuZGVmZW5zaXZlIjogZmFsc2UsImJ1aWxkZXIuZHVjay43IjogMCwiYnVpbGRlci5vbiBzaG90LjIiOiAwLCJidWlsZGVyLmlkbGUuYmFzZSI6ICJsb2NhbCB2aWV3IiwiYnVpbGRlci5vbiBzaG90LmRlZl95YXciOiAiZGVmYXVsdCIsImJ1aWxkZXIuZnJlZXN0YW5kLmRlZl9ib2R5IjogImRlZmF1bHQiLCJidWlsZGVyLnNhZmUgaGVhZC5qaXR0ZXIiOiAib2ZmIiwiYnVpbGRlci51c2Uuaml0dGVyX2FkZCI6IDAsImJ1aWxkZXIuZHVjayBtb3ZlLnhfd2F5bGFiZWwiOiAid2F5IDMiLCJidWlsZGVyLmFpcmMuZGVmX2xlZnQiOiAwLCJidWlsZGVyLnNsb3cuNiI6IDAsImJ1aWxkZXIuZnJlZXN0YW5kLmJ5X21vZGUiOiAib2ZmIiwiYnVpbGRlci51c2UueWF3X3JhbmRvbWl6ZSI6IDAsImJ1aWxkZXIuZHVjay4zIjogMCwiYnVpbGRlci5pZGxlLjUiOiAwLCJidWlsZGVyLnVzZS40IjogMCwiYnVpbGRlci5haXIuZGVmX3JpZ2h0IjogMCwiYnVpbGRlci5kZWZhdWx0LmFkZCI6IDAsImJ1aWxkZXIuZHVjayBtb3ZlLmRlZl9ib2R5IjogImRlZmF1bHQiLCJidWlsZGVyLm9uIHNob3QuZGVmX2JvZHkiOiAiZGVmYXVsdCIsImJ1aWxkZXIuZmFrZWxhZy4yIjogMCwiYnVpbGRlci5ydW4uMiI6IDAsImJ1aWxkZXIudXNlLmV4cGFuZCI6ICJvZmYiLCJidWlsZGVyLm1hbnVhbC5zcGVlZCI6IDEsInZpc3VhbHMudmlld21vZGVsX2ZvdiI6IDE1LCJidWlsZGVyLmR1Y2suYWRkIjogMCwiYnVpbGRlci5vbiBzaG90LmJ5X251bSI6IDAsImJ1aWxkZXIudXNlLmRlZl9waXRjaF9udW0iOiAwLCJidWlsZGVyLnJ1bi5kZWZfeWF3X251bSI6IDAsImJ1aWxkZXIuZXh0ZW5zaW9ucy5zYWZlX2hlYWQiOiBbImtuaWZlIiwiemV1cyJdLCJidWlsZGVyLmR1Y2sgbW92ZS5kZWZfeWF3X251bSI6IDAsImJ1aWxkZXIuZnJlZXN0YW5kLnNwZWVkIjogMSwiYnVpbGRlci5mcmVlc3RhbmQuNCI6IDAsImJ1aWxkZXIuZGVmYXVsdC5kZWZlbnNpdmUiOiB0cnVlLCJidWlsZGVyLmRlZmF1bHQud2F5c19tYW51YWwiOiBmYWxzZSwiYnVpbGRlci5ydW4uNyI6IDAsImJ1aWxkZXIuZHVjay54X3dheSI6IDMsImJ1aWxkZXIub24gc2hvdC5leHBhbmQiOiAib2ZmIiwiYnVpbGRlci5mcmVlc3RhbmQuZXBkX3dheSI6IDAsInZpc3VhbHMudmd1aSI6ICJ2Z3VpIGNvbG9yIiwiYnVpbGRlci5leHRlbnNpb25zLmZyZWVzdGFuZGluZyI6IGZhbHNlLCJidWlsZGVyLmR1Y2sgbW92ZS53YXlzX21hbnVhbCI6IGZhbHNlLCJ2aXN1YWxzLnZpZXdtb2RlbF94IjogMCwiYnVpbGRlci5haXJjLmVuYWJsZSI6IGZhbHNlLCJidWlsZGVyLmR1Y2sgbW92ZS5lcGRfbGVmdCI6IDAsInZpc3VhbHMuem9vbV9hbmltYXRpb24iOiB0cnVlLCJidWlsZGVyLmFpci40IjogMCwiYnVpbGRlci5pZGxlLjYiOiAwLCJ2aXN1YWxzLmVuYWJsZWRfdmlzdWFscyI6IHRydWUsImFpbWJvdC5zaWxlbnRfc2hvdCI6IHRydWUsImJ1aWxkZXIucnVuLmppdHRlcl9hZGQiOiAwLCJidWlsZGVyLmFpcmMuaml0dGVyIjogIm9mZiIsImJ1aWxkZXIuZmFrZWxhZy4xIjogMCwiYnVpbGRlci51c2UuZGVmX3BpdGNoIjogImRlZmF1bHQiLCJidWlsZGVyLnJ1bi54X3dheSI6IDMsImJ1aWxkZXIuZHVjayBtb3ZlLmVuYWJsZSI6IGZhbHNlLCJidWlsZGVyLmFpcmMuZGVmX3lhd19udW0iOiAwLCJidWlsZGVyLmRlZmF1bHQuZXBkX3JpZ2h0IjogMjgsImJ1aWxkZXIuaWRsZS5lbmFibGUiOiBmYWxzZSwiYnVpbGRlci5haXJjLjUiOiAwLCJidWlsZGVyLm1hbnVhbC4yIjogMCwiYnVpbGRlci5kZWZhdWx0LmppdHRlcl9hZGQiOiAwLCJidWlsZGVyLmlkbGUuYnlfbnVtIjogMCwiYnVpbGRlci5haXIuMSI6IDAsImJ1aWxkZXIucnVuLmFkZCI6IDAsImJ1aWxkZXIuc2xvdy53YXlzX21hbnVhbCI6IGZhbHNlLCJidWlsZGVyLmRlZmF1bHQuNSI6IDAsImJ1aWxkZXIuaWRsZS5kZWZfbGVmdCI6IDAsImJ1aWxkZXIuZmFrZWxhZy5kZWZfcGl0Y2giOiAiZGVmYXVsdCIsImJ1aWxkZXIubWFudWFsLjYiOiAwLCJidWlsZGVyLmR1Y2suZGVsYXkiOiAxLCJidWlsZGVyLmR1Y2sgbW92ZS5qaXR0ZXIiOiAib2ZmIiwiYnVpbGRlci5zYWZlIGhlYWQuZXBkX3JpZ2h0IjogMCwiYnVpbGRlci5haXJjLmRlbGF5IjogMSwiYnVpbGRlci5kZWZhdWx0LjEiOiAwLCJidWlsZGVyLmFpci5kZWZfcGl0Y2giOiAiZGVmYXVsdCIsImJ1aWxkZXIudXNlLmRlZl95YXciOiAiZGVmYXVsdCIsImJ1aWxkZXIuc2xvdy5lcGRfd2F5IjogMCwidmlzdWFscy53aW5kb3ciOiBmYWxzZSwidXRpbGl0eS5idXlib3RfcHJpbWFyeSI6ICJzY291dCIsImJ1aWxkZXIubWFudWFsLmFkZCI6IDAsImJ1aWxkZXIubWFudWFsLmVwZF9sZWZ0IjogMCwiYnVpbGRlci5kdWNrIG1vdmUuZGVmX3NwZWVkIjogMSwiYnVpbGRlci5haXJjLmJ5X251bSI6IDAsImJ1aWxkZXIucnVuLmRlZl9ib2R5IjogImRlZmF1bHQiLCJidWlsZGVyLmFpci55YXdfcmFuZG9taXplIjogMCwiYnVpbGRlci5haXJjLmVwZF9yaWdodCI6IDAsImJ1aWxkZXIuZnJlZXN0YW5kLmVuYWJsZSI6IGZhbHNlLCJidWlsZGVyLmR1Y2sgbW92ZS4zIjogMCwiYnVpbGRlci5mYWtlbGFnLmV4cGFuZCI6ICJvZmYiLCJidWlsZGVyLnNhZmUgaGVhZC40IjogMCwiYnVpbGRlci5vbiBzaG90LmppdHRlcl9hZGQiOiAwLCJidWlsZGVyLmlkbGUuZXhwYW5kIjogIm9mZiIsImJ1aWxkZXIuZnJlZXN0YW5kLmJhc2UiOiAibG9jYWwgdmlldyIsImJ1aWxkZXIub24gc2hvdC5kZWZfcmlnaHQiOiAwLCJidWlsZGVyLmRlZmF1bHQuZGVmX3NwZWVkIjogMSwiYnVpbGRlci5vbiBzaG90LjUiOiAwLCJ2aXN1YWxzLmxvZ2dpbmciOiB0cnVlLCJidWlsZGVyLnNsb3cuMyI6IDAsImJ1aWxkZXIuZHVjayBtb3ZlLjciOiAwLCJidWlsZGVyLnNhZmUgaGVhZC5kZWZfeWF3IjogImRlZmF1bHQiLCJidWlsZGVyLnNhZmUgaGVhZC5icmVha19sYyI6IGZhbHNlLCJidWlsZGVyLm1hbnVhbC5kZWZfYm9keSI6ICJkZWZhdWx0IiwiYnVpbGRlci5zYWZlIGhlYWQuZXBkX3dheSI6IDAsImJ1aWxkZXIuZnJlZXN0YW5kLmRlZmVuc2l2ZSI6IGZhbHNlLCJidWlsZGVyLmFpcmMuMyI6IDAsImJ1aWxkZXIubWFudWFsLnhfd2F5IjogMywiYnVpbGRlci5pZGxlLmRlZl9waXRjaCI6ICJkZWZhdWx0IiwiYnVpbGRlci51c2UuZXBkX3JpZ2h0IjogMCwidmlzdWFscy5jcm9zc2hhaXJfYW5pbWF0ZV9zY29wZSI6IHRydWUsImJ1aWxkZXIuZHVjayBtb3ZlLnhfd2F5IjogMywiYnVpbGRlci5mYWtlbGFnLmRlZl9zcGVlZCI6IDEsImJ1aWxkZXIuc2FmZSBoZWFkLnhfd2F5IjogMywiYnVpbGRlci5mYWtlbGFnLjUiOiAwLCJidWlsZGVyLnNsb3cuaml0dGVyX2FkZCI6IDAsImJ1aWxkZXIuZnJlZXN0YW5kLjciOiAwLCJidWlsZGVyLm1hbnVhbC5icmVha19sYyI6IGZhbHNlLCJ1dGlsaXR5LmJ1eWJvdCI6IHRydWUsImJ1aWxkZXIuZmFrZWxhZy5iYXNlIjogImxvY2FsIHZpZXciLCJidWlsZGVyLmFpci5kZWZfc3BlZWQiOiAxLCJidWlsZGVyLm9uIHNob3QueF93YXkiOiAzLCJidWlsZGVyLnVzZS41IjogMCwiYnVpbGRlci5ydW4uNCI6IDAsImJ1aWxkZXIuYWlyLndheXNfbWFudWFsIjogZmFsc2UsImJ1aWxkZXIuZnJlZXN0YW5kLmppdHRlcl9hZGQiOiAwLCJidWlsZGVyLnNhZmUgaGVhZC5kZWZfcGl0Y2hfbnVtIjogMCwiYnVpbGRlci5haXIuaml0dGVyX2FkZCI6IDAsInZpc3VhbHMuYXNwZWN0X3JhdGlvX3NsaWRlciI6IDEyMCwiYnVpbGRlci5pZGxlLnNwZWVkIjogMSwiYnVpbGRlci5vbiBzaG90LmVwZF93YXkiOiAwLCJidWlsZGVyLm1hbnVhbC41IjogMCwiYnVpbGRlci5leHRlbnNpb25zLm1hbnVhbF9hYSI6IGZhbHNlLCJidWlsZGVyLmRlZmF1bHQuZXhwYW5kIjogImxlZnQvcmlnaHQiLCJidWlsZGVyLnNsb3cuYnlfbnVtIjogMCwiYnVpbGRlci5zYWZlIGhlYWQuZGVmX3NwZWVkIjogMSwiYnVpbGRlci51c2UuZXBkX3dheSI6IDAsImJ1aWxkZXIuZnJlZXN0YW5kLnlhd19yYW5kb21pemUiOiAwLCJidWlsZGVyLnNhZmUgaGVhZC5iYXNlIjogImxvY2FsIHZpZXciLCJidWlsZGVyLmR1Y2suYmFzZSI6ICJsb2NhbCB2aWV3IiwiYnVpbGRlci5tYW51YWwuaml0dGVyIjogIm9mZiIsImJ1aWxkZXIuYWlyYy4yIjogMCwiYnVpbGRlci5mYWtlbGFnLjQiOiAwLCJidWlsZGVyLmZyZWVzdGFuZC5kZWZfcGl0Y2giOiAiZGVmYXVsdCIsImJ1aWxkZXIuYWlyLjUiOiAwLCJidWlsZGVyLmFpcmMuZGVmX3BpdGNoX251bSI6IDAsImJ1aWxkZXIuZGVmYXVsdC5kZWZfeWF3IjogImRlbGF5ZWQiLCJidWlsZGVyLmRlZmF1bHQuNCI6IDAsImJ1aWxkZXIucnVuLmJhc2UiOiAibG9jYWwgdmlldyIsImJ1aWxkZXIuaWRsZS5kZWxheSI6IDEsInZpc3VhbHMudmlld21vZGVsX3oiOiAwLCJ1dGlsaXR5LmNsYW50YWciOiBmYWxzZSwiYWltYm90LmVuYWJsZWRfYWltYm90IjogdHJ1ZSwidmlzdWFscy5zcGF3bl96b29tIjogdHJ1ZSwiYnVpbGRlci5mYWtlbGFnLmJyZWFrX2xjIjogZmFsc2UsImJ1aWxkZXIuYWlyYy5iYXNlIjogImxvY2FsIHZpZXciLCJidWlsZGVyLmR1Y2suZGVmX2JvZHkiOiAiZGVmYXVsdCIsInZpc3VhbHMuZ3JvdXAiOiAiZ2VuZXJhbCIsImJ1aWxkZXIuZnJlZXN0YW5kLmRlZl9sZWZ0IjogMCwiYnVpbGRlci5zYWZlIGhlYWQuZGVmX2xlZnQiOiAwLCJidWlsZGVyLnJ1bi5kZWZfcGl0Y2giOiAiZGVmYXVsdCIsImJ1aWxkZXIuaWRsZS5icmVha19sYyI6IGZhbHNlLCJidWlsZGVyLmZyZWVzdGFuZC5hZGQiOiAwLCJidWlsZGVyLm9uIHNob3QuYnlfbW9kZSI6ICJvZmYiLCJidWlsZGVyLmR1Y2sgbW92ZS5kZWZfcGl0Y2giOiAiZGVmYXVsdCIsImJ1aWxkZXIuZHVjay5qaXR0ZXIiOiAib2ZmIiwiYnVpbGRlci5haXJjLmRlZl9zcGVlZCI6IDEsImJ1aWxkZXIuc2FmZSBoZWFkLndheXNfbWFudWFsIjogZmFsc2UsImJ1aWxkZXIuYWlyYy54X3dheSI6IDMsImJ1aWxkZXIuZHVjayBtb3ZlLjYiOiAwLCJidWlsZGVyLm1hbnVhbC5kZWZfcGl0Y2hfbnVtIjogMCwiYnVpbGRlci5tYW51YWwuMSI6IDAsImJ1aWxkZXIuZmFrZWxhZy5kZWZfcGl0Y2hfbnVtIjogMCwiYnVpbGRlci5vbiBzaG90LjEiOiAwLCJidWlsZGVyLmlkbGUuZGVmX2JvZHkiOiAiZGVmYXVsdCIsImJ1aWxkZXIuZHVjayBtb3ZlLmJyZWFrX2xjIjogZmFsc2UsImJ1aWxkZXIudXNlLjEiOiAwLCJidWlsZGVyLmFpcmMuNiI6IDAsImJ1aWxkZXIuYWlyLjIiOiAwLCJidWlsZGVyLm1hbnVhbC5kZWZfcmlnaHQiOiAwLCJidWlsZGVyLmRlZmF1bHQuaml0dGVyIjogIm9mZnNldCIsImJ1aWxkZXIuZHVjay5kZWZfc3BlZWQiOiAxLCJidWlsZGVyLnNsb3cuZGVmX3lhd19udW0iOiAwLCJidWlsZGVyLmZha2VsYWcuZGVmX3lhd19udW0iOiAwLCJidWlsZGVyLmFpci5kZWZlbnNpdmUiOiBmYWxzZSwiYnVpbGRlci5mcmVlc3RhbmQuMyI6IDAsImJ1aWxkZXIuZGVmYXVsdC5iYXNlIjogImxvY2FsIHZpZXciLCJidWlsZGVyLmRlZmF1bHQueF93YXlsYWJlbCI6ICJ3YXkgMyIsImJ1aWxkZXIuZGVmYXVsdC5kZWZfcGl0Y2hfbnVtIjogMCwiYnVpbGRlci5kZWZhdWx0LmJyZWFrX2xjIjogdHJ1ZSwiYnVpbGRlci5mYWtlbGFnLmVwZF93YXkiOiAwLCJidWlsZGVyLmRlZmF1bHQuZGVmX3lhd19udW0iOiAwLCJidWlsZGVyLmR1Y2sgbW92ZS5hZGQiOiAwLCJidWlsZGVyLm1hbnVhbC5iYXNlIjogImxvY2FsIHZpZXciLCJidWlsZGVyLmlkbGUuNyI6IDAsImJ1aWxkZXIuZGVmYXVsdC5kZWZfYm9keSI6ICJqaXR0ZXIiLCJidWlsZGVyLmV4dGVuc2lvbnMuZWRnZV95YXciOiBmYWxzZSwiYnVpbGRlci5kZWZhdWx0LmRlZl9yaWdodCI6IDI2LCJidWlsZGVyLnVzZS5hZGQiOiAwLCJidWlsZGVyLmRlZmF1bHQuYnlfbW9kZSI6ICJqaXR0ZXIiLCJidWlsZGVyLnNsb3cuc3BlZWQiOiAxLCJidWlsZGVyLmRlZmF1bHQuYnlfbnVtIjogLTI0LCJidWlsZGVyLm9uIHNob3QuZGVsYXkiOiAxLCJidWlsZGVyLnVzZS5ieV9tb2RlIjogIm9mZiIsImJ1aWxkZXIuZGVmYXVsdC4zIjogMCwiYnVpbGRlci5pZGxlLmFkZCI6IDAsImJ1aWxkZXIuZGVmYXVsdC5kZWxheSI6IDIsImJ1aWxkZXIuZGVmYXVsdC5kZWZfbGVmdCI6IC0zNCwiYnVpbGRlci5kdWNrLjUiOiAwLCJhaW1ib3Quc21hcnRfc2FmZXR5IjogdHJ1ZSwidmlzdWFscy56b29tX2FuaW1hdGlvbl92YWx1ZSI6IDUsImJ1aWxkZXIuZHVjayBtb3ZlLmRlZl9yaWdodCI6IDAsInV0aWxpdHkua2lsbHNheSI6IGZhbHNlLCJidWlsZGVyLmZha2VsYWcuc3BlZWQiOiAxLCJidWlsZGVyLmR1Y2suZGVmX2xlZnQiOiAwLCJidWlsZGVyLmFpcmMuZGVmX3lhdyI6ICJkZWZhdWx0IiwiYnVpbGRlci5kdWNrIG1vdmUuZGVmX2xlZnQiOiAwLCJidWlsZGVyLmlkbGUueWF3X3JhbmRvbWl6ZSI6IDAsImJ1aWxkZXIuZmFrZWxhZy5lcGRfcmlnaHQiOiAwLCJidWlsZGVyLnNhZmUgaGVhZC5qaXR0ZXJfYWRkIjogMCwiYnVpbGRlci5haXIuZGVmX2JvZHkiOiAiZGVmYXVsdCIsImJ1aWxkZXIuZHVjayBtb3ZlLjQiOiAwLCJidWlsZGVyLm9uIHNob3QuZXBkX3JpZ2h0IjogMCwiYnVpbGRlci5vbiBzaG90LmVwZF9sZWZ0IjogMCwiYnVpbGRlci5vbiBzaG90LjciOiAwLCJidWlsZGVyLmlkbGUuZXBkX3JpZ2h0IjogMCwiYnVpbGRlci5leHRlbnNpb25zLmxhZGRlciI6IHRydWUsImJ1aWxkZXIub24gc2hvdC5hZGQiOiAwLCJidWlsZGVyLmR1Y2suZGVmX3lhd19udW0iOiAwLCJidWlsZGVyLmlkbGUuMSI6IDAsImJ1aWxkZXIucnVuLnNwZWVkIjogMSwiYnVpbGRlci5tYW51YWwuaml0dGVyX2FkZCI6IDAsImJ1aWxkZXIuZHVjay4xIjogMCwiYnVpbGRlci5zYWZlIGhlYWQuc3BlZWQiOiAxLCJidWlsZGVyLmlkbGUuMyI6IDAsInZpc3VhbHMubG9nZ2luZ19vcHRpb25zX2NvbnNvbGUiOiBbImhpdCIsIm1pc3MiLCJidXkiLCJldmVudHMiXSwiYnVpbGRlci5tYW51YWwuZGVmX3lhdyI6ICJkZWZhdWx0IiwidXRpbGl0eS5idXlib3Rfc2Vjb25kYXJ5IjogInRlYy05IC8gZml2ZS1zIC8gY3otNzUiLCJidWlsZGVyLmR1Y2suYnlfbnVtIjogMCwiYnVpbGRlci5ydW4uZGVmZW5zaXZlIjogZmFsc2UsImJ1aWxkZXIuZmFrZWxhZy5kZWZfYm9keSI6ICJkZWZhdWx0IiwiYnVpbGRlci5tYW51YWwuZXBkX3dheSI6IDAsImJ1aWxkZXIuc2xvdy5hZGQiOiAwLCJidWlsZGVyLmV4dGVuc2lvbnMuZGVmZW5zaXZlIjogWyJvbiBzaG90IiwiZmxhc2hlZCIsImRhbWFnZSByZWNlaXZlZCIsInJlbG9hZGluZyIsIndlYXBvbiBzd2l0Y2giXSwiYnVpbGRlci5kdWNrLmV4cGFuZCI6ICJvZmYiLCJidWlsZGVyLmZha2VsYWcueF93YXkiOiAzLCJidWlsZGVyLmR1Y2suNiI6IDAsImJ1aWxkZXIuZHVjay40IjogMCwiYnVpbGRlci5ydW4uYnJlYWtfbGMiOiBmYWxzZSwiYnVpbGRlci5mcmVlc3RhbmQuZGVmX3JpZ2h0IjogMCwiYnVpbGRlci5vbiBzaG90Lnlhd19yYW5kb21pemUiOiAwLCJhaW1ib3QuZm9yY2VfcmVjaGFyZ2UiOiB0cnVlLCJidWlsZGVyLmFpcmMueF93YXlsYWJlbCI6ICJ3YXkgMyIsImJ1aWxkZXIuZXh0ZW5zaW9ucy5tYW51YWxfYWFfaG90a2V5Lm1hbnVhbF9iYWNrIjogZmFsc2UsImJ1aWxkZXIuaWRsZS5kZWZfcmlnaHQiOiAwLCJidWlsZGVyLnNsb3cuMSI6IDAsImJ1aWxkZXIuYWlyYy5lcGRfbGVmdCI6IDAsInZpc3VhbHMuYXNwZWN0X3JhdGlvIjogdHJ1ZSwiYnVpbGRlci5mcmVlc3RhbmQuZGVmX3BpdGNoX251bSI6IDAsImJ1aWxkZXIudXNlLmRlZl9sZWZ0IjogMCwiYnVpbGRlci5vbiBzaG90LjQiOiAwLCJidWlsZGVyLnNhZmUgaGVhZC4zIjogMCwiYnVpbGRlci5mYWtlbGFnLjYiOiAwLCJidWlsZGVyLnNsb3cueWF3X3JhbmRvbWl6ZSI6IDAsImJ1aWxkZXIuc2xvdy40IjogMCwiYnVpbGRlci51c2UuZXBkX2xlZnQiOiAwLCJidWlsZGVyLnNhZmUgaGVhZC55YXdfcmFuZG9taXplIjogMCwiYnVpbGRlci5vbiBzaG90Lnhfd2F5bGFiZWwiOiAid2F5IDMiLCJidWlsZGVyLmZyZWVzdGFuZC42IjogMCwiYnVpbGRlci51c2UuYnJlYWtfbGMiOiBmYWxzZSwiYnVpbGRlci5haXJjLmVwZF93YXkiOiAwLCJidWlsZGVyLmFpci5leHBhbmQiOiAib2ZmIiwiYnVpbGRlci5zYWZlIGhlYWQuYWRkIjogMCwiYnVpbGRlci5kZWZhdWx0LmVwZF9sZWZ0IjogLTI4LCJidWlsZGVyLnNhZmUgaGVhZC5kZWZfeWF3X251bSI6IDAsImJ1aWxkZXIuYWlyLmRlZl95YXdfbnVtIjogMCwiYnVpbGRlci51c2UuMiI6IDAsImJ1aWxkZXIub24gc2hvdC5lbmFibGUiOiBmYWxzZSwiYnVpbGRlci5zbG93LmRlZl9zcGVlZCI6IDEsImJ1aWxkZXIuZHVjayBtb3ZlLmJ5X251bSI6IDAsImJ1aWxkZXIuc2xvdy5lcGRfcmlnaHQiOiAwLCJidWlsZGVyLmV4dGVuc2lvbnMubWFudWFsX2FhX2hvdGtleS5tYW51YWxfbGVmdCI6IGZhbHNlLCJidWlsZGVyLmR1Y2sgbW92ZS5leHBhbmQiOiAib2ZmIiwiYnVpbGRlci5zbG93LjIiOiAwLCJidWlsZGVyLmZyZWVzdGFuZC5lcGRfbGVmdCI6IDAsImJ1aWxkZXIuZHVjay5lcGRfcmlnaHQiOiAwLCJidWlsZGVyLnNsb3cuZGVmZW5zaXZlIjogZmFsc2UsInV0aWxpdHkuaGl0c291bmQiOiB0cnVlLCJidWlsZGVyLnJ1bi5qaXR0ZXIiOiAib2ZmIiwiYnVpbGRlci51c2UuYnlfbnVtIjogMCwiYnVpbGRlci5zbG93Lnhfd2F5IjogMywiYnVpbGRlci5zbG93LmV4cGFuZCI6ICJvZmYiLCJidWlsZGVyLmZyZWVzdGFuZC4yIjogMCwiYnVpbGRlci5ydW4uYnlfbnVtIjogMCwiYnVpbGRlci5zbG93LmRlZl95YXciOiAiZGVmYXVsdCIsImJ1aWxkZXIuc2xvdy5lbmFibGUiOiBmYWxzZSwiYnVpbGRlci5zbG93LmRlZl9sZWZ0IjogMCwiYnVpbGRlci5zYWZlIGhlYWQuYnlfbnVtIjogMCwiYnVpbGRlci5tYW51YWwueF93YXlsYWJlbCI6ICJ3YXkgMyIsInZpc3VhbHMudGhpcmRwZXJzb24iOiB0cnVlLCJidWlsZGVyLnJ1bi5lcGRfd2F5IjogMCwiYnVpbGRlci5tYW51YWwuZGVmX3lhd19udW0iOiAwLCJidWlsZGVyLnNhZmUgaGVhZC5lcGRfbGVmdCI6IDAsImJ1aWxkZXIudXNlLmRlbGF5IjogMSwiYnVpbGRlci51c2UuZGVmX3JpZ2h0IjogMCwiYnVpbGRlci5haXJjLmJ5X21vZGUiOiAib2ZmIiwiYnVpbGRlci5mYWtlbGFnLmRlZmVuc2l2ZSI6IGZhbHNlLCJidWlsZGVyLmRlZmF1bHQuNyI6IDAsImJ1aWxkZXIudXNlLnNwZWVkIjogMSwiYnVpbGRlci5ydW4uZXBkX3JpZ2h0IjogMCwiYnVpbGRlci5haXJjLnlhd19yYW5kb21pemUiOiAwLCJidWlsZGVyLnVzZS4zIjogMCwiYnVpbGRlci5ydW4uNSI6IDAsImJ1aWxkZXIuZmFrZWxhZy55YXdfcmFuZG9taXplIjogMCwiYnVpbGRlci5leHRlbnNpb25zLmFudGlfYmFja3N0YWIiOiB0cnVlLCJidWlsZGVyLnNhZmUgaGVhZC4xIjogMCwiYnVpbGRlci51c2UuNiI6IDAsImJ1aWxkZXIuZmFrZWxhZy5ieV9udW0iOiAwLCJidWlsZGVyLnNsb3cuZGVmX2JvZHkiOiAiZGVmYXVsdCIsImJ1aWxkZXIuc2xvdy5lcGRfbGVmdCI6IDAsImJ1aWxkZXIuYWlyLmJyZWFrX2xjIjogZmFsc2UsImJ1aWxkZXIucnVuLmV4cGFuZCI6ICJvZmYiLCJ2aXN1YWxzLnRoaXJkcGVyc29uX3NsaWRlciI6IDQwLCJidWlsZGVyLnJ1bi5lcGRfbGVmdCI6IDAsImJ1aWxkZXIuc2xvdy5iYXNlIjogImxvY2FsIHZpZXciLCJidWlsZGVyLmR1Y2suZW5hYmxlIjogZmFsc2UsImJ1aWxkZXIub24gc2hvdC5icmVha19sYyI6IGZhbHNlLCJidWlsZGVyLnNhZmUgaGVhZC5leHBhbmQiOiAib2ZmIiwiYnVpbGRlci5pZGxlLmRlZl9zcGVlZCI6IDEsImJ1aWxkZXIuZGVmYXVsdC55YXdfcmFuZG9taXplIjogMCwiYnVpbGRlci5kdWNrLmJ5X21vZGUiOiAib2ZmIiwiYWltYm90LnJlc29sdmVyX21vZGUiOiAib3dsIiwiYnVpbGRlci5vbiBzaG90LmRlZl9zcGVlZCI6IDEsImJ1aWxkZXIucnVuLmRlZl9zcGVlZCI6IDEsImJ1aWxkZXIuc2xvdy5kZWZfcmlnaHQiOiAwLCJidWlsZGVyLmR1Y2suZGVmX3BpdGNoIjogImRlZmF1bHQiLCJidWlsZGVyLmZha2VsYWcuZGVmX3lhdyI6ICJkZWZhdWx0IiwiYnVpbGRlci5ydW4uZGVmX3BpdGNoX251bSI6IDAsImJ1aWxkZXIucnVuLjMiOiAwLCJidWlsZGVyLmZha2VsYWcuNyI6IDAsImJ1aWxkZXIuYWlyLmppdHRlciI6ICJvZmYiLCJidWlsZGVyLmFpci5lcGRfcmlnaHQiOiAwLCJidWlsZGVyLmFpcmMuNyI6IDAsImJ1aWxkZXIuZHVjayBtb3ZlLnlhd19yYW5kb21pemUiOiAwLCJidWlsZGVyLmZyZWVzdGFuZC4xIjogMCwiYnVpbGRlci5kZWZhdWx0Lnhfd2F5IjogMywiYnVpbGRlci5mcmVlc3RhbmQuZXBkX3JpZ2h0IjogMCwiYnVpbGRlci51c2UuZGVmX3NwZWVkIjogMSwiYnVpbGRlci5zbG93LmJyZWFrX2xjIjogZmFsc2UsImJ1aWxkZXIuZnJlZXN0YW5kLndheXNfbWFudWFsIjogZmFsc2UsImJ1aWxkZXIubWFudWFsLmRlZl9waXRjaCI6ICJkZWZhdWx0IiwiYnVpbGRlci5leHRlbnNpb25zLm1hbnVhbF9hYV9ob3RrZXkubWFudWFsX2ZvcndhcmQiOiBmYWxzZSwiYnVpbGRlci5mcmVlc3RhbmQuaml0dGVyIjogIm9mZiIsImJ1aWxkZXIub24gc2hvdC5kZWZfbGVmdCI6IDAsImJ1aWxkZXIucnVuLmVuYWJsZSI6IGZhbHNlLCJidWlsZGVyLnJ1bi5kZWZfcmlnaHQiOiAwLCJidWlsZGVyLm1hbnVhbC5kZWxheSI6IDEsImJ1aWxkZXIuZHVjay5lcGRfd2F5IjogMCwiYnVpbGRlci5kdWNrIG1vdmUuc3BlZWQiOiAxLCJidWlsZGVyLmFpci5lbmFibGUiOiBmYWxzZSwiYnVpbGRlci5haXIuNiI6IDAsImJ1aWxkZXIubWFudWFsLmV4cGFuZCI6ICJvZmYiLCJidWlsZGVyLmFpci5kZWZfbGVmdCI6IDAsImJ1aWxkZXIuYWlyYy5kZWZfcmlnaHQiOiAwLCJidWlsZGVyLmFpci5ieV9tb2RlIjogIm9mZiIsImJ1aWxkZXIuZHVjay5lcGRfbGVmdCI6IDAsImJ1aWxkZXIuYWlyLmVwZF93YXkiOiAwLCJidWlsZGVyLnJ1bi5kZWxheSI6IDEsImJ1aWxkZXIubWFudWFsLmRlZl9sZWZ0IjogMCwiYnVpbGRlci5pZGxlLmRlZl9waXRjaF9udW0iOiAwLCJidWlsZGVyLnNhZmUgaGVhZC5kZWZfcmlnaHQiOiAwLCJidWlsZGVyLnNhZmUgaGVhZC43IjogMCwiYnVpbGRlci5tYW51YWwuZGVmZW5zaXZlIjogZmFsc2UsImJ1aWxkZXIudXNlLmRlZl9ib2R5IjogImRlZmF1bHQiLCJidWlsZGVyLnNsb3cuYnlfbW9kZSI6ICJvZmYiLCJidWlsZGVyLnJ1bi5ieV9tb2RlIjogIm9mZiIsImJ1aWxkZXIubWFudWFsLjQiOiAwLCJidWlsZGVyLm1hbnVhbC5lcGRfcmlnaHQiOiAwLCJidWlsZGVyLmFpci54X3dheSI6IDMsImJ1aWxkZXIuYWlyLmFkZCI6IDAsImJ1aWxkZXIuYWlyYy5icmVha19sYyI6IGZhbHNlLCJ2aXN1YWxzLmNyb3NzaGFpcl9zdHlsZSI6ICJjZW50ZXIiLCJidWlsZGVyLmlkbGUuZGVmX3lhd19udW0iOiAwLCJidWlsZGVyLmFpcmMuaml0dGVyX2FkZCI6IDAsImJ1aWxkZXIuZHVjayBtb3ZlLmRlZl9waXRjaF9udW0iOiAwLCJidWlsZGVyLmFpcmMuZGVmX3BpdGNoIjogImRlZmF1bHQiLCJidWlsZGVyLnJ1bi4xIjogMCwiYnVpbGRlci5leHRlbnNpb25zLm1hbnVhbF9hYV9ob3RrZXkubWFudWFsX3JpZ2h0IjogZmFsc2UsImJ1aWxkZXIub24gc2hvdC42IjogMCwiYnVpbGRlci5ydW4uZGVmX2xlZnQiOiAwLCJidWlsZGVyLmR1Y2sgbW92ZS4yIjogMCwiYnVpbGRlci5haXIuMyI6IDAsImJ1aWxkZXIuaWRsZS40IjogMCwiYnVpbGRlci5tYW51YWwuYnlfbnVtIjogMCwiYnVpbGRlci5tYW51YWwuMyI6IDAsImJ1aWxkZXIuZHVjay54X3dheWxhYmVsIjogIndheSAzIiwiYnVpbGRlci5tYW51YWwueWF3X3JhbmRvbWl6ZSI6IDAsImJ1aWxkZXIudXNlLnhfd2F5IjogMywiYnVpbGRlci5zbG93LjciOiAwLCJidWlsZGVyLmFpcmMuc3BlZWQiOiAxLCJidWlsZGVyLmR1Y2suZGVmX3JpZ2h0IjogMCwiYnVpbGRlci5kdWNrLmJyZWFrX2xjIjogZmFsc2UsImJ1aWxkZXIuYWlyYy5leHBhbmQiOiAib2ZmIiwiYnVpbGRlci5mYWtlbGFnLmVwZF9sZWZ0IjogMCwiYnVpbGRlci5mYWtlbGFnLmRlbGF5IjogMSwiYnVpbGRlci5pZGxlLjIiOiAwLCJidWlsZGVyLmR1Y2suc3BlZWQiOiAxLCJidWlsZGVyLmZyZWVzdGFuZC54X3dheSI6IDMsImJ1aWxkZXIuZHVjayBtb3ZlLjUiOiAwLCJidWlsZGVyLm9uIHNob3QuZGVmX3BpdGNoX251bSI6IDAsImJ1aWxkZXIuaWRsZS5lcGRfbGVmdCI6IDAsImJ1aWxkZXIuaWRsZS5lcGRfd2F5IjogMCwiYnVpbGRlci51c2UuYmFzZSI6ICJsb2NhbCB2aWV3IiwiYnVpbGRlci5zYWZlIGhlYWQuYnlfbW9kZSI6ICJvZmYiLCJidWlsZGVyLnVzZS5hbGxvd191c2VfYWEiOiBmYWxzZSwiYnVpbGRlci5kdWNrIG1vdmUuZXBkX3JpZ2h0IjogMCwiYnVpbGRlci5zYWZlIGhlYWQuZGVmX3BpdGNoIjogImRlZmF1bHQiLCJidWlsZGVyLmR1Y2sgbW92ZS5kZWxheSI6IDEsImJ1aWxkZXIuYWlyLmRlbGF5IjogMSwiYnVpbGRlci5leHRlbnNpb25zLmRpc19mcyI6IFsiaWRsZSIsInJ1biJdfX0="
+    local default_config = "noctua:eyJ3aWRnZXRzIjogeyJkZWJ1Z193aW5kb3ciOiB7ImFuY2hvcl95IjogImNlbnRlciIsIm9mZnNldF95IjogMCwib2Zmc2V0X3giOiA4Mn0sInNjcmVlbl9sb2dnaW5nIjogeyJvZmZzZXRfeSI6IDczMywiYW5jaG9yX3giOiAiY2VudGVyIiwib2Zmc2V0X3giOiAwfSwiY3Jvc3NoYWlyX2luZGljYXRvcnMiOiB7Im9mZnNldF95IjogNTYwLCJhbmNob3JfeCI6ICJjZW50ZXIiLCJvZmZzZXRfeCI6IDB9fSwidmVyc2lvbiI6IDEsInZhbHVlcyI6IHsiYnVpbGRlci5mcmVlc3RhbmQuZGVsYXkiOiAxLCJ2aXN1YWxzLnNlY29uZGFyeSI6ICJzZWNvbmRhcnkgY29sb3IiLCJidWlsZGVyLmFpci5kZWZfeWF3IjogImRlbGF5ZWQiLCJ2aXN1YWxzLnZpZXdtb2RlbCI6IHRydWUsImJ1aWxkZXIuZnJlZXN0YW5kLmRlZl9zcGVlZCI6IDEsImJ1aWxkZXIuZGVmYXVsdC4yIjogMCwiYnVpbGRlci5haXIuYnlfbnVtIjogLTE3LCJidWlsZGVyLnNhZmUgaGVhZC5lbmFibGUiOiBmYWxzZSwiYnVpbGRlci5vbiBzaG90LmRlZmVuc2l2ZSI6IGZhbHNlLCJidWlsZGVyLnNsb3cuZGVmX3BpdGNoX251bSI6IDAsImJ1aWxkZXIuYWlyYy5hZGQiOiAwLCJidWlsZGVyLmZyZWVzdGFuZC5leHBhbmQiOiAib2ZmIiwiYnVpbGRlci5mYWtlbGFnLmVuYWJsZSI6IHRydWUsImJ1aWxkZXIudXNlLmVuYWJsZSI6IHRydWUsInV0aWxpdHkuYnV5Ym90X3V0aWxpdHkiOiBbImtldmxhciIsImhlbG1ldCIsImRlZnVzZXIiLCJ0YXNlciIsImhlIiwibW9sb3RvdiIsInNtb2tlIl0sImJ1aWxkZXIuaWRsZS5kZWZlbnNpdmUiOiBmYWxzZSwiYnVpbGRlci5mYWtlbGFnLmRlZl9sZWZ0IjogMCwiYnVpbGRlci5zYWZlIGhlYWQuMiI6IDAsImJ1aWxkZXIub24gc2hvdC5iYXNlIjogImxvY2FsIHZpZXciLCJidWlsZGVyLmZha2VsYWcud2F5c19tYW51YWwiOiBmYWxzZSwiYnVpbGRlci51c2UuZGVmZW5zaXZlIjogZmFsc2UsImJ1aWxkZXIubWFudWFsLmVuYWJsZSI6IGZhbHNlLCJidWlsZGVyLmZha2VsYWcuYWRkIjogMCwiYnVpbGRlci5zbG93Lnhfd2F5bGFiZWwiOiAid2F5IDMiLCJidWlsZGVyLmlkbGUuZGVmX3lhdyI6ICJkZWZhdWx0IiwiYnVpbGRlci5kdWNrLjIiOiAwLCJidWlsZGVyLmZyZWVzdGFuZC5kZWZfeWF3IjogImRlZmF1bHQiLCJidWlsZGVyLmFpci43IjogMCwiYnVpbGRlci5mcmVlc3RhbmQueF93YXlsYWJlbCI6ICJ3YXkgMyIsImJ1aWxkZXIuZnJlZXN0YW5kLmJ5X251bSI6IDAsImJ1aWxkZXIuc2xvdy41IjogMCwiYnVpbGRlci51c2Uud2F5c19tYW51YWwiOiBmYWxzZSwiYnVpbGRlci5vbiBzaG90LjMiOiAwLCJidWlsZGVyLnJ1bi55YXdfcmFuZG9taXplIjogMCwiYnVpbGRlci5kdWNrIG1vdmUuZGVmX3lhdyI6ICJkZWZhdWx0IiwiYnVpbGRlci5haXJjLjEiOiAwLCJidWlsZGVyLmR1Y2sgbW92ZS5ieV9tb2RlIjogIm9mZiIsImJ1aWxkZXIuZHVjayBtb3ZlLmVwZF93YXkiOiAwLCJidWlsZGVyLnVzZS5qaXR0ZXIiOiAib2ZmIiwiYnVpbGRlci5kdWNrIG1vdmUuZGVmZW5zaXZlIjogZmFsc2UsImJ1aWxkZXIuZmFrZWxhZy5kZWZfcmlnaHQiOiAwLCJidWlsZGVyLnVzZS43IjogMCwiYnVpbGRlci5mcmVlc3RhbmQuZGVmX3lhd19udW0iOiAwLCJidWlsZGVyLmFpcmMuZGVmX2JvZHkiOiAiaml0dGVyIiwiYnVpbGRlci5mYWtlbGFnLmJ5X21vZGUiOiAiaml0dGVyIiwidmlzdWFscy56b29tX2FuaW1hdGlvbl9zcGVlZCI6IDYwLCJidWlsZGVyLm9uIHNob3QuZGVmX3lhd19udW0iOiAwLCJidWlsZGVyLmFpci54X3dheWxhYmVsIjogIndheSA0IiwiYnVpbGRlci5pZGxlLmppdHRlciI6ICJvZmYiLCJidWlsZGVyLmZyZWVzdGFuZC41IjogMCwiYnVpbGRlci5vbiBzaG90LmppdHRlciI6ICJvZmYiLCJidWlsZGVyLmlkbGUuaml0dGVyX2FkZCI6IDAsImJ1aWxkZXIucnVuLnhfd2F5bGFiZWwiOiAid2F5IDMiLCJidWlsZGVyLnJ1bi53YXlzX21hbnVhbCI6IGZhbHNlLCJidWlsZGVyLmFpci5zcGVlZCI6IDEsImJ1aWxkZXIuZmFrZWxhZy54X3dheWxhYmVsIjogIndheSAzIiwiYnVpbGRlci5zYWZlIGhlYWQuZGVmX2JvZHkiOiAiZGVmYXVsdCIsImJ1aWxkZXIub24gc2hvdC5kZWZfcGl0Y2giOiAiZGVmYXVsdCIsImJ1aWxkZXIubWFudWFsLmRlZl9zcGVlZCI6IDEsImJ1aWxkZXIuZmFrZWxhZy4zIjogMCwiYnVpbGRlci5kdWNrLndheXNfbWFudWFsIjogZmFsc2UsImJ1aWxkZXIubWFudWFsLmJ5X21vZGUiOiAib2ZmIiwiYnVpbGRlci5pZGxlLnhfd2F5bGFiZWwiOiAid2F5IDMiLCJ2aXN1YWxzLnZpZXdtb2RlbF95IjogMCwiYnVpbGRlci5tYW51YWwud2F5c19tYW51YWwiOiBmYWxzZSwiYnVpbGRlci5ydW4uZGVmX3lhdyI6ICJkZWZhdWx0IiwiYnVpbGRlci5zYWZlIGhlYWQuZGVsYXkiOiAxLCJ2aXN1YWxzLnN0aWNrbWFuIjogZmFsc2UsImJ1aWxkZXIuZGVmYXVsdC5kZWZfcGl0Y2giOiAiZGVmYXVsdCIsImJ1aWxkZXIuZXh0ZW5zaW9ucy53YXJtdXBfYWEiOiBbIndhcm11cCJdLCJ1dGlsaXR5LmtpbGxzYXlfbW9kZXMiOiBbXSwiYnVpbGRlci51c2UueF93YXlsYWJlbCI6ICJ3YXkgMyIsImJ1aWxkZXIuc2FmZSBoZWFkLmRlZmVuc2l2ZSI6IGZhbHNlLCJidWlsZGVyLmR1Y2sueWF3X3JhbmRvbWl6ZSI6IDAsImJ1aWxkZXIuZGVmYXVsdC5zcGVlZCI6IDEsImFpbWJvdC5lbmFibGVkX3Jlc29sdmVyX3R3ZWFrcyI6IHRydWUsImJ1aWxkZXIudXNlLmRlZl95YXdfbnVtIjogMCwiYnVpbGRlci5kdWNrLmppdHRlcl9hZGQiOiAwLCJidWlsZGVyLmFpcmMud2F5c19tYW51YWwiOiBmYWxzZSwiYnVpbGRlci5zYWZlIGhlYWQuNiI6IDAsImJ1aWxkZXIuYWlyLmJhc2UiOiAiYXQgdGFyZ2V0cyIsImJ1aWxkZXIuZHVjay5kZWZfeWF3IjogImRlZmF1bHQiLCJidWlsZGVyLnJ1bi42IjogMCwiYnVpbGRlci5kdWNrIG1vdmUuMSI6IDAsImJ1aWxkZXIuZmFrZWxhZy5qaXR0ZXJfYWRkIjogMCwiYnVpbGRlci5pZGxlLnhfd2F5IjogMywiYnVpbGRlci5kdWNrLmRlZmVuc2l2ZSI6IGZhbHNlLCJidWlsZGVyLmV4dGVuc2lvbnMuYW50aV9icnV0ZWZvcmNlIjogdHJ1ZSwiYnVpbGRlci5haXIuZXBkX2xlZnQiOiAtMjIsImJ1aWxkZXIuc2xvdy5kZWxheSI6IDEsImJ1aWxkZXIuZmFrZWxhZy5qaXR0ZXIiOiAiY2VudGVyIiwiYnVpbGRlci5tYW51YWwuNyI6IDAsImFpbWJvdC5xdWlja19zdG9wIjogZmFsc2UsImJ1aWxkZXIuZXh0ZW5zaW9ucy5hbnRpX2JydXRlZm9yY2VfdHlwZSI6ICJpbmNyZWFzZSIsImJ1aWxkZXIuZGVmYXVsdC42IjogMCwidmlzdWFscy5hY2NlbnQiOiAiYWNjZW50IGNvbG9yIiwiYnVpbGRlci5zYWZlIGhlYWQueF93YXlsYWJlbCI6ICJ3YXkgMyIsImJ1aWxkZXIuaWRsZS5ieV9tb2RlIjogIm9mZiIsImJ1aWxkZXIub24gc2hvdC5zcGVlZCI6IDEsInZpc3VhbHMubG9nZ2luZ19vcHRpb25zX3NjcmVlbiI6IFsiaGl0IiwibWlzcyIsImFpbWJvdCIsImFudGkgYWltIl0sInZpc3VhbHMubG9nZ2luZ19vcHRpb25zIjogWyJjb25zb2xlIiwic2NyZWVuIl0sImJ1aWxkZXIub24gc2hvdC53YXlzX21hbnVhbCI6IGZhbHNlLCJidWlsZGVyLmFpcmMuNCI6IDAsInZpc3VhbHMuY3Jvc3NoYWlyX2luZGljYXRvcnMiOiB0cnVlLCJidWlsZGVyLmR1Y2sgbW92ZS5qaXR0ZXJfYWRkIjogMCwiYnVpbGRlci5kZWZhdWx0LmVwZF93YXkiOiAwLCJ2aXN1YWxzLmxvZ2dpbmdfc2xpZGVyIjogMjQwLCJidWlsZGVyLmFpci5kZWZfcGl0Y2hfbnVtIjogMCwiYnVpbGRlci5zYWZlIGhlYWQuNSI6IDAsImJ1aWxkZXIuZHVjay5kZWZfcGl0Y2hfbnVtIjogMCwiYnVpbGRlci5mcmVlc3RhbmQuYnJlYWtfbGMiOiBmYWxzZSwiYnVpbGRlci5zbG93LmRlZl9waXRjaCI6ICJkZWZhdWx0IiwiYnVpbGRlci5zbG93LmppdHRlciI6ICJvZmYiLCJidWlsZGVyLmR1Y2sgbW92ZS5iYXNlIjogImxvY2FsIHZpZXciLCJidWlsZGVyLmlkbGUud2F5c19tYW51YWwiOiBmYWxzZSwiYnVpbGRlci5haXJjLmRlZmVuc2l2ZSI6IHRydWUsImJ1aWxkZXIuZHVjay43IjogMCwiYnVpbGRlci5vbiBzaG90LjIiOiAwLCJidWlsZGVyLmlkbGUuYmFzZSI6ICJsb2NhbCB2aWV3IiwiYnVpbGRlci5vbiBzaG90LmRlZl95YXciOiAiZGVmYXVsdCIsImJ1aWxkZXIuZnJlZXN0YW5kLmRlZl9ib2R5IjogImRlZmF1bHQiLCJidWlsZGVyLnNhZmUgaGVhZC5qaXR0ZXIiOiAib2ZmIiwiYnVpbGRlci51c2Uuaml0dGVyX2FkZCI6IDAsImJ1aWxkZXIuZHVjayBtb3ZlLnhfd2F5bGFiZWwiOiAid2F5IDMiLCJidWlsZGVyLmFpcmMuZGVmX2xlZnQiOiAtNDYsImJ1aWxkZXIuc2xvdy42IjogMCwiYnVpbGRlci5mcmVlc3RhbmQuYnlfbW9kZSI6ICJvZmYiLCJidWlsZGVyLnVzZS55YXdfcmFuZG9taXplIjogMCwiYnVpbGRlci5kdWNrLjMiOiAwLCJidWlsZGVyLmlkbGUuNSI6IDAsImJ1aWxkZXIudXNlLjQiOiAwLCJidWlsZGVyLmFpci5kZWZfcmlnaHQiOiAyNywiYnVpbGRlci5kZWZhdWx0LmFkZCI6IDAsImJ1aWxkZXIuZHVjayBtb3ZlLmRlZl9ib2R5IjogImRlZmF1bHQiLCJidWlsZGVyLm9uIHNob3QuZGVmX2JvZHkiOiAiZGVmYXVsdCIsImJ1aWxkZXIuZmFrZWxhZy4yIjogMCwiYnVpbGRlci5ydW4uMiI6IDAsImJ1aWxkZXIudXNlLmV4cGFuZCI6ICJvZmYiLCJidWlsZGVyLm1hbnVhbC5zcGVlZCI6IDEsInZpc3VhbHMudmlld21vZGVsX2ZvdiI6IDE1LCJidWlsZGVyLmR1Y2suYWRkIjogMCwiYnVpbGRlci5vbiBzaG90LmJ5X251bSI6IDAsImJ1aWxkZXIudXNlLmRlZl9waXRjaF9udW0iOiAwLCJidWlsZGVyLnJ1bi5kZWZfeWF3X251bSI6IDAsImJ1aWxkZXIuZXh0ZW5zaW9ucy5zYWZlX2hlYWQiOiBbImtuaWZlIiwiemV1cyJdLCJidWlsZGVyLmR1Y2sgbW92ZS5kZWZfeWF3X251bSI6IDAsImJ1aWxkZXIuZnJlZXN0YW5kLnNwZWVkIjogMSwiYnVpbGRlci5mcmVlc3RhbmQuNCI6IDAsImJ1aWxkZXIuZGVmYXVsdC5kZWZlbnNpdmUiOiB0cnVlLCJidWlsZGVyLmRlZmF1bHQud2F5c19tYW51YWwiOiBmYWxzZSwiYnVpbGRlci5ydW4uNyI6IDAsImJ1aWxkZXIuZHVjay54X3dheSI6IDMsImJ1aWxkZXIub24gc2hvdC5leHBhbmQiOiAib2ZmIiwiYnVpbGRlci5mcmVlc3RhbmQuZXBkX3dheSI6IDAsInZpc3VhbHMudmd1aSI6ICJ2Z3VpIGNvbG9yIiwiYnVpbGRlci5leHRlbnNpb25zLmZyZWVzdGFuZGluZyI6IGZhbHNlLCJidWlsZGVyLmR1Y2sgbW92ZS53YXlzX21hbnVhbCI6IGZhbHNlLCJ2aXN1YWxzLnZpZXdtb2RlbF94IjogMCwiYnVpbGRlci5haXJjLmVuYWJsZSI6IHRydWUsImJ1aWxkZXIuZHVjayBtb3ZlLmVwZF9sZWZ0IjogMCwidmlzdWFscy56b29tX2FuaW1hdGlvbiI6IGZhbHNlLCJidWlsZGVyLmFpci40IjogMCwiYnVpbGRlci5pZGxlLjYiOiAwLCJ2aXN1YWxzLmVuYWJsZWRfdmlzdWFscyI6IHRydWUsImFpbWJvdC5zaWxlbnRfc2hvdCI6IHRydWUsImJ1aWxkZXIucnVuLmppdHRlcl9hZGQiOiAwLCJidWlsZGVyLmFpcmMuaml0dGVyIjogIm9mZnNldCIsImJ1aWxkZXIuZmFrZWxhZy4xIjogMCwiYnVpbGRlci51c2UuZGVmX3BpdGNoIjogImRlZmF1bHQiLCJidWlsZGVyLnJ1bi54X3dheSI6IDMsImJ1aWxkZXIuZHVjayBtb3ZlLmVuYWJsZSI6IGZhbHNlLCJidWlsZGVyLmFpcmMuZGVmX3lhd19udW0iOiAwLCJidWlsZGVyLmRlZmF1bHQuZXBkX3JpZ2h0IjogMjgsImJ1aWxkZXIuaWRsZS5lbmFibGUiOiBmYWxzZSwiYnVpbGRlci5haXJjLjUiOiAwLCJidWlsZGVyLm1hbnVhbC4yIjogMCwiYnVpbGRlci5kZWZhdWx0LmppdHRlcl9hZGQiOiAwLCJidWlsZGVyLmlkbGUuYnlfbnVtIjogMCwiYnVpbGRlci5haXIuMSI6IDAsImJ1aWxkZXIucnVuLmFkZCI6IDAsImJ1aWxkZXIuc2xvdy53YXlzX21hbnVhbCI6IGZhbHNlLCJidWlsZGVyLmRlZmF1bHQuNSI6IDAsImJ1aWxkZXIuaWRsZS5kZWZfbGVmdCI6IDAsImJ1aWxkZXIuZmFrZWxhZy5kZWZfcGl0Y2giOiAiZGVmYXVsdCIsImJ1aWxkZXIubWFudWFsLjYiOiAwLCJidWlsZGVyLmR1Y2suZGVsYXkiOiAxLCJidWlsZGVyLmR1Y2sgbW92ZS5qaXR0ZXIiOiAib2ZmIiwiYnVpbGRlci5zYWZlIGhlYWQuZXBkX3JpZ2h0IjogMCwiYnVpbGRlci5haXJjLmRlbGF5IjogMiwiYnVpbGRlci5kZWZhdWx0LjEiOiAwLCJidWlsZGVyLmFpci5kZWZfcGl0Y2giOiAiZGVmYXVsdCIsImJ1aWxkZXIudXNlLmRlZl95YXciOiAiZGVmYXVsdCIsImJ1aWxkZXIuc2xvdy5lcGRfd2F5IjogMCwidmlzdWFscy53aW5kb3ciOiBmYWxzZSwidXRpbGl0eS5idXlib3RfcHJpbWFyeSI6ICJzY291dCIsImJ1aWxkZXIubWFudWFsLmFkZCI6IDAsImJ1aWxkZXIubWFudWFsLmVwZF9sZWZ0IjogMCwiYnVpbGRlci5kdWNrIG1vdmUuZGVmX3NwZWVkIjogMSwiYnVpbGRlci5haXJjLmJ5X251bSI6IC03MSwiYnVpbGRlci5ydW4uZGVmX2JvZHkiOiAiZGVmYXVsdCIsImJ1aWxkZXIuYWlyLnlhd19yYW5kb21pemUiOiAyMywiYnVpbGRlci5haXJjLmVwZF9yaWdodCI6IDMxLCJidWlsZGVyLmZyZWVzdGFuZC5lbmFibGUiOiBmYWxzZSwiYnVpbGRlci5kdWNrIG1vdmUuMyI6IDAsImJ1aWxkZXIuZmFrZWxhZy5leHBhbmQiOiAibGVmdC9yaWdodCIsImJ1aWxkZXIuc2FmZSBoZWFkLjQiOiAwLCJidWlsZGVyLm9uIHNob3Quaml0dGVyX2FkZCI6IDAsImJ1aWxkZXIuaWRsZS5leHBhbmQiOiAib2ZmIiwiYnVpbGRlci5mcmVlc3RhbmQuYmFzZSI6ICJsb2NhbCB2aWV3IiwiYnVpbGRlci5vbiBzaG90LmRlZl9yaWdodCI6IDAsImJ1aWxkZXIuZGVmYXVsdC5kZWZfc3BlZWQiOiAxLCJidWlsZGVyLm9uIHNob3QuNSI6IDAsInZpc3VhbHMubG9nZ2luZyI6IHRydWUsImJ1aWxkZXIuc2xvdy4zIjogMCwiYnVpbGRlci5kdWNrIG1vdmUuNyI6IDAsImJ1aWxkZXIuc2FmZSBoZWFkLmRlZl95YXciOiAiZGVmYXVsdCIsImJ1aWxkZXIuc2FmZSBoZWFkLmJyZWFrX2xjIjogZmFsc2UsImJ1aWxkZXIubWFudWFsLmRlZl9ib2R5IjogImRlZmF1bHQiLCJidWlsZGVyLnNhZmUgaGVhZC5lcGRfd2F5IjogMCwiYnVpbGRlci5mcmVlc3RhbmQuZGVmZW5zaXZlIjogZmFsc2UsImJ1aWxkZXIuYWlyYy4zIjogMCwiYnVpbGRlci5tYW51YWwueF93YXkiOiAzLCJidWlsZGVyLmlkbGUuZGVmX3BpdGNoIjogImRlZmF1bHQiLCJidWlsZGVyLnVzZS5lcGRfcmlnaHQiOiAwLCJ2aXN1YWxzLmNyb3NzaGFpcl9hbmltYXRlX3Njb3BlIjogdHJ1ZSwiYnVpbGRlci5kdWNrIG1vdmUueF93YXkiOiAzLCJidWlsZGVyLmZha2VsYWcuZGVmX3NwZWVkIjogMSwiYnVpbGRlci5zYWZlIGhlYWQueF93YXkiOiAzLCJidWlsZGVyLmZha2VsYWcuNSI6IDAsImJ1aWxkZXIuc2xvdy5qaXR0ZXJfYWRkIjogMCwiYnVpbGRlci5mcmVlc3RhbmQuNyI6IDAsImJ1aWxkZXIubWFudWFsLmJyZWFrX2xjIjogZmFsc2UsInV0aWxpdHkuYnV5Ym90IjogdHJ1ZSwiYnVpbGRlci5mYWtlbGFnLmJhc2UiOiAiYXQgdGFyZ2V0cyIsImJ1aWxkZXIuYWlyLmRlZl9zcGVlZCI6IDE5LCJidWlsZGVyLm9uIHNob3QueF93YXkiOiAzLCJidWlsZGVyLnVzZS41IjogMCwiYnVpbGRlci5ydW4uNCI6IDAsImJ1aWxkZXIuYWlyLndheXNfbWFudWFsIjogZmFsc2UsImJ1aWxkZXIuZnJlZXN0YW5kLmppdHRlcl9hZGQiOiAwLCJidWlsZGVyLnNhZmUgaGVhZC5kZWZfcGl0Y2hfbnVtIjogMCwiYnVpbGRlci5haXIuaml0dGVyX2FkZCI6IDEsInZpc3VhbHMuYXNwZWN0X3JhdGlvX3NsaWRlciI6IDEyMCwiYnVpbGRlci5pZGxlLnNwZWVkIjogMSwiYnVpbGRlci5vbiBzaG90LmVwZF93YXkiOiAwLCJidWlsZGVyLm1hbnVhbC41IjogMCwiYnVpbGRlci5leHRlbnNpb25zLm1hbnVhbF9hYSI6IGZhbHNlLCJidWlsZGVyLmRlZmF1bHQuZXhwYW5kIjogImxlZnQvcmlnaHQiLCJidWlsZGVyLnNsb3cuYnlfbnVtIjogMCwiYnVpbGRlci5zYWZlIGhlYWQuZGVmX3NwZWVkIjogMSwiYnVpbGRlci51c2UuZXBkX3dheSI6IDAsImJ1aWxkZXIuZnJlZXN0YW5kLnlhd19yYW5kb21pemUiOiAwLCJidWlsZGVyLnNhZmUgaGVhZC5iYXNlIjogImxvY2FsIHZpZXciLCJidWlsZGVyLmR1Y2suYmFzZSI6ICJsb2NhbCB2aWV3IiwiYnVpbGRlci5tYW51YWwuaml0dGVyIjogIm9mZiIsImJ1aWxkZXIuYWlyYy4yIjogMCwiYnVpbGRlci5mYWtlbGFnLjQiOiAwLCJidWlsZGVyLmZyZWVzdGFuZC5kZWZfcGl0Y2giOiAiZGVmYXVsdCIsImJ1aWxkZXIuYWlyLjUiOiAwLCJidWlsZGVyLmFpcmMuZGVmX3BpdGNoX251bSI6IDAsImJ1aWxkZXIuZGVmYXVsdC5kZWZfeWF3IjogImRlbGF5ZWQiLCJidWlsZGVyLmRlZmF1bHQuNCI6IDAsImJ1aWxkZXIucnVuLmJhc2UiOiAibG9jYWwgdmlldyIsImJ1aWxkZXIuaWRsZS5kZWxheSI6IDEsInZpc3VhbHMudmlld21vZGVsX3oiOiAwLCJ1dGlsaXR5LmNsYW50YWciOiBmYWxzZSwiYWltYm90LmVuYWJsZWRfYWltYm90IjogdHJ1ZSwidmlzdWFscy5zcGF3bl96b29tIjogdHJ1ZSwiYnVpbGRlci5mYWtlbGFnLmJyZWFrX2xjIjogZmFsc2UsImJ1aWxkZXIuYWlyYy5iYXNlIjogImF0IHRhcmdldHMiLCJidWlsZGVyLmR1Y2suZGVmX2JvZHkiOiAiZGVmYXVsdCIsInZpc3VhbHMuZ3JvdXAiOiAiZ2VuZXJhbCIsImJ1aWxkZXIuZnJlZXN0YW5kLmRlZl9sZWZ0IjogMCwiYnVpbGRlci5zYWZlIGhlYWQuZGVmX2xlZnQiOiAwLCJidWlsZGVyLnJ1bi5kZWZfcGl0Y2giOiAiZGVmYXVsdCIsImJ1aWxkZXIuaWRsZS5icmVha19sYyI6IGZhbHNlLCJidWlsZGVyLmZyZWVzdGFuZC5hZGQiOiAwLCJidWlsZGVyLm9uIHNob3QuYnlfbW9kZSI6ICJvZmYiLCJidWlsZGVyLmR1Y2sgbW92ZS5kZWZfcGl0Y2giOiAiZGVmYXVsdCIsImJ1aWxkZXIuZHVjay5qaXR0ZXIiOiAib2ZmIiwiYnVpbGRlci5haXJjLmRlZl9zcGVlZCI6IDE1LCJidWlsZGVyLnNhZmUgaGVhZC53YXlzX21hbnVhbCI6IGZhbHNlLCJidWlsZGVyLmFpcmMueF93YXkiOiAzLCJidWlsZGVyLmR1Y2sgbW92ZS42IjogMCwiYnVpbGRlci5tYW51YWwuZGVmX3BpdGNoX251bSI6IDAsImJ1aWxkZXIubWFudWFsLjEiOiAwLCJidWlsZGVyLmZha2VsYWcuZGVmX3BpdGNoX251bSI6IDAsImJ1aWxkZXIub24gc2hvdC4xIjogMCwiYnVpbGRlci5pZGxlLmRlZl9ib2R5IjogImRlZmF1bHQiLCJidWlsZGVyLmR1Y2sgbW92ZS5icmVha19sYyI6IGZhbHNlLCJidWlsZGVyLnVzZS4xIjogMCwiYnVpbGRlci5haXJjLjYiOiAwLCJidWlsZGVyLmFpci4yIjogMCwiYnVpbGRlci5tYW51YWwuZGVmX3JpZ2h0IjogMCwiYnVpbGRlci5kZWZhdWx0LmppdHRlciI6ICJvZmZzZXQiLCJidWlsZGVyLmR1Y2suZGVmX3NwZWVkIjogMSwiYnVpbGRlci5zbG93LmRlZl95YXdfbnVtIjogMCwiYnVpbGRlci5mYWtlbGFnLmRlZl95YXdfbnVtIjogMCwiYnVpbGRlci5haXIuZGVmZW5zaXZlIjogdHJ1ZSwiYnVpbGRlci5mcmVlc3RhbmQuMyI6IDAsImJ1aWxkZXIuZGVmYXVsdC5iYXNlIjogImF0IHRhcmdldHMiLCJidWlsZGVyLmRlZmF1bHQueF93YXlsYWJlbCI6ICJ3YXkgMyIsImJ1aWxkZXIuZGVmYXVsdC5kZWZfcGl0Y2hfbnVtIjogMCwiYnVpbGRlci5kZWZhdWx0LmJyZWFrX2xjIjogdHJ1ZSwiYnVpbGRlci5mYWtlbGFnLmVwZF93YXkiOiAwLCJidWlsZGVyLmRlZmF1bHQuZGVmX3lhd19udW0iOiAwLCJidWlsZGVyLmR1Y2sgbW92ZS5hZGQiOiAwLCJidWlsZGVyLm1hbnVhbC5iYXNlIjogImxvY2FsIHZpZXciLCJidWlsZGVyLmlkbGUuNyI6IDAsImJ1aWxkZXIuZGVmYXVsdC5kZWZfYm9keSI6ICJqaXR0ZXIiLCJidWlsZGVyLmV4dGVuc2lvbnMuZWRnZV95YXciOiBmYWxzZSwiYnVpbGRlci5kZWZhdWx0LmRlZl9yaWdodCI6IDI2LCJidWlsZGVyLnVzZS5hZGQiOiAwLCJidWlsZGVyLmRlZmF1bHQuYnlfbW9kZSI6ICJqaXR0ZXIiLCJidWlsZGVyLnNsb3cuc3BlZWQiOiAxLCJidWlsZGVyLmRlZmF1bHQuYnlfbnVtIjogLTI0LCJidWlsZGVyLm9uIHNob3QuZGVsYXkiOiAxLCJidWlsZGVyLnVzZS5ieV9tb2RlIjogImppdHRlciIsImJ1aWxkZXIuZGVmYXVsdC4zIjogMCwiYnVpbGRlci5pZGxlLmFkZCI6IDAsImJ1aWxkZXIuZGVmYXVsdC5kZWxheSI6IDIsImJ1aWxkZXIuZGVmYXVsdC5kZWZfbGVmdCI6IC0zNCwiYnVpbGRlci5kdWNrLjUiOiAwLCJhaW1ib3Quc21hcnRfc2FmZXR5IjogdHJ1ZSwidmlzdWFscy56b29tX2FuaW1hdGlvbl92YWx1ZSI6IDUsImJ1aWxkZXIuZHVjayBtb3ZlLmRlZl9yaWdodCI6IDAsInV0aWxpdHkua2lsbHNheSI6IGZhbHNlLCJidWlsZGVyLmZha2VsYWcuc3BlZWQiOiAxLCJidWlsZGVyLmR1Y2suZGVmX2xlZnQiOiAwLCJidWlsZGVyLmFpcmMuZGVmX3lhdyI6ICJkZWZhdWx0IiwiYnVpbGRlci5kdWNrIG1vdmUuZGVmX2xlZnQiOiAwLCJidWlsZGVyLmlkbGUueWF3X3JhbmRvbWl6ZSI6IDAsImJ1aWxkZXIuZmFrZWxhZy5lcGRfcmlnaHQiOiAxNywiYnVpbGRlci5zYWZlIGhlYWQuaml0dGVyX2FkZCI6IDAsImJ1aWxkZXIuYWlyLmRlZl9ib2R5IjogImF1dG8iLCJidWlsZGVyLmR1Y2sgbW92ZS40IjogMCwiYnVpbGRlci5vbiBzaG90LmVwZF9yaWdodCI6IDAsImJ1aWxkZXIub24gc2hvdC5lcGRfbGVmdCI6IDAsImJ1aWxkZXIub24gc2hvdC43IjogMCwiYnVpbGRlci5pZGxlLmVwZF9yaWdodCI6IDAsImJ1aWxkZXIuZXh0ZW5zaW9ucy5sYWRkZXIiOiB0cnVlLCJidWlsZGVyLm9uIHNob3QuYWRkIjogMCwiYnVpbGRlci5kdWNrLmRlZl95YXdfbnVtIjogMCwiYnVpbGRlci5pZGxlLjEiOiAwLCJidWlsZGVyLnJ1bi5zcGVlZCI6IDEsImJ1aWxkZXIubWFudWFsLmppdHRlcl9hZGQiOiAwLCJidWlsZGVyLmR1Y2suMSI6IDAsImJ1aWxkZXIuc2FmZSBoZWFkLnNwZWVkIjogMSwiYnVpbGRlci5pZGxlLjMiOiAwLCJ2aXN1YWxzLmxvZ2dpbmdfb3B0aW9uc19jb25zb2xlIjogWyJoaXQiLCJtaXNzIiwiYnV5IiwiYWltYm90Il0sImJ1aWxkZXIubWFudWFsLmRlZl95YXciOiAiZGVmYXVsdCIsInV0aWxpdHkuYnV5Ym90X3NlY29uZGFyeSI6ICJ0ZWMtOSAvIGZpdmUtcyAvIGN6LTc1IiwiYnVpbGRlci5kdWNrLmJ5X251bSI6IDAsImJ1aWxkZXIucnVuLmRlZmVuc2l2ZSI6IGZhbHNlLCJidWlsZGVyLmZha2VsYWcuZGVmX2JvZHkiOiAiZGVmYXVsdCIsImJ1aWxkZXIubWFudWFsLmVwZF93YXkiOiAwLCJidWlsZGVyLnNsb3cuYWRkIjogMCwiYnVpbGRlci5leHRlbnNpb25zLmRlZmVuc2l2ZSI6IFsib24gc2hvdCIsImZsYXNoZWQiLCJkYW1hZ2UgcmVjZWl2ZWQiLCJyZWxvYWRpbmciLCJ3ZWFwb24gc3dpdGNoIl0sImJ1aWxkZXIuZHVjay5leHBhbmQiOiAib2ZmIiwiYnVpbGRlci5mYWtlbGFnLnhfd2F5IjogMywiYnVpbGRlci5kdWNrLjYiOiAwLCJidWlsZGVyLmR1Y2suNCI6IDAsImJ1aWxkZXIucnVuLmJyZWFrX2xjIjogZmFsc2UsImJ1aWxkZXIuZnJlZXN0YW5kLmRlZl9yaWdodCI6IDAsImJ1aWxkZXIub24gc2hvdC55YXdfcmFuZG9taXplIjogMCwiYWltYm90LmZvcmNlX3JlY2hhcmdlIjogdHJ1ZSwiYnVpbGRlci5haXJjLnhfd2F5bGFiZWwiOiAid2F5IDMiLCJidWlsZGVyLmV4dGVuc2lvbnMubWFudWFsX2FhX2hvdGtleS5tYW51YWxfYmFjayI6IGZhbHNlLCJidWlsZGVyLmlkbGUuZGVmX3JpZ2h0IjogMCwiYnVpbGRlci5zbG93LjEiOiAwLCJidWlsZGVyLmFpcmMuZXBkX2xlZnQiOiAtOCwidmlzdWFscy5hc3BlY3RfcmF0aW8iOiB0cnVlLCJidWlsZGVyLmZyZWVzdGFuZC5kZWZfcGl0Y2hfbnVtIjogMCwiYnVpbGRlci51c2UuZGVmX2xlZnQiOiAwLCJidWlsZGVyLm9uIHNob3QuNCI6IDAsImJ1aWxkZXIuc2FmZSBoZWFkLjMiOiAwLCJidWlsZGVyLmZha2VsYWcuNiI6IDAsImJ1aWxkZXIuc2xvdy55YXdfcmFuZG9taXplIjogMCwiYnVpbGRlci5zbG93LjQiOiAwLCJidWlsZGVyLnVzZS5lcGRfbGVmdCI6IDAsImJ1aWxkZXIuc2FmZSBoZWFkLnlhd19yYW5kb21pemUiOiAwLCJidWlsZGVyLm9uIHNob3QueF93YXlsYWJlbCI6ICJ3YXkgMyIsImJ1aWxkZXIuZnJlZXN0YW5kLjYiOiAwLCJidWlsZGVyLnVzZS5icmVha19sYyI6IGZhbHNlLCJidWlsZGVyLmFpcmMuZXBkX3dheSI6IDAsImJ1aWxkZXIuYWlyLmV4cGFuZCI6ICJsZWZ0L3JpZ2h0IiwiYnVpbGRlci5zYWZlIGhlYWQuYWRkIjogMCwiYnVpbGRlci5kZWZhdWx0LmVwZF9sZWZ0IjogLTI4LCJidWlsZGVyLnNhZmUgaGVhZC5kZWZfeWF3X251bSI6IDAsImJ1aWxkZXIuYWlyLmRlZl95YXdfbnVtIjogMCwiYnVpbGRlci51c2UuMiI6IDAsImJ1aWxkZXIub24gc2hvdC5lbmFibGUiOiBmYWxzZSwiYnVpbGRlci5zbG93LmRlZl9zcGVlZCI6IDEsImJ1aWxkZXIuZHVjayBtb3ZlLmJ5X251bSI6IDAsImJ1aWxkZXIuc2xvdy5lcGRfcmlnaHQiOiAwLCJidWlsZGVyLmV4dGVuc2lvbnMubWFudWFsX2FhX2hvdGtleS5tYW51YWxfbGVmdCI6IGZhbHNlLCJidWlsZGVyLmR1Y2sgbW92ZS5leHBhbmQiOiAib2ZmIiwiYnVpbGRlci5zbG93LjIiOiAwLCJidWlsZGVyLmZyZWVzdGFuZC5lcGRfbGVmdCI6IDAsImJ1aWxkZXIuZHVjay5lcGRfcmlnaHQiOiAwLCJidWlsZGVyLnNsb3cuZGVmZW5zaXZlIjogZmFsc2UsInV0aWxpdHkuaGl0c291bmQiOiB0cnVlLCJidWlsZGVyLnJ1bi5qaXR0ZXIiOiAib2ZmIiwiYnVpbGRlci51c2UuYnlfbnVtIjogMzIsImJ1aWxkZXIuc2xvdy54X3dheSI6IDMsImJ1aWxkZXIuc2xvdy5leHBhbmQiOiAib2ZmIiwiYnVpbGRlci5mcmVlc3RhbmQuMiI6IDAsImJ1aWxkZXIucnVuLmJ5X251bSI6IDAsImJ1aWxkZXIuc2xvdy5kZWZfeWF3IjogImRlZmF1bHQiLCJidWlsZGVyLnNsb3cuZW5hYmxlIjogZmFsc2UsImJ1aWxkZXIuc2xvdy5kZWZfbGVmdCI6IDAsImJ1aWxkZXIuc2FmZSBoZWFkLmJ5X251bSI6IDAsImJ1aWxkZXIubWFudWFsLnhfd2F5bGFiZWwiOiAid2F5IDMiLCJ2aXN1YWxzLnRoaXJkcGVyc29uIjogdHJ1ZSwiYnVpbGRlci5ydW4uZXBkX3dheSI6IDAsImJ1aWxkZXIubWFudWFsLmRlZl95YXdfbnVtIjogMCwiYnVpbGRlci5zYWZlIGhlYWQuZXBkX2xlZnQiOiAwLCJidWlsZGVyLnVzZS5kZWxheSI6IDEsImJ1aWxkZXIudXNlLmRlZl9yaWdodCI6IDAsImJ1aWxkZXIuYWlyYy5ieV9tb2RlIjogImppdHRlciIsImJ1aWxkZXIuZmFrZWxhZy5kZWZlbnNpdmUiOiBmYWxzZSwiYnVpbGRlci5kZWZhdWx0LjciOiAwLCJidWlsZGVyLnVzZS5zcGVlZCI6IDEsImJ1aWxkZXIucnVuLmVwZF9yaWdodCI6IDAsImJ1aWxkZXIuYWlyYy55YXdfcmFuZG9taXplIjogOSwiYnVpbGRlci51c2UuMyI6IDAsImJ1aWxkZXIucnVuLjUiOiAwLCJidWlsZGVyLmZha2VsYWcueWF3X3JhbmRvbWl6ZSI6IDAsImJ1aWxkZXIuZXh0ZW5zaW9ucy5hbnRpX2JhY2tzdGFiIjogdHJ1ZSwiYnVpbGRlci5zYWZlIGhlYWQuMSI6IDAsImJ1aWxkZXIudXNlLjYiOiAwLCJidWlsZGVyLmZha2VsYWcuYnlfbnVtIjogNSwiYnVpbGRlci5zbG93LmRlZl9ib2R5IjogImRlZmF1bHQiLCJidWlsZGVyLnNsb3cuZXBkX2xlZnQiOiAwLCJidWlsZGVyLmFpci5icmVha19sYyI6IHRydWUsImJ1aWxkZXIucnVuLmV4cGFuZCI6ICJvZmYiLCJ2aXN1YWxzLnRoaXJkcGVyc29uX3NsaWRlciI6IDQyLCJidWlsZGVyLnJ1bi5lcGRfbGVmdCI6IDAsImJ1aWxkZXIuc2xvdy5iYXNlIjogImxvY2FsIHZpZXciLCJidWlsZGVyLmR1Y2suZW5hYmxlIjogZmFsc2UsImJ1aWxkZXIub24gc2hvdC5icmVha19sYyI6IGZhbHNlLCJidWlsZGVyLnNhZmUgaGVhZC5leHBhbmQiOiAib2ZmIiwiYnVpbGRlci5pZGxlLmRlZl9zcGVlZCI6IDEsImJ1aWxkZXIuZGVmYXVsdC55YXdfcmFuZG9taXplIjogMCwiYnVpbGRlci5kdWNrLmJ5X21vZGUiOiAib2ZmIiwiYWltYm90LnJlc29sdmVyX21vZGUiOiAib3dsIiwiYnVpbGRlci5vbiBzaG90LmRlZl9zcGVlZCI6IDEsImJ1aWxkZXIucnVuLmRlZl9zcGVlZCI6IDEsImJ1aWxkZXIuc2xvdy5kZWZfcmlnaHQiOiAwLCJidWlsZGVyLmR1Y2suZGVmX3BpdGNoIjogImRlZmF1bHQiLCJidWlsZGVyLmZha2VsYWcuZGVmX3lhdyI6ICJkZWZhdWx0IiwiYnVpbGRlci5ydW4uZGVmX3BpdGNoX251bSI6IDAsImJ1aWxkZXIucnVuLjMiOiAwLCJidWlsZGVyLmZha2VsYWcuNyI6IDAsImJ1aWxkZXIuYWlyLmppdHRlciI6ICJvZmZzZXQiLCJidWlsZGVyLmFpci5lcGRfcmlnaHQiOiAyNiwiYnVpbGRlci5haXJjLjciOiAwLCJidWlsZGVyLmR1Y2sgbW92ZS55YXdfcmFuZG9taXplIjogMCwiYnVpbGRlci5mcmVlc3RhbmQuMSI6IDAsImJ1aWxkZXIuZGVmYXVsdC54X3dheSI6IDMsImJ1aWxkZXIuZnJlZXN0YW5kLmVwZF9yaWdodCI6IDAsImJ1aWxkZXIudXNlLmRlZl9zcGVlZCI6IDEsImJ1aWxkZXIuc2xvdy5icmVha19sYyI6IGZhbHNlLCJidWlsZGVyLmZyZWVzdGFuZC53YXlzX21hbnVhbCI6IGZhbHNlLCJidWlsZGVyLm1hbnVhbC5kZWZfcGl0Y2giOiAiZGVmYXVsdCIsImJ1aWxkZXIuZXh0ZW5zaW9ucy5tYW51YWxfYWFfaG90a2V5Lm1hbnVhbF9mb3J3YXJkIjogZmFsc2UsImJ1aWxkZXIuZnJlZXN0YW5kLmppdHRlciI6ICJvZmYiLCJidWlsZGVyLm9uIHNob3QuZGVmX2xlZnQiOiAwLCJidWlsZGVyLnJ1bi5lbmFibGUiOiBmYWxzZSwiYnVpbGRlci5ydW4uZGVmX3JpZ2h0IjogMCwiYnVpbGRlci5tYW51YWwuZGVsYXkiOiAxLCJidWlsZGVyLmR1Y2suZXBkX3dheSI6IDAsImJ1aWxkZXIuZHVjayBtb3ZlLnNwZWVkIjogMSwiYnVpbGRlci5haXIuZW5hYmxlIjogdHJ1ZSwiYnVpbGRlci5haXIuNiI6IDAsImJ1aWxkZXIubWFudWFsLmV4cGFuZCI6ICJvZmYiLCJidWlsZGVyLmFpci5kZWZfbGVmdCI6IC0zOCwiYnVpbGRlci5haXJjLmRlZl9yaWdodCI6IDMxLCJidWlsZGVyLmFpci5ieV9tb2RlIjogImppdHRlciIsImJ1aWxkZXIuZHVjay5lcGRfbGVmdCI6IDAsImJ1aWxkZXIuYWlyLmVwZF93YXkiOiA1NywiYnVpbGRlci5ydW4uZGVsYXkiOiAxLCJidWlsZGVyLm1hbnVhbC5kZWZfbGVmdCI6IDAsImJ1aWxkZXIuaWRsZS5kZWZfcGl0Y2hfbnVtIjogMCwiYnVpbGRlci5zYWZlIGhlYWQuZGVmX3JpZ2h0IjogMCwiYnVpbGRlci5zYWZlIGhlYWQuNyI6IDAsImJ1aWxkZXIubWFudWFsLmRlZmVuc2l2ZSI6IGZhbHNlLCJidWlsZGVyLnVzZS5kZWZfYm9keSI6ICJkZWZhdWx0IiwiYnVpbGRlci5zbG93LmJ5X21vZGUiOiAib2ZmIiwiYnVpbGRlci5ydW4uYnlfbW9kZSI6ICJvZmYiLCJidWlsZGVyLm1hbnVhbC40IjogMCwiYnVpbGRlci5tYW51YWwuZXBkX3JpZ2h0IjogMCwiYnVpbGRlci5haXIueF93YXkiOiA0LCJidWlsZGVyLmFpci5hZGQiOiAwLCJidWlsZGVyLmFpcmMuYnJlYWtfbGMiOiB0cnVlLCJ2aXN1YWxzLmNyb3NzaGFpcl9zdHlsZSI6ICJjZW50ZXIiLCJidWlsZGVyLmlkbGUuZGVmX3lhd19udW0iOiAwLCJidWlsZGVyLmFpcmMuaml0dGVyX2FkZCI6IC0yMywiYnVpbGRlci5kdWNrIG1vdmUuZGVmX3BpdGNoX251bSI6IDAsImJ1aWxkZXIuYWlyYy5kZWZfcGl0Y2giOiAiZGVmYXVsdCIsImJ1aWxkZXIucnVuLjEiOiAwLCJidWlsZGVyLmV4dGVuc2lvbnMubWFudWFsX2FhX2hvdGtleS5tYW51YWxfcmlnaHQiOiBmYWxzZSwiYnVpbGRlci5vbiBzaG90LjYiOiAwLCJidWlsZGVyLnJ1bi5kZWZfbGVmdCI6IDAsImJ1aWxkZXIuZHVjayBtb3ZlLjIiOiAwLCJidWlsZGVyLmFpci4zIjogMCwiYnVpbGRlci5pZGxlLjQiOiAwLCJidWlsZGVyLm1hbnVhbC5ieV9udW0iOiAwLCJidWlsZGVyLm1hbnVhbC4zIjogMCwiYnVpbGRlci5kdWNrLnhfd2F5bGFiZWwiOiAid2F5IDMiLCJidWlsZGVyLm1hbnVhbC55YXdfcmFuZG9taXplIjogMCwiYnVpbGRlci51c2UueF93YXkiOiAzLCJidWlsZGVyLnNsb3cuNyI6IDAsImJ1aWxkZXIuYWlyYy5zcGVlZCI6IDEsImJ1aWxkZXIuZHVjay5kZWZfcmlnaHQiOiAwLCJidWlsZGVyLmR1Y2suYnJlYWtfbGMiOiBmYWxzZSwiYnVpbGRlci5haXJjLmV4cGFuZCI6ICJsZWZ0L3JpZ2h0IiwiYnVpbGRlci5mYWtlbGFnLmVwZF9sZWZ0IjogLTE1LCJidWlsZGVyLmZha2VsYWcuZGVsYXkiOiAxLCJidWlsZGVyLmlkbGUuMiI6IDAsImJ1aWxkZXIuZHVjay5zcGVlZCI6IDEsImJ1aWxkZXIuZnJlZXN0YW5kLnhfd2F5IjogMywiYnVpbGRlci5kdWNrIG1vdmUuNSI6IDAsImJ1aWxkZXIub24gc2hvdC5kZWZfcGl0Y2hfbnVtIjogMCwiYnVpbGRlci5pZGxlLmVwZF9sZWZ0IjogMCwiYnVpbGRlci5pZGxlLmVwZF93YXkiOiAwLCJidWlsZGVyLnVzZS5iYXNlIjogImxvY2FsIHZpZXciLCJidWlsZGVyLnNhZmUgaGVhZC5ieV9tb2RlIjogIm9mZiIsImJ1aWxkZXIudXNlLmFsbG93X3VzZV9hYSI6IHRydWUsImJ1aWxkZXIuZHVjayBtb3ZlLmVwZF9yaWdodCI6IDAsImJ1aWxkZXIuc2FmZSBoZWFkLmRlZl9waXRjaCI6ICJkZWZhdWx0IiwiYnVpbGRlci5kdWNrIG1vdmUuZGVsYXkiOiAxLCJidWlsZGVyLmFpci5kZWxheSI6IDIsImJ1aWxkZXIuZXh0ZW5zaW9ucy5kaXNfZnMiOiBbImlkbGUiLCJydW4iXX19"
 
     local b64_chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
     local function b64_encode_fallback(str)
@@ -4767,7 +4928,7 @@ configs = {} do
         return b64_decode_fallback(str)
     end
 
-    local state = { list = {}, data = {} }
+    local state = { list = {}, data = {}, load_on_startup = nil }
 
     local function screen_key()
         local w, h = client.screen_size()
@@ -4779,15 +4940,16 @@ configs = {} do
         if ok and type(data) == 'table' then
             state = {
                 list = data.list or {},
-                data = data.data or {}
+                data = data.data or {},
+                load_on_startup = data.load_on_startup or nil
             }
         else
-            state = { list = {}, data = {} }
+            state = { list = {}, data = {}, load_on_startup = nil }
         end
     end
 
     function configs.save_db()
-        pcall(database.write, DB_KEY, { list = state.list, data = state.data })
+        pcall(database.write, DB_KEY, { list = state.list, data = state.data, load_on_startup = state.load_on_startup })
     end
 
     function configs.update_list_ui()
@@ -4881,12 +5043,14 @@ configs = {} do
         local ok, json_str = pcall(json.encode, payload, false)
         if not ok or not json_str then
             logMessage('noctua ·', '', 'failed to encode config!')
+            client.exec("play ui/menu_invalid.wav")
             return
         end
         -- print(json_str)
         local enc = b64_encode(json_str)
         clipboard.set('noctua:' .. enc)
         logMessage('noctua ·', '', 'config exported to clipboard!')
+        client.exec("play ui/beepclear.wav")
     end
 
     function configs.import_from_clipboard()
@@ -4894,20 +5058,24 @@ configs = {} do
         if clip:find('^noctua:') then clip = clip:sub(8) end
         if clip == '' then
             logMessage('noctua ·', '', 'clipboard is empty!')
+            client.exec("play ui/menu_invalid.wav")
             return
         end
         local decoded = b64_decode(clip)
         if not decoded or decoded == '' then
             logMessage('noctua ·', '', 'failed to decode base64!')
+            client.exec("play ui/menu_invalid.wav")
             return
         end
         local data = json.decode(decoded)
         if type(data) ~= 'table' or not data.values then
             logMessage('noctua ·', '', 'failed to parse config!')
+            client.exec("play ui/menu_invalid.wav")
             return
         end
         configs.apply(data)
         logMessage('noctua ·', '', 'config imported successfully!')
+        client.exec("play ui/beepclear.wav")
     end
 
     function configs.load_default()
@@ -4920,15 +5088,18 @@ configs = {} do
         local decoded = b64_decode(clip)
         if not decoded or decoded == '' then
             logMessage('noctua ·', '', 'failed to decode default base64!')
+            client.exec("play ui/menu_invalid.wav")
             return
         end
         local data = json.decode(decoded)
         if type(data) ~= 'table' or not data.values then
             logMessage('noctua ·', '', 'failed to parse default config!')
+            client.exec("play ui/menu_invalid.wav")
             return
         end
         configs.apply(data)
         logMessage('noctua ·', '', 'default config loaded successfully!')
+        client.exec("play ui/beepclear.wav")
     end
 
     function configs.create(name)
@@ -4936,10 +5107,12 @@ configs = {} do
         name = name:gsub('^%s+', ''):gsub('%s+$', '')
         if name == '' or name == '<no configs>' or name == '<default>' or not name:match('%S') then
             logMessage('noctua ·', '', 'enter valid config name!')
+            client.exec("play ui/menu_invalid.wav")
             return
         end
         if state.data[name] ~= nil then
             logMessage('noctua ·', '', 'config already exists!')
+            client.exec("play ui/menu_invalid.wav")
             return
         end
         state.data[name] = configs.collect()
@@ -4947,6 +5120,7 @@ configs = {} do
         configs.save_db()
         configs.update_list_ui()
         logMessage('noctua ·', '', 'config created!')
+        client.exec("play ui/beepclear.wav")
     end
 
     local function get_selected_name()
@@ -4968,21 +5142,25 @@ configs = {} do
         local name = get_selected_name()
         if not name then
             logMessage('noctua ·', '', 'select a config first!')
+            client.exec("play ui/menu_invalid.wav")
             return
         end
         if name == '<default>' then
             logMessage('noctua ·', '', 'cannot overwrite default!')
+            client.exec("play ui/menu_invalid.wav")
             return
         end
         state.data[name] = configs.collect()
         configs.save_db()
         logMessage('noctua ·', '', 'config saved!')
+        client.exec("play ui/beepclear.wav")
     end
 
     function configs.load_selected()
         local name = get_selected_name()
         if not name then
             logMessage('noctua ·', '', 'select a config first!')
+            client.exec("play ui/menu_invalid.wav")
             return
         end
         if name == '<default>' then
@@ -4992,20 +5170,24 @@ configs = {} do
         local data = state.data[name]
         if type(data) ~= 'table' then
             logMessage('noctua ·', '', 'config data is invalid!')
+            client.exec("play ui/menu_invalid.wav")
             return
         end
         configs.apply(data)
         logMessage('noctua ·', '', 'config loaded!')
+        client.exec("play ui/beepclear.wav")
     end
 
     function configs.delete_selected()
         local name = get_selected_name()
         if not name then
             logMessage('noctua ·', '', 'select a config first!')
+            client.exec("play ui/menu_invalid.wav")
             return
         end
         if name == '<default>' then
             logMessage('noctua ·', '', 'cannot delete default!')
+            client.exec("play ui/menu_invalid.wav")
             return
         end
         state.data[name] = nil
@@ -5020,12 +5202,102 @@ configs = {} do
             interface.config.list:set(0)
         end
         logMessage('noctua ·', '', 'config deleted!')
+        client.exec("play ui/beepclear.wav")
+    end
+
+    function configs.toggle_autoload_for_current()
+        local name = get_selected_name()
+        if not name or name == '<no configs>' then
+            return
+        end
+        
+        local checkbox_state = interface.config.load_on_startup and interface.config.load_on_startup:get() or false
+        
+        if checkbox_state then
+            -- user enabled checkbox: set this config as autoload (disabling any other)
+            state.load_on_startup = name
+        else
+            -- user disabled checkbox: clear autoload if it was this config
+            if state.load_on_startup == name then
+                state.load_on_startup = nil
+            end
+        end
+        
+        configs.save_db()
+    end
+    
+    local _updating_checkbox = false
+    
+    function configs.update_load_on_startup_checkbox()
+        if not interface.config.load_on_startup then return end
+        if _updating_checkbox then return end
+        
+        _updating_checkbox = true
+        
+        -- hide checkbox if not on config tab
+        if interface.search and interface.search:get() ~= 'config' then
+            interface.config.load_on_startup:set_visible(false)
+            _updating_checkbox = false
+            return
+        end
+        
+        local name = get_selected_name()
+        
+        -- hide checkbox only for <no configs>
+        if not name or name == '<no configs>' then
+            interface.config.load_on_startup:set_visible(false)
+            _updating_checkbox = false
+            return
+        end
+        
+        -- show checkbox and sync state
+        interface.config.load_on_startup:set_visible(true)
+        interface.config.load_on_startup:set(state.load_on_startup == name)
+        
+        _updating_checkbox = false
+    end
+    
+    function configs.load_startup_config()
+        if not state.load_on_startup then return end
+        
+        -- handle <default> special case
+        if state.load_on_startup == '<default>' then
+            configs.load_default()
+            return
+        end
+        
+        -- load user config
+        if state.data[state.load_on_startup] then
+            configs.apply(state.data[state.load_on_startup])
+            logMessage('noctua ·', '', 'autoloaded config: ' .. state.load_on_startup)
+        else
+            logMessage('noctua ·', '', 'autoload config not found: ' .. state.load_on_startup)
+        end
     end
 
     function configs.init()
         configs.load_db()
         configs.update_list_ui()
+        configs.update_load_on_startup_checkbox()
+        
+        -- load startup config after a brief delay
+        client.delay_call(0.1, function()
+            configs.load_startup_config()
+        end)
+        
         if interface and interface.config then
+            -- sync checkbox state every frame based on selected config
+            client.set_event_callback('paint_ui', function()
+                configs.update_load_on_startup_checkbox()
+            end)
+            
+            -- load on startup checkbox callback
+            if interface.config.load_on_startup and interface.config.load_on_startup.set_callback then
+                interface.config.load_on_startup:set_callback(function()
+                    configs.toggle_autoload_for_current()
+                end)
+            end
+            
             if interface.config.create_button and interface.config.create_button.set_callback then
                 interface.config.create_button:set_callback(function()
                     local name = ''
@@ -5438,8 +5710,8 @@ lethal_shot_handler = {} do
                     local consoleOptions = interface.visuals.logging_options_console:get()
                     local screenOptions = interface.visuals.logging_options_screen:get()
                     
-                    local doConsole = utils.contains(logOptions, "console") and utils.contains(consoleOptions, "events")
-                    local doScreen = utils.contains(logOptions, "screen") and utils.contains(screenOptions, "events")
+                    local doConsole = utils.contains(logOptions, "console") and utils.contains(consoleOptions, "aimbot")
+                    local doScreen = utils.contains(logOptions, "screen") and utils.contains(screenOptions, "aimbot")
                     
                     if doConsole then
                         argLog("forced safe point for %s / hp: %d - reason: %s", playerName, health, reason)
@@ -5542,8 +5814,8 @@ lethal_shot_handler = {} do
                         local consoleOptions = interface.visuals.logging_options_console:get()
                         local screenOptions = interface.visuals.logging_options_screen:get()
                         
-                        local doConsole = utils.contains(logOptions, "console") and utils.contains(consoleOptions, "events")
-                        local doScreen = utils.contains(logOptions, "screen") and utils.contains(screenOptions, "events")
+                        local doConsole = utils.contains(logOptions, "console") and utils.contains(consoleOptions, "aimbot")
+                        local doScreen = utils.contains(logOptions, "screen") and utils.contains(screenOptions, "aimbot")
                         
                         if doConsole then
                             argLog("forced safe point for %s / hp: %d - reason: %s", playerName, health, reason)
@@ -7275,17 +7547,18 @@ do
                             local screenOptions = interface.visuals.logging_options_screen and interface.visuals.logging_options_screen:get() or {}
                             local consoleOptions = interface.visuals.logging_options_console and interface.visuals.logging_options_console:get() or {}
 
-                            local doScreen = utils.contains and utils.contains(logOptions, 'screen') and utils.contains(screenOptions, 'events')
-                            local doConsole = utils.contains and utils.contains(logOptions, 'console') and utils.contains(consoleOptions, 'events')
+                            local doScreen = utils.contains and utils.contains(logOptions, 'screen') and utils.contains(screenOptions, 'anti aim')
+                            local doConsole = utils.contains and utils.contains(logOptions, 'console') and utils.contains(consoleOptions, 'anti aim')
 
-                            if doScreen and logging and logging.push then
+                            if doScreen then
                                 logging:push(string.format("evaded %s's shot / value: %s - mode: %s", data.name, data.value, tostring(data.mode)))
                             end
 
-                            if doConsole and argLog then
+                            if doConsole then
                                 argLog("evaded %s's shot / value: %s - mode: %s", data.name, data.value, tostring(data.mode))
                             end
                         end
+
                         if stats and stats.on_evaded then
                             stats.on_evaded(data.name, data.value, data.mode)
                         end
@@ -7303,6 +7576,9 @@ do
             if not valid or latest == globals.tickcount() then return end
             local attacker = client.userid_to_entindex(event.userid)
             if not attacker or not entity.is_enemy(attacker) or entity.is_dormant(attacker) then return end
+            local attacker_info = utils.get_player_info(attacker)
+
+            if attacker_info.__fakeplayer then return end
 
             local curtick = globals.tickcount()
             local hurt_tick = last_hurt_by[attacker] or 0
@@ -7371,5 +7647,9 @@ do
 end
 --@endregion: antiaim
 
+--@region: on load
 logging:push("checkout latest update in console")
 logging:push("nice to see you at " .. _name .. " " .. _version .. " (" .. _nickname .. ")")
+client.exec("play items/flashlight1.wav")
+confetti:start()
+--@endregion
