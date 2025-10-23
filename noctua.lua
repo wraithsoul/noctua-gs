@@ -3364,7 +3364,7 @@ confetti = {} do
         spawn_side('right')
         
         self.active = true
-        -- client.exec("play weapons/party_horn_01.wav")
+        client.exec("play weapons/party_horn_01.wav")
     end
     
     confetti.update = function(self)
