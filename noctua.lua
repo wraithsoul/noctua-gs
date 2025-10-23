@@ -619,7 +619,6 @@ interface = {} do
         reset = interface.header.general:button('reset'),
         confetti = interface.header.general:button('confetti'),
     }
-
     interface.utility = {
         -- item_anti_crash = interface.header.general:checkbox('\aa5ab55ffchat filter (crash & noise)'),
         clantag = interface.header.general:checkbox('clantag'),
@@ -630,6 +629,7 @@ interface = {} do
         buybot_primary = interface.header.general:combobox('primary weapon', '-', 'autosnipers', 'scout', 'awp'),
         buybot_secondary = interface.header.general:combobox('secondary weapon', '-', 'r8 / deagle', 'tec-9 / five-s / cz-75', 'duals', 'p-250'),
         buybot_utility = interface.header.general:multiselect('utility', 'kevlar', 'helmet', 'defuser', 'taser', 'he', 'molotov', 'smoke'),
+        party_mode = interface.header.general:checkbox('party mode'),
         -- animation_breakers = interface.header.general:multiselect('animation breakers (wip)', 'global', 'ground', 'air'),
         -- animation_breakers_global = interface.header.general:multiselect('global', 'smooth animation', '2021 animation', 'model scale', 'zero pitch'),
         -- animation_breakers_ground = interface.header.general:combobox('ground', '-', 'follow', 'follow invert', 'jitter', 'jitter freeze', 'freeze', 'freeze invert', 'bug'),
@@ -6796,6 +6796,34 @@ killsay = {} do
     end
     
     client.set_event_callback("paint", killsay.setup)
+end
+--@endregion
+
+--@region: party mode
+party_mode = {} do
+    party_mode.on_player_death = function(e)
+        if not interface.utility.party_mode:get() then return end
+        
+        local local_player = entity.get_local_player()
+        if not local_player then return end
+        
+        local attacker = client.userid_to_entindex(e.attacker)
+        local victim = client.userid_to_entindex(e.userid)
+        
+        if attacker == local_player and victim ~= local_player then
+            confetti:start()
+        end
+    end
+    
+    party_mode.setup = function()
+        if interface.utility.party_mode:get() then
+            client.set_event_callback("player_death", party_mode.on_player_death)
+        else
+            client.unset_event_callback("player_death", party_mode.on_player_death)
+        end
+    end
+    
+    client.set_event_callback("paint", party_mode.setup)
 end
 --@endregion
 
