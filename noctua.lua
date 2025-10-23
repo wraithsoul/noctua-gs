@@ -4898,6 +4898,7 @@ configs = {} do
     end
 
     local function b64_decode_fallback(str)
+        str = string.gsub(str, '%s', '')
         str = string.gsub(str, '[^'..b64_chars..'=]', '')
         return (str:gsub('.', function(x)
             if (x == '=') then return '' end
@@ -5055,7 +5056,9 @@ configs = {} do
 
     function configs.import_from_clipboard()
         local clip = clipboard.get() or ''
+        clip = clip:gsub('^%s+', ''):gsub('%s+$', '')
         if clip:find('^noctua:') then clip = clip:sub(8) end
+        clip = clip:gsub('^%s+', ''):gsub('%s+$', '')
         if clip == '' then
             logMessage('noctua ·', '', 'clipboard is empty!')
             client.exec("play ui/menu_invalid.wav")
@@ -5067,9 +5070,14 @@ configs = {} do
             client.exec("play ui/menu_invalid.wav")
             return
         end
-        local data = json.decode(decoded)
+        local ok_json, data = pcall(json.decode, decoded)
+        if not ok_json then
+            logMessage('noctua ·', '', 'json decode error: ' .. tostring(data))
+            client.exec("play ui/menu_invalid.wav")
+            return
+        end
         if type(data) ~= 'table' or not data.values then
-            logMessage('noctua ·', '', 'failed to parse config!')
+            logMessage('noctua ·', '', 'failed to parse config! (invalid structure)')
             client.exec("play ui/menu_invalid.wav")
             return
         end
@@ -5084,7 +5092,9 @@ configs = {} do
             return
         end
         local clip = default_config
+        clip = clip:gsub('^%s+', ''):gsub('%s+$', '')
         if clip:find('^noctua:') then clip = clip:sub(8) end
+        clip = clip:gsub('^%s+', ''):gsub('%s+$', '')
         local decoded = b64_decode(clip)
         if not decoded or decoded == '' then
             logMessage('noctua ·', '', 'failed to decode default base64!')
@@ -6762,8 +6772,6 @@ killsay = {} do
         if not interface.utility.killsay:get() then return end
 
         local local_player = entity.get_local_player()
-        local kd = utils.get_player_kd(local_player)
-        if kd ~= nil and kd <= 1.0 then return end
         
         local now = globals.realtime()
         if now - killsay.last_say_time < killsay.cooldown then
@@ -6776,6 +6784,8 @@ killsay = {} do
         
         if attacker == local_player and victim ~= local_player then
             if utils.contains(modes, "on kill") then
+                local kd = utils.get_player_kd(local_player)
+                if kd ~= nil and kd <= 1.0 then return end
                 killsay.last_say_time = now
                 killsay.send_phrases("kill")
             end
