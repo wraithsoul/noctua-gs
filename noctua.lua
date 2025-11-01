@@ -3226,12 +3226,14 @@ visuals.window = function(self, base_x, base_y, align)
         end
 
         local state_r, state_g, state_b = 255, 255, 255
+        
+        local y_offset = (not use_scope_lerp and style == 'center') and 6 or 0
 
-        self.animated_text:render((x_noctua or x_draw), self.element_positions.noctua, align_title, self.indicatorsAlpha)
-        renderer.text((x_state or x_draw), self.element_positions.state, state_r, state_g, state_b, self.indicatorsAlpha, align_text, 1000, state)
+        self.animated_text:render((x_noctua or x_draw), self.element_positions.noctua + y_offset, align_title, self.indicatorsAlpha)
+        renderer.text((x_state or x_draw), self.element_positions.state + y_offset, state_r, state_g, state_b, self.indicatorsAlpha, align_text, 1000, state)
 
         if smoothRapidAlpha >= 1 or smoothReloadAlpha >= 1 then
-            renderer.text((x_rapid or x_draw), self.element_positions.rapid, 255, 255, 255, smoothRapidAlpha, align_text, 1000, "rapid")
+            renderer.text((x_rapid or x_draw), self.element_positions.rapid + y_offset, 255, 255, 255, smoothRapidAlpha, align_text, 1000, "rapid")
             local _ts = (((self.animated_text and self.animated_text.timeSpeed)) * 3.0)
             local _a1 = math.min(255, math.floor(smoothReloadAlpha * 2.0))
             local _a2 = math.floor(smoothReloadAlpha * 0.7)
@@ -3241,15 +3243,15 @@ visuals.window = function(self, base_x, base_y, align)
                 255, 255, 255, _a1,
                 255, 255, 255, _a2
             ))
-            renderer.text((x_reload or x_draw), self.element_positions.rapid, 255, 255, 255, smoothReloadAlpha, align_text, 1000, reloadStr)
+            renderer.text((x_reload or x_draw), self.element_positions.rapid + y_offset, 255, 255, 255, smoothReloadAlpha, align_text, 1000, reloadStr)
         end
 
         if smoothOsaaAlpha >= 1 then
-            renderer.text((x_osaa or x_draw), self.element_positions.osaa, 255, 255, 255, smoothOsaaAlpha, align_text, 1000, "osaa")
+            renderer.text((x_osaa or x_draw), self.element_positions.osaa + y_offset, 255, 255, 255, smoothOsaaAlpha, align_text, 1000, "osaa")
         end
         
         if smoothDmgAlpha >= 1 then
-            renderer.text((x_dmg or x_draw), self.element_positions.dmg, 255, 255, 255, smoothDmgAlpha, align_text, 1000, "dmg")
+            renderer.text((x_dmg or x_draw), self.element_positions.dmg + y_offset, 255, 255, 255, smoothDmgAlpha, align_text, 1000, "dmg")
         end
     end
 
@@ -4120,11 +4122,11 @@ widgets.register({
             local w = select(1, renderer.measure_text("c", samples[i])) or 0
             if w > maxw then maxw = w end
         end
-        local lines = 5
-        return math.max(maxw, 80), lineh * lines
+        local lines = 3.5
+        return math.max(maxw, 60), lineh * lines
     end,
     draw = function(ctx)
-        visuals:indicators(ctx.x + ctx.w / 2, ctx.y + 10)
+        visuals:indicators(ctx.x + ctx.w / 2, ctx.y)
     end,
     z = 10
 })
