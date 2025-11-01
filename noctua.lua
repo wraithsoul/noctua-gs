@@ -16,6 +16,9 @@ what's new (1.4a):
  - added autosniper tweaks
  - added noscope distance
  - added damage indicator
+ - added "emoji" indicator style
+ - added watermark
+ - added lc status
  - added "load aa" option
  - added new confetti modes
  - reworked ui
@@ -585,10 +588,13 @@ interface = {} do
         secondary = interface.header.general:label('secondary color', {215, 240, 255}),
         vgui = interface.header.general:label('vgui color', {255, 255, 255}), -- 140, 140, 140
         crosshair_indicators = interface.header.general:checkbox('crosshair indicator'),
-        crosshair_style = interface.header.general:combobox('style', {'default', 'center'}),
+        crosshair_style = interface.header.general:combobox('style', {'default', 'center', 'emoji'}),
         crosshair_animate_scope = interface.header.general:checkbox('animate on-scope'),
         damage_indicator = interface.header.general:checkbox('damage indicator'),
+        lc_status = interface.header.general:checkbox('lc status'),
         window = interface.header.general:checkbox('debug window'),
+        watermark = interface.header.general:checkbox('watermark'),
+        watermark_show = interface.header.general:multiselect('show', 'script', 'player', 'time', 'ping'),
         -- shared = interface.header.general:checkbox('shared identity (wip)'),
         logging = interface.header.general:checkbox('logging'),
         logging_options = interface.header.general:multiselect('options', 'console', 'screen'),
@@ -897,9 +903,15 @@ interface = {} do
                         return
                     end
 
+                    if key == 'watermark_show' then
+                        element:set_visible(interface.visuals.watermark:get())
+                        return
+                    end
+
                     if key == 'crosshair_animate_scope' then
+                        local style = interface.visuals.crosshair_style:get()
                         local show_anim = interface.visuals.crosshair_indicators:get()
-                            and (interface.visuals.crosshair_style:get() == 'center')
+                            and (style == 'center' or style == 'emoji')
                         element:set_visible(show_anim)
                         return
                     end
@@ -1822,6 +1834,69 @@ utils = {} do
 end
 --@endregion
 
+--@region: antiaim_funcs (embedded minimal)
+antiaim_funcs = antiaim_funcs or {}
+
+(function()
+    local data = { tickbase = { shifting = 0, charged = 0, list = {}, tickbase_max = 0 } }
+    local LIST_MAX = 16
+    for i = 1, LIST_MAX do data.tickbase.list[i] = 0 end
+
+    local function net_update_start()
+        local me = entity.get_local_player()
+        if not me then return end
+        
+        local tickbase = entity.get_prop(me, 'm_nTickBase')
+        if not tickbase then return end
+        
+        if tickbase > data.tickbase.tickbase_max then
+            data.tickbase.tickbase_max = tickbase
+        end
+        
+        local deficit = data.tickbase.tickbase_max - tickbase
+        data.tickbase.charged = math.min(14, math.max(0, deficit - 1))
+        data.tickbase.shifting = data.tickbase.charged
+    end
+    
+    local function on_round_start()
+        data.tickbase.tickbase_max = 0
+        data.tickbase.charged = 0
+        data.tickbase.shifting = 0
+    end
+
+    client.set_event_callback('net_update_start', net_update_start)
+    client.set_event_callback('round_start', on_round_start)
+
+    function antiaim_funcs.get_tickbase_shifting()
+        return math.floor((data.tickbase.shifting or 0) + 0.5)
+    end
+    
+    function antiaim_funcs.get_tickbase_charged()
+        return math.floor((data.tickbase.charged or 0) + 0.5)
+    end
+
+    function antiaim_funcs.get_double_tap()
+        if utils and utils.weapon_ready then
+            return utils.weapon_ready() and (antiaim_funcs.get_tickbase_shifting() > 0)
+        end
+        return (antiaim_funcs.get_tickbase_shifting() > 0)
+    end
+end)()
+--@endregion
+
+--@region: debug shift overlay
+local _debug_shift = {}
+client.set_event_callback('paint', function()
+    if not interface or not interface.visuals or not interface.visuals.lc_status then return end
+    if not interface.visuals.enabled_visuals:get() or not interface.visuals.lc_status:get() then return end
+    local charged = 0
+    if antiaim_funcs and antiaim_funcs.get_tickbase_charged then
+        charged = tonumber(antiaim_funcs.get_tickbase_charged()) or 0
+    end
+    renderer.text(10, 10, 200, 200, 200, 200, 'l', 0, string.format('charged: %dt', charged))
+end)
+--@endregion
+
 --@region: resolver
 resolver = {} do
     resolver.layers     = {}
@@ -2663,8 +2738,12 @@ widgets = {} do
             if not interface.visuals.enabled_visuals:get() then return false end
             if id == "debug_window" then
                 return interface.visuals.window:get()
+            elseif id == "watermark" then
+                return interface.visuals.watermark:get()
             elseif id == "crosshair_indicators" then
                 return interface.visuals.crosshair_indicators:get()
+            elseif id == "lc_status" then
+                return interface.visuals.lc_status:get()
             elseif id == "screen_logging" then
                 if not interface.visuals.logging:get() then return false end
                 local opts = interface.visuals.logging_options:get() or {}
@@ -2711,8 +2790,12 @@ widgets = {} do
             if not interface.visuals.enabled_visuals:get() then return false end
             if id == "debug_window" then
                 return interface.visuals.window:get()
+            elseif id == "watermark" then
+                return interface.visuals.watermark:get()
             elseif id == "crosshair_indicators" then
                 return interface.visuals.crosshair_indicators:get()
+            elseif id == "lc_status" then
+                return interface.visuals.lc_status:get()
             elseif id == "damage_indicator" then
                 return interface.visuals.damage_indicator:get()
             elseif id == "screen_logging" then
@@ -2752,6 +2835,7 @@ widgets = {} do
         if any_enabled_draw and widgets.is_dragging and a > 0 then
             renderer.rectangle(sw / 2, 0, 1, sh, 255, 255, 255, a)
             renderer.rectangle(0, sh / 2, sw, 1, 255, 255, 255, a)
+            renderer.rectangle(0, 20, sw, 1, 255, 255, 255, a)
         end
 
         if not allow_interact and (widgets.frames_alpha or 0) < 0.01 then return end
@@ -2781,8 +2865,10 @@ widgets = {} do
                 local cy = my + (widgets.drag_dy or 0)
                 local snapped_x = (id ~= "damage_indicator") and math.abs(cx - sw_ / 2) <= SNAP
                 local snapped_y = (id ~= "damage_indicator") and math.abs(cy - sh_ / 2) <= SNAP
+                local snapped_top = (id ~= "damage_indicator") and math.abs(cy - 20) <= SNAP
                 if snapped_x then cx = sw_ / 2 end
                 if snapped_y then cy = sh_ / 2 end
+                if snapped_top then cy = 20 end
                 local _, _, w, h = get_rect(id)
                 local min_cx = (w / 2) + PAD
                 local max_cx = sw_ - (w / 2) - PAD
@@ -2829,8 +2915,10 @@ widgets = {} do
                 cy = my2 + (widgets.drag_dy or 0)
                 local snapped_x = (id ~= "damage_indicator") and math.abs(cx - sw2 / 2) <= SNAP
                 local snapped_y = (id ~= "damage_indicator") and math.abs(cy - sh2 / 2) <= SNAP
+                local snapped_top = (id ~= "damage_indicator") and math.abs(cy - 20) <= SNAP
                 if snapped_x then cx = sw2 / 2 end
                 if snapped_y then cy = sh2 / 2 end
+                if snapped_top then cy = 20 end
                 local min_cx = (w / 2) + PAD
                 local max_cx = sw2 - (w / 2) - PAD
                 local min_cy = (h / 2) + PAD
@@ -2896,10 +2984,11 @@ widgets = {} do
             renderer.rectangle(rx + rw - 1, ry + inset, 1, rh - inset * 2, 255, 255, 255, oa)
 
             local sw3, sh3 = client.screen_size()
-            local snapped_x_now, snapped_y_now = false, false
+            local snapped_x_now, snapped_y_now, snapped_top_now = false, false, false
             if allow_interact and enabled and id ~= "damage_indicator" then
                 snapped_x_now = math.abs(cx - sw3 / 2) <= SNAP
                 snapped_y_now = math.abs(cy - sh3 / 2) <= SNAP
+                snapped_top_now = math.abs(cy - 20) <= SNAP
             end
             if allow_interact and widgets.is_dragging and widgets.active_id ~= "damage_indicator" then
                 if snapped_x_now then
@@ -2907,6 +2996,9 @@ widgets = {} do
                 end
                 if snapped_y_now then
                     renderer.rectangle(0, sh3 / 2, sw3, 1, 255, 255, 255, LINE_ALPHA_SNAP)
+                end
+                if snapped_top_now then
+                    renderer.rectangle(0, 20, sw3, 1, 255, 255, 255, LINE_ALPHA_SNAP)
                 end
             end
 
@@ -3022,6 +3114,153 @@ visuals.window = function(self, base_x, base_y, align)
         end
     }
 
+    -- emoji indicator state
+    visuals.emoji = {} do
+        local e = {}
+        -- Dynamic ASCII/UTF-8 emoticon generator (custom faces)
+        e.state = 'idle'
+        e.state_until = 0
+        e.blink_until = 0
+        e.next_blink = (globals.realtime and globals.realtime()) or 0
+        e.next_blink = e.next_blink + 1.5
+        e.next_variation = e.next_blink + 0.5
+        e.cached_idle_face = '( ^-^ )'
+        e.cached_state_face = '( ^-^ )'
+        e.override_face = nil
+        e.override_until = 0
+
+        local function rand(t)
+            return t[math.random(1, #t)]
+        end
+
+        local eyes_neutral   = { '^', '-', 'o', 'O', 'u', 'U', 'x', '>', '<' }
+        local eyes_happy     = { '^', 'o', 'O', 'u', 'U' }
+        local eyes_sad       = { '>', '<', '-', 'x' }
+        local mouths_neutral = { '-', '_', 'w', '~' }
+        local mouths_happy   = { 'w', 'v', 'u', 'o' }
+        local mouths_sad     = { '-', '_' }
+        local cheeks_opts    = { '', '//' }
+
+        local function compose(l_eye, mouth, r_eye, cheeks)
+            cheeks = cheeks or ''
+            if cheeks ~= '' then
+                return string.format('( %s%s%s%s%s )', cheeks, l_eye, mouth, r_eye, cheeks)
+            end
+            return string.format('( %s%s%s )', l_eye, mouth, r_eye)
+        end
+
+        e.gen_face = function(state, wink)
+            if wink then
+                local l_eye = rand({ '^', 'o', '>' })
+                local r_eye = '~'
+                local mouth = '_'
+                return string.format('( %s_%s )', l_eye, r_eye)
+            end
+            if state == 'happy' then
+                local l_eye = rand(eyes_happy)
+                local r_eye = rand(eyes_happy)
+                local mouth = rand(mouths_happy)
+                local cheeks = rand(cheeks_opts)
+                return compose(l_eye, mouth, r_eye, cheeks)
+            elseif state == 'sad' then
+                local l_eye = rand(eyes_sad)
+                local r_eye = rand(eyes_sad)
+                local faces = {
+                    string.format('( %s-%s )', l_eye, r_eye),
+                    string.format('( %s_%s )', l_eye, r_eye),
+                    '( >-< )',
+                    '( >_< )'
+                }
+                return rand(faces)
+            else -- idle
+                local l_eye = rand(eyes_neutral)
+                local r_eye = rand(eyes_neutral)
+                local mouth = rand(mouths_neutral)
+                local cheeks = rand(cheeks_opts)
+                return compose(l_eye, mouth, r_eye, cheeks)
+            end
+        end
+
+        e.update_idle = function()
+            local now = globals.realtime()
+            if now >= (e.next_blink or 0) then
+                e.blink_until = now + 0.18
+                e.next_blink = now + 2.0 + math.random()
+            end
+            if now >= (e.next_variation or 0) and now >= (e.state_until or 0) then
+                e.cached_idle_face = e.gen_face('idle', false)
+                e.next_variation = now + 2.0 + math.random() * 2.0
+            end
+        end
+
+        e.get_face = function()
+            local now = globals.realtime()
+            if e.override_face and now < (e.override_until or 0) then
+                return e.override_face
+            end
+            if now < (e.state_until or 0) then
+                if (e._last_state_sample or 0) + 0.6 <= now then
+                    e.cached_state_face = e.gen_face(e.state, false)
+                    e._last_state_sample = now
+                end
+                return e.cached_state_face
+            end
+            if now < (e.blink_until or 0) then
+                return e.gen_face('idle', true)
+            end
+            return e.cached_idle_face or '( ^-^ )'
+        end
+
+        e.set_state = function(st, dur)
+            e.state = st
+            e.state_until = globals.realtime() + (dur or 1.6)
+            e.cached_state_face = e.gen_face(st, false)
+        end
+
+        e.on_player_death = function(ev)
+            local me = entity.get_local_player()
+            if not me then return end
+            local attacker = client.userid_to_entindex(ev.attacker)
+            local victim = client.userid_to_entindex(ev.userid)
+            if attacker == me and victim ~= me then
+                local dur = 2.5
+                e.set_state('happy', dur)
+                local faces = { '( //w// )', '( ^o^ )', '( ^w^ )', '( >w< )', '( ^-^ )', '( *_* )' }
+                e.override_face = faces[math.random(1, #faces)]
+                e.override_until = globals.realtime() + dur
+            elseif victim == me then
+                local dur = 3.0
+                e.set_state('sad', dur)
+                e.override_face = '( T_T )'
+                e.override_until = globals.realtime() + dur
+            end
+        end
+        e.on_player_spawn = function(ev)
+            local me = entity.get_local_player()
+            if not me then return end
+            local who = client.userid_to_entindex(ev.userid)
+            if who == me then
+                e.state = 'idle'
+                e.state_until = 0
+                e.blink_until = 0
+                e.next_blink = globals.realtime() + 1.5
+                e.next_variation = e.next_blink + 0.5
+                e.cached_idle_face = '( ^-^ )'
+                e.cached_state_face = '( ^-^ )'
+                e.override_face = nil
+                e.override_until = 0
+            end
+        end
+        visuals.emoji = e
+    end
+
+    client.set_event_callback('player_death', function(e)
+        if visuals and visuals.emoji and visuals.emoji.on_player_death then visuals.emoji.on_player_death(e) end
+    end)
+    client.set_event_callback('player_spawn', function(e)
+        if visuals and visuals.emoji and visuals.emoji.on_player_spawn then visuals.emoji.on_player_spawn(e) end
+    end)
+
     visuals.indicators = function(self, base_x, base_y)
         local frameTime = globals.frametime()
         local fadeSpeedBase = 10
@@ -3082,8 +3321,9 @@ visuals.window = function(self, base_x, base_y, align)
         local isDMG = ui.get(ui_references.minimum_damage_override[1]) and ui.get(ui_references.minimum_damage_override[2])
 
         local style = (interface.visuals.crosshair_style and interface.visuals.crosshair_style:get()) or 'default'
-        local align_text = (style == 'center') and 'c' or 'l'
-        local align_title = (style == 'center') and 'cb' or 'lb'
+        local isEmoji = (style == 'emoji')
+        local align_text = ((style == 'center') or isEmoji) and 'c' or 'l'
+        local align_title = ((style == 'center') or isEmoji) and 'cb' or 'lb'
 
 
         if not self.element_positions then
@@ -3162,7 +3402,7 @@ visuals.window = function(self, base_x, base_y, align)
         self.element_positions.dmg = mathematic.lerp(self.element_positions.dmg, self.element_target_positions.dmg, fadeSpeedSetting)
 
         local animate_on_scope = (interface.visuals.crosshair_animate_scope and interface.visuals.crosshair_animate_scope:get()) or false
-        local use_scope_lerp = (style == 'center') and animate_on_scope
+        local use_scope_lerp = ((style == 'center') or isEmoji) and animate_on_scope
 
         self._last_scoped = self._last_scoped or false
         do
@@ -3206,7 +3446,7 @@ visuals.window = function(self, base_x, base_y, align)
         end
 
         local x_draw = base_x
-        local x_noctua, x_state, x_rapid, x_waiting, x_osaa, x_dmg
+        local x_title, x_state, x_rapid, x_waiting, x_osaa, x_dmg
 
         if use_scope_lerp then
             local function lerp_x_centered(text, use_bold)
@@ -3217,7 +3457,8 @@ visuals.window = function(self, base_x, base_y, align)
                 return mathematic.lerp(from, to, scope_pos)
             end
 
-            x_noctua = lerp_x_centered(self.animated_text.base or "noctua", true)
+            local title_text = isEmoji and ((visuals.emoji and visuals.emoji.get_face and visuals.emoji.get_face()) or ":)") or (self.animated_text.base or "noctua")
+            x_title = lerp_x_centered(title_text, true)
             x_state  = lerp_x_centered(state, false)
             x_rapid  = lerp_x_centered("rapid", false)
             x_waiting = lerp_x_centered("waiting", false)
@@ -3227,7 +3468,23 @@ visuals.window = function(self, base_x, base_y, align)
 
         local state_r, state_g, state_b = 255, 255, 255
 
-        self.animated_text:render((x_noctua or x_draw), self.element_positions.noctua, align_title, self.indicatorsAlpha)
+        if isEmoji then
+            if visuals.emoji and visuals.emoji.update_idle then visuals.emoji.update_idle() end
+            local face = (visuals.emoji and visuals.emoji.get_face and visuals.emoji.get_face()) or ':)'
+            local emoji_y = self.element_positions.noctua
+            if visuals.emoji and visuals.emoji.state_until and globals.realtime() < (visuals.emoji.state_until or 0) then
+                local st = visuals.emoji.state
+                local t = globals.realtime()
+                if st == 'happy' then
+                    emoji_y = emoji_y - math.sin(t * 10) * 2
+                elseif st == 'sad' then
+                    emoji_y = emoji_y + math.sin(t * 6) * 1
+                end
+            end
+            renderer.text((x_title or x_draw), emoji_y, r1, g1, b1, self.indicatorsAlpha, align_title, 1000, face)
+        else
+            self.animated_text:render((x_title or x_draw), self.element_positions.noctua, align_title, self.indicatorsAlpha)
+        end
         renderer.text((x_state or x_draw), self.element_positions.state, state_r, state_g, state_b, self.indicatorsAlpha, align_text, 1000, state)
 
         if smoothRapidAlpha >= 1 or smoothReloadAlpha >= 1 then
@@ -3297,6 +3554,89 @@ visuals.window = function(self, base_x, base_y, align)
         local r, g, b, a = 255, 255, 255, dmg_state.alpha
 
         renderer.text(x, y, r, g, b, a, 'c', 1000, text)
+    end
+
+    -- lc status widget renderer
+    visuals._lc_state = visuals._lc_state or { dt_prev = false, last_ticks = 0, last_label = "lc status", last_color = {255,255,255}, last_update = 0, alpha = 0, display_duration = 1.3, fade_duration = 0.25 }
+
+    local function _lc_classify(t)
+        if (t or 0) <= 0 then return "failed", {255, 70, 70} end
+        if t <= 2 then return "bad", {255, 130, 80} end
+        if t <= 4 then return "ok", {200, 200, 200} end
+        if t <= 7 then return "good", {80, 220, 120} end
+        if t <= 9 then return "great", {120, 200, 255} end
+        if t <= 11 then return "excellent", {160, 255, 160} end
+        if t == 12 then return "ideal lc", {120, 255, 200} end
+        if t == 13 then return "god lc", {180, 130, 255} end
+        return "world threat lc", {255, 120, 190}
+    end
+
+    function visuals:_update_lc_state()
+        local st = self._lc_state
+        local dt_on = ui.get(ui_references.double_tap[1]) and ui.get(ui_references.double_tap[2])
+        local charged = tonumber(antiaim_funcs.get_tickbase_charged and antiaim_funcs.get_tickbase_charged() or 0) or 0
+        if dt_on then
+            st._last_shift = charged
+        end
+        if st.dt_prev and not dt_on then
+            local ticks = tonumber(st._last_shift or 0) or 0
+            st.last_ticks = ticks
+            st.last_label, st.last_color = _lc_classify(ticks)
+            st.last_update = (globals.realtime and globals.realtime()) or 0
+        end
+        st.dt_prev = dt_on
+        self._lc_state = st
+    end
+
+    visuals.lc_status = function(self, base_x, base_y, edit_mode)
+        self:_update_lc_state()
+        local line_spacing = 12
+        
+        if edit_mode then
+            local lines = {'lc status', 'ticks'}
+            for i, line in ipairs(lines) do
+                local y = base_y + (i - 1) * line_spacing
+                local color = (i == 1) and {255, 255, 255} or {160, 160, 160}
+                renderer.text(base_x, y, color[1], color[2], color[3], 255, 'c', 1000, line)
+            end
+            return
+        end
+        
+        local st = self._lc_state or {}
+        local now = (globals.realtime and globals.realtime()) or 0
+        local elapsed = now - (st.last_update or 0)
+        local target_alpha = 0
+        
+        if (st.last_update or 0) > 0 then
+            local display_time = st.display_duration or 1.5
+            local fade_time = st.fade_duration or 0.5
+            
+            if elapsed < display_time then
+                target_alpha = 255
+            elseif elapsed < (display_time + fade_time) then
+                local fade_progress = (elapsed - display_time) / fade_time
+                target_alpha = math.floor(255 * (1 - fade_progress) + 0.5)
+            else
+                target_alpha = 0
+            end
+        end
+        
+        local fadeSpeed = globals.frametime() * 15
+        st.alpha = mathematic.lerp(st.alpha or 0, target_alpha, fadeSpeed)
+        self._lc_state = st
+        local a = math.floor((st.alpha or 0) + 0.5)
+        if a < 1 then return end
+        
+        local lbl = st.last_label or 'lc status'
+        local col = st.last_color or {255,255,255}
+        local ticks = tonumber(st.last_ticks or 0) or 0
+        
+        local lines = {lbl, tostring(ticks) .. 't'}
+        for i, line in ipairs(lines) do
+            local y = base_y + (i - 1) * line_spacing
+            local color = (i == 1) and col or {180, 180, 180}
+            renderer.text(base_x, y, color[1], color[2], color[3], a, 'c', 1000, line)
+        end
     end
 end
 
@@ -4085,16 +4425,25 @@ logging = {} do
         local hitgroup = hitgroupMapping[e.hitgroup] or "unknown"
     
         if reason == "?" then
-            reason = "resolver"
+            reason = "unknown"
         elseif not reason or reason == "" then
             reason = "unregistered shot"
         end
     
-        if reason == "spread" or reason == "prediction error" or reason == "death" then
+        if reason == "spread" or reason == "prediction error" then
             -- keep original reason
         elseif health <= 0 then
             reason = "player death"
-        elseif reason == "resolver" then
+        elseif reason == "death" then
+            local local_player = entity.get_local_player()
+            if local_player and entity.is_alive(local_player) then
+                if health <= 0 then
+                    reason = "player death"
+                end
+            else
+                -- keep reason
+            end
+        elseif reason == "unknown" then
             if cached.got_hit ~= nil and cached.got_hurt ~= nil then
                 if cached.got_hit and not cached.got_hurt then
                     reason = "correction"
@@ -4104,7 +4453,7 @@ logging = {} do
             end
         end
 
-        if lagComp > 14 and reason == "resolver" then
+        if lagComp > 14 and reason == "unknown" then
             reason = "backtrack failure"
         end
 
@@ -4132,11 +4481,11 @@ logging = {} do
     
         if health <= 0 then
             msg = string.format(
-                "missed %s's %s / lc: %d - reason: death",
+                "missed %s's %s / lc: %d - reason: player death",
                 playerName, hitgroup, lagComp
             )
         else
-            if reason == "resolver" or reason == "correction" or reason == "misprediction" then
+            if reason == "unknown" or reason == "correction" or reason == "misprediction" then
                 msg = string.format(
                     "missed %s's %s / lc: %d - yaw: %s - reason: %s",
                     playerName, hitgroup, lagComp, type(desiredYaw) == "number" and desiredYaw.."°" or desiredYaw.."°", reason
@@ -4151,9 +4500,9 @@ logging = {} do
     
         if doConsole then
             if health <= 0 then
-                argLog("missed %s's %s / lc: %d - reason: death", playerName, hitgroup, lagComp)
+                argLog("missed %s's %s / lc: %d - reason: player death", playerName, hitgroup, lagComp)
             else
-                if reason == "resolver" or reason == "correction" or reason == "misprediction" then
+                if reason == "unknown" or reason == "correction" or reason == "misprediction" then
                     argLog("missed %s's %s / lc: %d - yaw: %s - reason: %s", playerName, hitgroup, lagComp, type(desiredYaw) == "number" and desiredYaw.."°" or desiredYaw.."°", reason)
                 else
                     argLog("missed %s's %s / lc: %d - reason: %s", playerName, hitgroup, lagComp, reason)
@@ -4288,6 +4637,136 @@ widgets.register({
 })
 
 widgets.register({
+    id = "watermark",
+    title = "Watermark",
+    defaults = { anchor_x = "center", anchor_y = "center", offset_x = 0, offset_y = -100 },
+    get_size = function(st)
+        local lineh = math.max(select(2, renderer.measure_text('b', 'A')) or 12, select(2, renderer.measure_text('', 'A')) or 12)
+        local username = _nickname or 'player'
+        local hours, minutes, seconds, milliseconds = client.system_time()
+        local time_str = string.format('%02d:%02d', hours, minutes)
+        local weekdays = {'Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'}
+        local unix_time = client.unix_time()
+        local day_of_week = math.floor(unix_time / 86400 + 4) % 7 + 1
+        local day_str = weekdays[day_of_week]
+        local lat_ms = 0
+        if client.latency then
+            local ok, v = pcall(client.latency)
+            if ok and type(v) == 'number' then lat_ms = math.floor(v * 1000 + 0.5) end
+        end
+        local num_str = tostring(lat_ms)
+        local gap = 12
+        local gap_small = 6
+        local show_opts = interface.visuals.watermark_show:get() or {}
+        local show_script = utils.contains(show_opts, 'script')
+        local show_player = utils.contains(show_opts, 'player')
+        local show_time = utils.contains(show_opts, 'time')
+        local show_ping = utils.contains(show_opts, 'ping')
+        local total_w = 0
+        local first = true
+        if show_script then
+            total_w = total_w + (select(1, renderer.measure_text('b', 'noctua')) or 0)
+            first = false
+        end
+        if show_player then
+            if not first then total_w = total_w + gap end
+            total_w = total_w + (select(1, renderer.measure_text('', username)) or 0)
+            first = false
+        end
+        if show_time then
+            if not first then total_w = total_w + gap end
+            total_w = total_w + (select(1, renderer.measure_text('', time_str)) or 0) + gap_small + (select(1, renderer.measure_text('', day_str)) or 0)
+            first = false
+        end
+        if show_ping then
+            if not first then total_w = total_w + gap end
+            total_w = total_w + (select(1, renderer.measure_text('', num_str)) or 0) + gap_small + (select(1, renderer.measure_text('', 'ms')) or 0)
+            first = false
+        end
+        return math.max(total_w, 60), lineh + 8
+    end,
+    draw = function(ctx)
+        local username = _nickname or 'player'
+        local hours, minutes, seconds, milliseconds = client.system_time()
+        local time_str = string.format('%02d:%02d', hours, minutes)
+        local weekdays = {'Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'}
+        local unix_time = client.unix_time()
+        local day_of_week = math.floor(unix_time / 86400 + 4) % 7 + 1
+        local day_str = weekdays[day_of_week]
+        local lat_ms = 0
+        if client.latency then
+            local ok, v = pcall(client.latency)
+            if ok and type(v) == 'number' then lat_ms = math.floor(v * 1000 + 0.5) end
+        end
+        local num_str = tostring(lat_ms)
+        local gap = 12
+        local gap_small = 6
+        local r_accent, g_accent, b_accent = unpack(interface.visuals.accent.color.value)
+        
+        local show_opts = interface.visuals.watermark_show:get() or {}
+        local show_script = utils.contains(show_opts, 'script')
+        local show_player = utils.contains(show_opts, 'player')
+        local show_time = utils.contains(show_opts, 'time')
+        local show_ping = utils.contains(show_opts, 'ping')
+        
+        local parts = {}
+        if show_script then
+            table.insert(parts, { text = 'noctua', color = {r_accent, g_accent, b_accent}, flags = 'b' })
+        end
+        if show_player then
+            table.insert(parts, { text = username, color = {255,255,255}, flags = '' })
+        end
+        if show_time then
+            table.insert(parts, { text = time_str, color = {255,255,255}, flags = '' })
+            table.insert(parts, { text = day_str, color = {130,130,130}, flags = '', small_gap = true })
+        end
+        if show_ping then
+            table.insert(parts, { text = num_str, color = {255,255,255}, flags = '' })
+            table.insert(parts, { text = 'ms', color = {130,130,130}, flags = '', small_gap = true })
+        end
+        
+        if #parts == 0 then return end
+        
+        local max_h = 0
+        local total_w = 0
+        for i = 1, #parts do
+            local p = parts[i]
+            local w, h = renderer.measure_text(p.flags, p.text)
+            w = w or 0; h = h or 0
+            if i > 1 then
+                if p.small_gap then
+                    total_w = total_w + gap_small
+                else
+                    total_w = total_w + gap
+                end
+            end
+            total_w = total_w + w
+            if h > max_h then max_h = h end
+        end
+        if max_h == 0 then max_h = select(2, renderer.measure_text('', 'A')) or 12 end
+        
+        local start_x = ctx.x + (ctx.w - total_w) / 2
+        local base_y = math.floor(ctx.y + (ctx.h - max_h) / 2 + 0.5)
+        local x = math.floor(start_x + 0.5)
+        for i = 1, #parts do
+            local p = parts[i]
+            if i > 1 then
+                if p.small_gap then
+                    x = x + gap_small
+                else
+                    x = x + gap
+                end
+            end
+            local _, h = renderer.measure_text(p.flags, p.text); h = h or max_h
+            local y_i = math.floor(base_y + (max_h - h) / 2 + 0.5)
+            renderer.text(x, y_i, p.color[1], p.color[2], p.color[3], 255, p.flags, 0, p.text)
+            x = x + (select(1, renderer.measure_text(p.flags, p.text)) or 0)
+        end
+    end,
+    z = 7
+})
+
+widgets.register({
     id = "damage_indicator",
     title = "Damage Indicator",
     defaults = { anchor_x = "center", anchor_y = "center", offset_x = 0, offset_y = 30 },
@@ -4305,6 +4784,29 @@ widgets.register({
         visuals:damage_indicator(ctx.x + ctx.w / 2, ctx.y + (ctx.h / 2))
     end,
     z = 9
+})
+
+widgets.register({
+    id = "lc_status",
+    title = "LC Status",
+    defaults = { anchor_x = "center", anchor_y = "center", offset_x = 0, offset_y = 45 },
+    get_size = function(st)
+        local lineh = select(2, renderer.measure_text('c', 'A')) or 12
+        local samples = { 'lc status', 'ticks', 'failed', 'bad', 'ok', 'good', 'great', 'excellent', 'ideal lc', 'god lc', 'world threat lc', '14t' }
+        local maxw = 0
+        for i = 1, #samples do
+            local w = select(1, renderer.measure_text('c', samples[i])) or 0
+            if w > maxw then maxw = w end
+        end
+        return math.max(maxw, 80), lineh * 2 + 6
+    end,
+    draw = function(ctx)
+        local line_spacing = 12
+        local base_x = ctx.cx
+        local base_y = ctx.cy - line_spacing / 2
+        visuals:lc_status(base_x, base_y, ctx.edit_mode)
+    end,
+    z = 8
 })
 
 widgets.load_from_db()
