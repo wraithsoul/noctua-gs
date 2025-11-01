@@ -1884,18 +1884,18 @@ antiaim_funcs = antiaim_funcs or {}
 end)()
 --@endregion
 
---@region: debug shift overlay
-local _debug_shift = {}
-client.set_event_callback('paint', function()
-    if not interface or not interface.visuals or not interface.visuals.lc_status then return end
-    if not interface.visuals.enabled_visuals:get() or not interface.visuals.lc_status:get() then return end
-    local charged = 0
-    if antiaim_funcs and antiaim_funcs.get_tickbase_charged then
-        charged = tonumber(antiaim_funcs.get_tickbase_charged()) or 0
-    end
-    renderer.text(10, 10, 200, 200, 200, 200, 'l', 0, string.format('charged: %dt', charged))
-end)
---@endregion
+-- --@region: debug shift overlay
+-- local _debug_shift = {}
+-- client.set_event_callback('paint', function()
+--     if not interface or not interface.visuals or not interface.visuals.lc_status then return end
+--     if not interface.visuals.enabled_visuals:get() or not interface.visuals.lc_status:get() then return end
+--     local charged = 0
+--     if antiaim_funcs and antiaim_funcs.get_tickbase_charged then
+--         charged = tonumber(antiaim_funcs.get_tickbase_charged()) or 0
+--     end
+--     renderer.text(10, 10, 200, 200, 200, 200, 'l', 0, string.format('charged: %dt', charged))
+-- end)
+-- --@endregion
 
 --@region: resolver
 resolver = {} do
@@ -4718,11 +4718,11 @@ widgets.register({
         end
         if show_time then
             table.insert(parts, { text = time_str, color = {255,255,255}, flags = '' })
-            table.insert(parts, { text = day_str, color = {130,130,130}, flags = '', small_gap = true })
+            table.insert(parts, { text = day_str, color = {150,150,150}, flags = '', small_gap = true })
         end
         if show_ping then
             table.insert(parts, { text = num_str, color = {255,255,255}, flags = '' })
-            table.insert(parts, { text = 'ms', color = {130,130,130}, flags = '', small_gap = true })
+            table.insert(parts, { text = 'ms', color = {150,150,150}, flags = '', small_gap = true })
         end
         
         if #parts == 0 then return end
