@@ -16,8 +16,11 @@ what's new (1.4a):
  - added autosniper tweaks
  - added noscope distance
  - added damage indicator
+ - added "load aa" option
+ - added new confetti modes
  - reworked ui
  - fixed color/hotkeys saving
+ - fixed crosshair indicators aligment
 
 changelog 1.4 (22/10/2025):
  - added anti aim builder
@@ -546,22 +549,34 @@ interface = {} do
  
     interface.search = interface.header.general:combobox(pui.macros.title .. ' - '.. _version, 'home', 'aimbot', 'antiaim', 'visuals', 'utility', 'models', 'config', 'other')
 
-    interface.aa = {}
+    interface.home = {
+        title = interface.header.fake_lag:label('your stats:'),
+        kills = interface.header.fake_lag:label(' · kills: 0'),
+        deaths = interface.header.fake_lag:label(' · deaths: 0'),
+        kd = interface.header.fake_lag:label(' · kd ratio: 0'),
+        title_script = interface.header.fake_lag:label('cheat:'),
+        hits = interface.header.fake_lag:label(' · hits: 0'),
+        misses = interface.header.fake_lag:label(' · misses: 0'),
+        evaded = interface.header.fake_lag:label(' · evaded shots: 0'),
+        ratio = interface.header.fake_lag:label(' · ratio: 0'),
+        reset = interface.header.fake_lag:button('reset'),
+        confetti = interface.header.general:button('confetti'),
+    }
 
     interface.aimbot = {
         enabled_aimbot = interface.header.general:checkbox('enable aimbot'),
         enabled_resolver_tweaks = interface.header.general:checkbox('\aa5ab55ffresolver tweaks'),
-        resolver_mode = interface.header.general:combobox('mode', 'owl'),
+        resolver_mode = interface.header.general:combobox('mode', 'autopilot'),
         smart_safety = interface.header.general:checkbox('smart safety'),
-        autosniper_tweaks = interface.header.general:checkbox('autosniper tweaks'),
         silent_shot = interface.header.general:checkbox('silent shot'),
         force_recharge = interface.header.general:checkbox('allow force recharge'),
-        quick_stop = interface.header.general:checkbox('air stop', 0x00),
+        autosniper_tweaks = interface.header.general:checkbox('autosniper tweaks'),
         noscope_distance = interface.header.general:checkbox('noscope distance'),
         noscope_weapons = interface.header.general:multiselect('weapons', 'autosnipers', 'scout', 'awp'),
         noscope_distance_autosnipers = interface.header.general:slider('autosnipers distance', 1, 800, 450, true, ''),
         noscope_distance_scout = interface.header.general:slider('scout distance', 1, 800, 450, true, ''),
-        noscope_distance_awp = interface.header.general:slider('awp distance', 1, 800, 450, true, '')
+        noscope_distance_awp = interface.header.general:slider('awp distance', 1, 800, 450, true, ''),
+        quick_stop = interface.header.general:checkbox('air stop', 0x00)
     }
 
     interface.visuals = {
@@ -569,7 +584,7 @@ interface = {} do
         accent = interface.header.general:label('accent color', {120, 160, 180}),
         secondary = interface.header.general:label('secondary color', {215, 240, 255}),
         vgui = interface.header.general:label('vgui color', {255, 255, 255}), -- 140, 140, 140
-        crosshair_indicators = interface.header.general:checkbox('crosshair indicators'),
+        crosshair_indicators = interface.header.general:checkbox('crosshair indicator'),
         crosshair_style = interface.header.general:combobox('style', {'default', 'center'}),
         crosshair_animate_scope = interface.header.general:checkbox('animate on-scope'),
         damage_indicator = interface.header.general:checkbox('damage indicator'),
@@ -620,19 +635,6 @@ interface = {} do
         delete_button = interface.header.other:button('\aff4444ffdelete'),
     }
 
-    interface.home = {
-        title = interface.header.general:label('your stats:'),
-        kills = interface.header.general:label(' · kills: 0'),
-        deaths = interface.header.general:label(' · deaths: 0'),
-        kd = interface.header.general:label(' · kd ratio: 0'),
-        title_script = interface.header.general:label('cheat:'),
-        hits = interface.header.general:label(' · hits: 0'),
-        misses = interface.header.general:label(' · misses: 0'),
-        evaded = interface.header.general:label(' · evaded shots: 0'),
-        ratio = interface.header.general:label(' · ratio: 0'),
-        reset = interface.header.general:button('reset'),
-        confetti = interface.header.general:button('confetti'),
-    }
     interface.utility = {
         -- item_anti_crash = interface.header.general:checkbox('\aa5ab55ffchat filter (crash & noise)'),
         clantag = interface.header.general:checkbox('clantag'),
@@ -3204,36 +3206,32 @@ visuals.window = function(self, base_x, base_y, align)
         end
 
         local x_draw = base_x
-        local x_noctua, x_state, x_rapid, x_reload, x_osaa, x_dmg
+        local x_noctua, x_state, x_rapid, x_waiting, x_osaa, x_dmg
 
         if use_scope_lerp then
-            align_text = 'l'
-            align_title = 'lb'
-
-            local function lerp_x_for(text)
-                local w = select(1, renderer.measure_text('l', text)) or 0
-                local from = base_x - w / 2
-                local to = (side_sign > 0) and (base_x + 3) or (base_x - w - 3)
+            local function lerp_x_centered(text, use_bold)
+                local flags = use_bold and 'cb' or 'c'
+                local w = select(1, renderer.measure_text(flags, text)) or 0
+                local from = base_x
+                local to = (side_sign > 0) and (base_x + w / 2 + 3) or (base_x - w / 2 - 3)
                 return mathematic.lerp(from, to, scope_pos)
             end
 
-            x_noctua = lerp_x_for(self.animated_text.base or "noctua")
-            x_state  = lerp_x_for(state)
-            x_rapid  = lerp_x_for("rapid")
-            x_reload = lerp_x_for("reload")
-            x_osaa   = lerp_x_for("osaa")
-            x_dmg    = lerp_x_for("dmg")
+            x_noctua = lerp_x_centered(self.animated_text.base or "noctua", true)
+            x_state  = lerp_x_centered(state, false)
+            x_rapid  = lerp_x_centered("rapid", false)
+            x_waiting = lerp_x_centered("waiting", false)
+            x_osaa   = lerp_x_centered("osaa", false)
+            x_dmg    = lerp_x_centered("dmg", false)
         end
 
         local state_r, state_g, state_b = 255, 255, 255
-        
-        local y_offset = (not use_scope_lerp and style == 'center') and 6 or 0
 
-        self.animated_text:render((x_noctua or x_draw), self.element_positions.noctua + y_offset, align_title, self.indicatorsAlpha)
-        renderer.text((x_state or x_draw), self.element_positions.state + y_offset, state_r, state_g, state_b, self.indicatorsAlpha, align_text, 1000, state)
+        self.animated_text:render((x_noctua or x_draw), self.element_positions.noctua, align_title, self.indicatorsAlpha)
+        renderer.text((x_state or x_draw), self.element_positions.state, state_r, state_g, state_b, self.indicatorsAlpha, align_text, 1000, state)
 
         if smoothRapidAlpha >= 1 or smoothReloadAlpha >= 1 then
-            renderer.text((x_rapid or x_draw), self.element_positions.rapid + y_offset, 255, 255, 255, smoothRapidAlpha, align_text, 1000, "rapid")
+            renderer.text((x_rapid or x_draw), self.element_positions.rapid, 255, 255, 255, smoothRapidAlpha, align_text, 1000, "rapid")
             local _ts = (((self.animated_text and self.animated_text.timeSpeed)) * 3.0)
             local _a1 = math.min(255, math.floor(smoothReloadAlpha * 2.0))
             local _a2 = math.floor(smoothReloadAlpha * 0.7)
@@ -3243,15 +3241,15 @@ visuals.window = function(self, base_x, base_y, align)
                 255, 255, 255, _a1,
                 255, 255, 255, _a2
             ))
-            renderer.text((x_reload or x_draw), self.element_positions.rapid + y_offset, 255, 255, 255, smoothReloadAlpha, align_text, 1000, reloadStr)
+            renderer.text((x_waiting or x_rapid or x_draw), self.element_positions.rapid, 255, 255, 255, smoothReloadAlpha, align_text, 1000, reloadStr)
         end
 
         if smoothOsaaAlpha >= 1 then
-            renderer.text((x_osaa or x_draw), self.element_positions.osaa + y_offset, 255, 255, 255, smoothOsaaAlpha, align_text, 1000, "osaa")
+            renderer.text((x_osaa or x_draw), self.element_positions.osaa, 255, 255, 255, smoothOsaaAlpha, align_text, 1000, "osaa")
         end
         
         if smoothDmgAlpha >= 1 then
-            renderer.text((x_dmg or x_draw), self.element_positions.dmg + y_offset, 255, 255, 255, smoothDmgAlpha, align_text, 1000, "dmg")
+            renderer.text((x_dmg or x_draw), self.element_positions.dmg, 255, 255, 255, smoothDmgAlpha, align_text, 1000, "dmg")
         end
     end
 
@@ -3521,64 +3519,175 @@ confetti = {} do
         {128, 0, 255}
     }
     
-    confetti.start = function(self)
-        self.last_time = nil
+    confetti._seeded = false
+    confetti.ensure_seed = function(self)
+        if self._seeded then return end
+        local a = tonumber((tostring({}):match("0x(%x+)") or "0"), 16) or 0
+        local b = math.floor((globals.realtime() or 0) * 1000)
+        local c = (globals.tickcount and globals.tickcount()) or 0
+        local seed = a
+        if bit and bit.bxor then
+            seed = bit.bxor(seed, b)
+            seed = bit.bxor(seed, c)
+        else
+            seed = (seed + b + c) % 2147483647
+        end
+        if seed == 0 then seed = 1 end
+        math.randomseed(seed)
+        math.random(); math.random(); math.random()
+        self._seeded = true
+    end
+    
+    -- normalize incoming mode
+    confetti._normalize_mode = function(self, mode)
+        local n = tonumber(mode)
+        if n == nil then return 1 end
+        if n == 0 then self:ensure_seed(); return math.random(1, 3) end
+        if n < 1 or n > 3 then n = 1 end
+        return n
+    end
+
+    -- mode: 0|1|2|3 (0 = random); play_sound: true/false (default true)
+    confetti.push = function(self, mode, play_sound)
+        local m = self:_normalize_mode(mode)
+        self:start(m, play_sound)
+    end
+
+    confetti.start = function(self, mode, play_sound)
+        self:ensure_seed()
         local sw, sh = client.screen_size()
-        local per_side = 300
+        local m = (self._normalize_mode and self:_normalize_mode(mode)) or (tonumber(mode) or 1)
 
-        local function spawn_side(side)
-            for i = 1, per_side do
-                local spawn_x, spawn_y
-                local target_x
+        if m == 1 then
+            local per_side = 300
+            local function spawn_side(side)
+                for i = 1, per_side do
+                    local spawn_x, spawn_y
+                    local target_x
 
-                if side == 'left' then
-                    spawn_x = math.random(-100, -20)
-                    spawn_y = math.random(sh * 0.3, sh * 0.7)
-                    target_x = math.random(sw * 0.1, sw * 0.45)
-                else
-                    spawn_x = math.random(sw + 20, sw + 100)
-                    spawn_y = math.random(sh * 0.3, sh * 0.7)
-                    target_x = math.random(sw * 0.55, sw * 0.9)
+                    if side == 'left' then
+                        spawn_x = math.random(-100, -20)
+                        spawn_y = math.random(sh * 0.3, sh * 0.7)
+                        target_x = math.random(sw * 0.1, sw * 0.45)
+                    else
+                        spawn_x = math.random(sw + 20, sw + 100)
+                        spawn_y = math.random(sh * 0.3, sh * 0.7)
+                        target_x = math.random(sw * 0.55, sw * 0.9)
+                    end
+
+                    local target_y = -100
+                    local dx = target_x - spawn_x
+                    local dy = target_y - spawn_y
+                    local angle_rad = math.atan2(dy, dx)
+                    local speed = math.random(100, 140) / 19
+                    local vx = math.cos(angle_rad) * speed
+                    local vy = math.sin(angle_rad) * speed
+
+                    local p = {
+                        x = spawn_x,
+                        y = spawn_y,
+                        vx = vx + (math.random(-20, 20) / 100),
+                        vy = vy + (math.random(-20, 20) / 100),
+                        gravity = 0.008,
+                        air = 0.994,
+                        wind = (math.random(-1, 1) / 1000),
+                        sway = math.random() * 0.05,
+                        sway_speed = math.random(5, 10) / 1000,
+                        sway_time = 0,
+                        rotation = math.random(0, 360),
+                        rotation_speed = math.random(-3, 3),
+                        size = math.random(5, 9),
+                        len = math.random(14, 24),
+                        color = self.colors[math.random(1, #self.colors)],
+                        lifetime = math.random(1000, 1250),
+                        max_life = 3000,
+                        bounce = 0.2
+                    }
+                    p.max_life = p.lifetime
+                    table.insert(self.particles, p)
                 end
+            end
+            spawn_side('left')
+            spawn_side('right')
 
-                local target_y = -100
-                local dx = target_x - spawn_x
-                local dy = target_y - spawn_y
-                local angle_rad = math.atan2(dy, dx)
-                local speed = math.random(100, 140) / 19
-                local vx = math.cos(angle_rad) * speed
-                local vy = math.sin(angle_rad) * speed
-                
+        elseif m == 2 then
+            local total = 1200
+            for i = 1, total do
+                local spawn_x = math.random(0, sw)
+                local spawn_y = math.random(-600, -20)
+                local vx = (math.random(-10, 10) / 100)
+                local vy = math.random(8, 15) / 10
                 local p = {
                     x = spawn_x,
                     y = spawn_y,
-                    vx = vx + (math.random(-20, 20) / 100),
-                    vy = vy + (math.random(-20, 20) / 100),
-                    gravity = 0.008,
-                    air = 0.994,
+                    vx = vx,
+                    vy = vy,
+                    gravity = 0.003,
+                    air = 0.998,
                     wind = (math.random(-1, 1) / 1000),
-                    sway = math.random() * 0.05,
-                    sway_speed = math.random(5, 10) / 1000,
+                    sway = math.random() * 0.03,
+                    sway_speed = math.random(3, 6) / 1000,
                     sway_time = 0,
                     rotation = math.random(0, 360),
-                    rotation_speed = math.random(-3, 3),
+                    rotation_speed = math.random(-2, 2),
                     size = math.random(5, 9),
                     len = math.random(14, 24),
                     color = self.colors[math.random(1, #self.colors)],
-                    lifetime = math.random(1000, 1250),
+                    lifetime = math.random(1200, 1500),
                     max_life = 3000,
-                    bounce = 0.2
+                    bounce = 0.15
                 }
                 p.max_life = p.lifetime
                 table.insert(self.particles, p)
             end
+
+        elseif m == 3 then
+            local per_burst = 400
+            local burst_positions = {
+                { x = sw * 0.35, y = sh * 0.30 },
+                { x = sw * 0.65, y = sh * 0.30 }
+            }
+            
+            for _, pos in ipairs(burst_positions) do
+                local cx = pos.x + math.random(-10, 10)
+                local cy = pos.y + math.random(-5, 5)
+                
+                for i = 1, per_burst do
+                    local angle = math.random() * math.pi * 2
+                    local speed = math.random(5, 28) / 10
+                    local vx = math.cos(angle) * speed
+                    local vy = math.sin(angle) * speed
+
+                    local p = {
+                        x = cx + math.random(-5, 5),
+                        y = cy + math.random(-3, 3),
+                        vx = vx + (math.random(-5, 5) / 100),
+                        vy = vy + (math.random(-5, 5) / 100),
+                        gravity = 0.004,
+                        air = 0.996,
+                        wind = (math.random(-1, 1) / 1000),
+                        sway = math.random() * 0.03,
+                        sway_speed = math.random(3, 7) / 1000,
+                        sway_time = 0,
+                        rotation = math.random(0, 360),
+                        rotation_speed = math.random(-2, 2),
+                        size = math.random(5, 9),
+                        len = math.random(14, 24),
+                        color = self.colors[math.random(1, #self.colors)],
+                        lifetime = math.random(1200, 1500),
+                        max_life = 3000,
+                        bounce = 0.15
+                    }
+                    p.max_life = p.lifetime
+                    table.insert(self.particles, p)
+                end
+            end
         end
-        
-        spawn_side('left')
-        spawn_side('right')
-        
+
         self.active = true
-        client.exec("play weapons/party_horn_01.wav")
+        if play_sound ~= false then
+            client.exec("play weapons/party_horn_01.wav")
+        end
     end
     
     confetti.update = function(self)
@@ -3610,19 +3719,7 @@ confetti = {} do
             p.rotation = (p.rotation or 0) + (p.rotation_speed or 0) * 0.5 * dt
             p.lifetime = p.lifetime - 1 * dt
             
-            if p.y >= ground then
-                p.y = ground
-                if math.abs(p.vy) > 0.15 then
-                    p.vy = -p.vy * (p.bounce or 0.35)
-                    p.vx = p.vx * 0.8
-                else
-                    p.vy = 0
-                    p.vx = p.vx * 0.92
-                end
-                p.rotation_speed = (p.rotation_speed or 0) * 0.88
-            end
-            
-            if p.lifetime <= 0 or p.y > sh + 100 then
+            if p.lifetime <= 0 or p.y > sh + 200 or p.x < -200 or p.x > sw + 200 then
                 table.remove(self.particles, i)
             end
         end
@@ -3650,7 +3747,7 @@ end
 --@endregion
 
 interface.home.confetti:set_callback(function()
-    confetti:start()
+    confetti:push(0, false)
 end)
 
 client.set_event_callback('paint_ui', function()
@@ -5307,7 +5404,7 @@ configs = {} do
         if data.widgets then
             local key = (widgets and widgets.db_key_prefix or 'noctua.widgets.positions') .. '.' .. screen_key()
             pcall(database.write, key, data.widgets)
-            if widgets and widgets.load_from_db then widgets.load_from_db() end
+            widgets.load_from_db()
         end
     end
 
@@ -5446,6 +5543,7 @@ configs = {} do
         end
         state.data[name] = configs.collect()
         configs.save_db()
+        widgets.save_all()
         logMessage('noctua ·', '', 'config saved!')
         client.exec("play ui/beepclear.wav")
     end
@@ -7206,7 +7304,7 @@ party_mode = {} do
         local victim = client.userid_to_entindex(e.userid)
         
         if attacker == local_player and victim ~= local_player then
-            confetti:start()
+            confetti:push(0, false)
         end
     end
     
@@ -8074,5 +8172,42 @@ end
 logging:push("checkout latest update in console")
 logging:push("nice to see you at " .. _name .. " " .. _version .. " (" .. _nickname .. ")")
 client.exec("play items/flashlight1.wav")
-confetti:start()
+confetti:push(0, true)
+--@endregion
+
+--@region: on shutdown
+local function reset_player_plist(idx)
+    if not idx or not entity.is_enemy(idx) then return end
+    plist.set(idx, 'Force body yaw', false)
+    plist.set(idx, 'Force body yaw value', 0)
+    plist.set(idx, 'Force pitch', false)
+    plist.set(idx, 'Force pitch value', 0)
+    plist.set(idx, 'Correction active', false)
+    plist.set(idx, 'Override safe point', "-")
+    plist.set(idx, 'Override safe point value', "Off")
+    plist.set(idx, 'Override prefer body aim', "-")
+end
+
+local function reset_all_players()
+    local enemies = entity.get_players(true)
+    if not enemies then return end
+    for _, idx in ipairs(enemies) do
+        if idx and entity.is_alive(idx) then
+            reset_player_plist(idx)
+        end
+    end
+end
+
+local resolver_controller = { was_enabled = false }
+client.set_event_callback('paint', function()
+    local enabled = (interface.aimbot.enabled_aimbot:get() and interface.aimbot.enabled_resolver_tweaks:get())
+    if resolver_controller.was_enabled and not enabled then
+        reset_all_players()
+    end
+    resolver_controller.was_enabled = enabled
+end)
+
+client.set_event_callback('shutdown', function()
+    reset_all_players()
+end)
 --@endregion
