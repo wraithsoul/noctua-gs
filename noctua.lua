@@ -8,11 +8,18 @@
 
 --@region: information
 local _name = 'noctua'
-local _version = '1.4'
+local _version = '1.4a'
 local _nickname = entity.get_player_name(entity.get_local_player())
 
 local update = [[
-what's new (1.4):
+what's new (1.4a):
+ - added autosniper tweaks
+ - added noscope distance
+ - added damage indicator
+ - reworked ui
+ - fixed color/hotkeys saving
+
+changelog 1.4 (22/10/2025):
  - added anti aim builder
  - added extensions for builder
  - added anti aim support for logging & indicators
@@ -546,9 +553,15 @@ interface = {} do
         enabled_resolver_tweaks = interface.header.general:checkbox('\aa5ab55ffresolver tweaks'),
         resolver_mode = interface.header.general:combobox('mode', 'owl'),
         smart_safety = interface.header.general:checkbox('smart safety'),
+        autosniper_tweaks = interface.header.general:checkbox('autosniper tweaks'),
         silent_shot = interface.header.general:checkbox('silent shot'),
         force_recharge = interface.header.general:checkbox('allow force recharge'),
-        quick_stop = interface.header.general:checkbox('air stop', 0x00)
+        quick_stop = interface.header.general:checkbox('air stop', 0x00),
+        noscope_distance = interface.header.general:checkbox('noscope distance'),
+        noscope_weapons = interface.header.general:multiselect('weapons', 'autosnipers', 'scout', 'awp'),
+        noscope_distance_autosnipers = interface.header.general:slider('autosnipers distance', 1, 800, 450, true, ''),
+        noscope_distance_scout = interface.header.general:slider('scout distance', 1, 800, 450, true, ''),
+        noscope_distance_awp = interface.header.general:slider('awp distance', 1, 800, 450, true, '')
     }
 
     interface.visuals = {
@@ -559,6 +572,7 @@ interface = {} do
         crosshair_indicators = interface.header.general:checkbox('crosshair indicators'),
         crosshair_style = interface.header.general:combobox('style', {'default', 'center'}),
         crosshair_animate_scope = interface.header.general:checkbox('animate on-scope'),
+        damage_indicator = interface.header.general:checkbox('damage indicator'),
         window = interface.header.general:checkbox('debug window'),
         -- shared = interface.header.general:checkbox('shared identity (wip)'),
         logging = interface.header.general:checkbox('logging'),
@@ -708,7 +722,6 @@ interface = {} do
 
     interface.builder.extensions = {} do
         local extensions = interface.builder.extensions
-        -- Extensions in Fake lag group
         extensions.anti_backstab = interface.header.fake_lag:checkbox("avoid backstab")
         -- extensions.fd_edge = interface.header.fake_lag:checkbox("fakeduck edge")
         extensions.ladder = interface.header.fake_lag:checkbox("fast ladder")
@@ -718,23 +731,21 @@ interface = {} do
         extensions.safe_head = interface.header.fake_lag:multiselect("safe head",{ "height distance", "high distance", "knife", "zeus" })
         extensions.warmup_aa = interface.header.fake_lag:multiselect("warmup aa",{"warmup","round end"})
         
-        -- Extensions in Other group
         extensions.edge_yaw = interface.header.other:hotkey("edge yaw")
         extensions.freestanding = interface.header.other:hotkey("freestanding")
         extensions.dis_fs = interface.header.other:multiselect("allow freestand on",{"idle","run","air","airc","duck","duck move","slow"})
         extensions.manual_aa = interface.header.other:checkbox("manual antiaim")
         
-        -- Add dependencies for Fake lag extensions
         for key, v in pairs(extensions) do
             if v and v.depend and (key == "anti_backstab" or key == "ladder" or key == "anti_bruteforce" or key == "defensive" or key == "safe_head" or key == "warmup_aa") then
                 v:depend({ interface.search, 'antiaim' })
             end
         end
         
-        -- Add dependencies for Other extensions
         if extensions.edge_yaw and extensions.edge_yaw.depend then
             extensions.edge_yaw:depend({ interface.search, 'antiaim' })
         end
+
         if extensions.freestanding and extensions.freestanding.depend then
             extensions.freestanding:depend({ interface.search, 'antiaim' })
         end
@@ -745,6 +756,7 @@ interface = {} do
         if extensions.anti_bruteforce_type and extensions.anti_bruteforce_type.depend then
             extensions.anti_bruteforce_type:depend({ interface.search, 'antiaim' }, { extensions.anti_bruteforce, true })
         end
+
         if extensions.dis_fs and extensions.dis_fs.depend then
             extensions.dis_fs:depend({ interface.search, 'antiaim' }, { extensions.freestanding, true })
         end
@@ -833,14 +845,31 @@ interface = {} do
                 groups_to_hide = { groups.home, groups.visuals, groups.models, groups.utility, groups.config },
                 element_visibility_logic = function(element, path)
                     local key = path[#path]
+                    local enabled = (interface.aimbot.enabled_aimbot:get() == true)
                     if key == 'enabled_aimbot' then
                         element:set_visible(true)
                     elseif key == 'resolver_mode' then
-                        element:set_visible(interface.aimbot.enabled_aimbot:get() and interface.aimbot.enabled_resolver_tweaks:get())
+                        element:set_visible(enabled and interface.aimbot.enabled_resolver_tweaks:get())
                     elseif key == 'smart_safety' then
-                        element:set_visible(interface.aimbot.enabled_aimbot:get() and interface.aimbot.enabled_resolver_tweaks:get())
+                        element:set_visible(enabled and interface.aimbot.enabled_resolver_tweaks:get())
+                    elseif key == 'noscope_distance' then
+                        element:set_visible(enabled)
+                    elseif key == 'noscope_weapons' then
+                        element:set_visible(enabled and interface.aimbot.noscope_distance:get())
+                    elseif key == 'noscope_distance_autosnipers' then
+                        local v = (interface.aimbot.noscope_weapons:get() or {})
+                        local has_auto = (type(v) == 'table') and utils.contains(v, 'autosnipers')
+                        element:set_visible(enabled and interface.aimbot.noscope_distance:get() and has_auto)
+                    elseif key == 'noscope_distance_scout' then
+                        local v = (interface.aimbot.noscope_weapons:get() or {})
+                        local has_scout = (type(v) == 'table') and utils.contains(v, 'scout')
+                        element:set_visible(enabled and interface.aimbot.noscope_distance:get() and has_scout)
+                    elseif key == 'noscope_distance_awp' then
+                        local v = (interface.aimbot.noscope_weapons:get() or {})
+                        local has_awp = (type(v) == 'table') and utils.contains(v, 'awp')
+                        element:set_visible(enabled and interface.aimbot.noscope_distance:get() and has_awp)
                     else
-                        element:set_visible(interface.aimbot.enabled_aimbot:get() == true)
+                        element:set_visible(enabled)
                     end
                 end
             },
@@ -993,8 +1022,7 @@ interface = {} do
                     element:set_visible(true)
                 end,
                 post_visibility_logic = function()
-                    -- This will be called after all elements are shown
-                    -- We'll handle specific visibility in paint_ui callback
+                    -- we'll handle this later
                 end
             },
             default = {
@@ -2345,6 +2373,144 @@ client.set_event_callback('setup_command', function(cmd)
 end)
 --@endregion
 
+--@region: autosniper tweaks
+autosniper_tweaks = {} do
+    autosniper_tweaks._ref = pui.reference('rage', 'other', 'accuracy boost')
+    autosniper_tweaks._active = false
+
+    autosniper_tweaks.setup = function()
+        if not (interface.aimbot.enabled_aimbot:get() and interface.aimbot.autosniper_tweaks:get()) then
+            if autosniper_tweaks._active then
+                autosniper_tweaks._ref:override()
+                autosniper_tweaks._active = false
+            end
+            return
+        end
+
+        local me = entity.get_local_player()
+        if not me or not entity.is_alive(me) then
+            if autosniper_tweaks._active then
+                autosniper_tweaks._ref:override()
+                autosniper_tweaks._active = false
+            end
+            return
+        end
+
+        local ducked = (entity.get_prop(me, 'm_flDuckAmount') == 1)
+        local weapon = entity.get_player_weapon(me)
+        local weapon_id = weapon and entity.get_prop(weapon, 'm_iItemDefinitionIndex') or nil
+        local is_auto = (weapon_id == 38 or weapon_id == 11)
+
+        if ducked and is_auto then
+            autosniper_tweaks._ref:override('Low')
+            autosniper_tweaks._active = true
+        else
+            if autosniper_tweaks._active then
+                autosniper_tweaks._ref:override()
+                autosniper_tweaks._active = false
+            end
+        end
+    end
+end
+
+client.set_event_callback('paint', function()
+    autosniper_tweaks.setup()
+end)
+
+client.set_event_callback('shutdown', function()
+    autosniper_tweaks._ref:override()
+end)
+--@endregion
+
+--@region: noscope distance
+noscope_distance = {} do
+    noscope_distance._ref = pui.reference('rage', 'aimbot', 'automatic scope')
+    noscope_distance._active = false
+
+    noscope_distance.get_weapon_distance = function()
+        local me = entity.get_local_player()
+        if not me then return nil end
+        local weapon = entity.get_player_weapon(me)
+        if not weapon then return nil end
+        local id = entity.get_prop(weapon, 'm_iItemDefinitionIndex')
+        local sel = interface.aimbot.noscope_weapons:get() or {}
+        if type(sel) ~= 'table' then return nil end
+        if id == 38 or id == 11 then -- autosnipers
+            if utils.contains(sel, 'autosnipers') then
+                return interface.aimbot.noscope_distance_autosnipers:get()
+            end
+        elseif id == 40 then -- scout
+            if utils.contains(sel, 'scout') then
+                return interface.aimbot.noscope_distance_scout:get()
+            end
+        elseif id == 9 then -- awp
+            if utils.contains(sel, 'awp') then
+                return interface.aimbot.noscope_distance_awp:get()
+            end
+        end
+        return nil
+    end
+
+    noscope_distance.loop = function()
+        if not (interface.aimbot.enabled_aimbot:get() and interface.aimbot.noscope_distance:get()) then
+            if noscope_distance._active then
+                noscope_distance._ref:override()
+                noscope_distance._active = false
+            end
+            return
+        end
+
+        local me = entity.get_local_player()
+        if not me or not entity.is_alive(me) then
+            if noscope_distance._active then
+                noscope_distance._ref:override()
+                noscope_distance._active = false
+            end
+            return
+        end
+
+        local max_distance = noscope_distance.get_weapon_distance()
+        if not max_distance then
+            if noscope_distance._active then
+                noscope_distance._ref:override()
+                noscope_distance._active = false
+            end
+            return
+        end
+
+        local target = client.current_threat()
+        if not target or not entity.is_alive(target) or entity.is_dormant(target) then
+            if noscope_distance._active then
+                noscope_distance._ref:override()
+                noscope_distance._active = false
+            end
+            return
+        end
+
+        local lx, ly, lz = entity.get_prop(me, 'm_vecOrigin')
+        local tx, ty, tz = entity.get_prop(target, 'm_vecOrigin')
+        if not (lx and ly and lz and tx and ty and tz) then return end
+        local dist = player.distance3d(lx, ly, lz, tx, ty, tz)
+
+        if dist <= max_distance then
+            noscope_distance._ref:override(false)
+            noscope_distance._active = true
+        else
+            noscope_distance._ref:override(true)
+            noscope_distance._active = true
+        end
+    end
+end
+
+client.set_event_callback('paint', function()
+    noscope_distance.loop()
+end)
+
+client.set_event_callback('shutdown', function()
+    noscope_distance._ref:override()
+end)
+--@endregion
+
 --@region: widgets
 widgets = {} do
     local SNAP = 12
@@ -2545,6 +2711,8 @@ widgets = {} do
                 return interface.visuals.window:get()
             elseif id == "crosshair_indicators" then
                 return interface.visuals.crosshair_indicators:get()
+            elseif id == "damage_indicator" then
+                return interface.visuals.damage_indicator:get()
             elseif id == "screen_logging" then
                 if not interface.visuals.logging:get() then return false end
                 local opts = interface.visuals.logging_options:get() or {}
@@ -2609,8 +2777,8 @@ widgets = {} do
                 local sw_, sh_ = client.screen_size()
                 local cx = mx + (widgets.drag_dx or 0)
                 local cy = my + (widgets.drag_dy or 0)
-                local snapped_x = math.abs(cx - sw_ / 2) <= SNAP
-                local snapped_y = math.abs(cy - sh_ / 2) <= SNAP
+                local snapped_x = (id ~= "damage_indicator") and math.abs(cx - sw_ / 2) <= SNAP
+                local snapped_y = (id ~= "damage_indicator") and math.abs(cy - sh_ / 2) <= SNAP
                 if snapped_x then cx = sw_ / 2 end
                 if snapped_y then cy = sh_ / 2 end
                 local _, _, w, h = get_rect(id)
@@ -2657,8 +2825,8 @@ widgets = {} do
                 local mx2, my2 = ui.mouse_position()
                 cx = mx2 + (widgets.drag_dx or 0)
                 cy = my2 + (widgets.drag_dy or 0)
-                local snapped_x = math.abs(cx - sw2 / 2) <= SNAP
-                local snapped_y = math.abs(cy - sh2 / 2) <= SNAP
+                local snapped_x = (id ~= "damage_indicator") and math.abs(cx - sw2 / 2) <= SNAP
+                local snapped_y = (id ~= "damage_indicator") and math.abs(cy - sh2 / 2) <= SNAP
                 if snapped_x then cx = sw2 / 2 end
                 if snapped_y then cy = sh2 / 2 end
                 local min_cx = (w / 2) + PAD
@@ -2727,11 +2895,11 @@ widgets = {} do
 
             local sw3, sh3 = client.screen_size()
             local snapped_x_now, snapped_y_now = false, false
-            if allow_interact and enabled then
+            if allow_interact and enabled and id ~= "damage_indicator" then
                 snapped_x_now = math.abs(cx - sw3 / 2) <= SNAP
                 snapped_y_now = math.abs(cy - sh3 / 2) <= SNAP
             end
-            if allow_interact and widgets.is_dragging then
+            if allow_interact and widgets.is_dragging and widgets.active_id ~= "damage_indicator" then
                 if snapped_x_now then
                     renderer.rectangle(sw3 / 2, 0, 1, sh3, 255, 255, 255, LINE_ALPHA_SNAP)
                 end
@@ -3069,7 +3237,7 @@ visuals.window = function(self, base_x, base_y, align)
             local _a2 = math.floor(smoothReloadAlpha * 0.7)
             local reloadStr = table.concat(colors.shimmer(
                 globals.realtime() * _ts,
-                "reload",
+                "waiting",
                 255, 255, 255, _a1,
                 255, 255, 255, _a2
             ))
@@ -3083,6 +3251,52 @@ visuals.window = function(self, base_x, base_y, align)
         if smoothDmgAlpha >= 1 then
             renderer.text((x_dmg or x_draw), self.element_positions.dmg, 255, 255, 255, smoothDmgAlpha, align_text, 1000, "dmg")
         end
+    end
+
+    visuals.damage_indicator = function(self, x, y)
+        local me = entity.get_local_player()
+        if not me or not entity.is_alive(me) then
+            return
+        end
+
+        if not (interface.visuals.enabled_visuals:get() and interface.visuals.damage_indicator:get()) then
+            return
+        end
+
+        local is_override = ui.get(ui_references.minimum_damage_override[1]) 
+                            and ui.get(ui_references.minimum_damage_override[2])
+        
+        local damage_value = is_override 
+                            and ui.get(ui_references.minimum_damage_override[3]) 
+                            or ui.get(ui_references.minimum_damage)
+
+        local frameTime = globals.frametime()
+        local fadeSpeed = 10 * frameTime
+
+        self.damage_indicator_state = self.damage_indicator_state or {}
+        local dmg_state = self.damage_indicator_state
+
+        dmg_state.current_value = dmg_state.current_value or damage_value
+        dmg_state.current_value = mathematic.lerp(dmg_state.current_value, damage_value, frameTime * 30)
+
+        local display_value = math.floor(dmg_state.current_value + 0.5)
+        local text = ""
+        if display_value > 100 then
+            text = string.format("+%d", display_value - 100)
+        else
+            text = tostring(display_value)
+        end
+
+        local target_alpha = is_override and 255 or 80
+        dmg_state.alpha = mathematic.lerp(dmg_state.alpha or 0, target_alpha, fadeSpeed)
+
+        if dmg_state.alpha < 1 then
+            return
+        end
+
+        local r, g, b, a = 255, 255, 255, dmg_state.alpha
+
+        renderer.text(x, y, r, g, b, a, 'c', 1000, text)
     end
 end
 
@@ -3972,6 +4186,26 @@ widgets.register({
         visuals:window(x, ctx.y + 6, align)
     end,
     z = 6
+})
+
+widgets.register({
+    id = "damage_indicator",
+    title = "Damage Indicator",
+    defaults = { anchor_x = "center", anchor_y = "center", offset_x = 0, offset_y = 30 },
+    get_size = function(st)
+        local lineh = select(2, renderer.measure_text("c", "A")) or 12
+        local samples = { "+100", "120", "99" }
+        local maxw = 0
+        for i = 1, #samples do
+            local w = select(1, renderer.measure_text("c", samples[i])) or 0
+            if w > maxw then maxw = w end
+        end
+        return maxw + 6, lineh + 4
+    end,
+    draw = function(ctx)
+        visuals:damage_indicator(ctx.x + ctx.w / 2, ctx.y + (ctx.h / 2))
+    end,
+    z = 9
 })
 
 widgets.load_from_db()
@@ -4963,7 +5197,6 @@ configs = {} do
                 table.insert(items, n)
             end
         end
-        -- Always add "+ new" at the end
         table.insert(items, '+ new')
         if interface.config.list.update then
             pcall(function() interface.config.list:update(items) end)
@@ -4978,16 +5211,33 @@ configs = {} do
         pui.traverse(group, function(element, path)
             if not element then return end
             local key = prefix .. '.' .. table.concat(path, '.')
-            local val = nil
+
+            local got_ok, v1, v2, v3 = false, nil, nil, nil
             if element.get then
-                local ok, v = pcall(function() return element:get() end)
-                if ok then val = v end
+                local ok, a, b, c = pcall(function() return element:get() end)
+                if ok then got_ok, v1, v2, v3 = true, a, b, c end
             end
-            if val == nil and element.color and element.color.value then
-                val = element.color.value
+
+            if got_ok and v1 ~= nil then
+                out.values[key] = v1
             end
-            if val ~= nil then
-                out.values[key] = val
+
+            if element.color and element.color.value then
+                local okc, cv = pcall(function() return element.color.value end)
+                if okc and type(cv) == 'table' then
+                    out.values[key .. '.color'] = cv
+                end
+            end
+
+            if element.hotkey and element.hotkey.get then
+                local okh, _active, mode_idx, keycode = pcall(function() return element.hotkey:get() end)
+                if okh then
+                    out.values[key .. '.hotkey_mode_idx'] = mode_idx
+                    if keycode ~= nil then out.values[key .. '.hotkey_keycode'] = keycode end
+                end
+            elseif got_ok and type(v1) == 'boolean' and type(v2) == 'number' then
+                out.values[key .. '.hotkey_mode_idx'] = v2
+                if v3 ~= nil then out.values[key .. '.hotkey_keycode'] = v3 end
             end
         end)
     end
@@ -5012,12 +5262,35 @@ configs = {} do
         pui.traverse(group, function(element, path)
             if not element then return end
             local key = prefix .. '.' .. table.concat(path, '.')
+
             local val = values[key]
-            if val == nil then return end
-            if element.set then
-                pcall(function() element:set(val) end)
-            elseif element.color then
-                if type(val) == 'table' then element.color.value = val end
+            if val ~= nil then
+                if element.set then pcall(function() element:set(val) end)
+                elseif element.color and type(val) == 'table' then element.color.value = val end
+            end
+
+            local cval = values[key .. '.color']
+            if element.color and type(cval) == 'table' then
+                element.color.value = cval
+            end
+
+            local mode_idx = values[key .. '.hotkey_mode_idx']
+            local keycode  = values[key .. '.hotkey_keycode']
+            local map = { [0] = 'Always on', [1] = 'On hotkey', [2] = 'Toggle', [3] = 'Hold' }
+            local mode_str = (type(mode_idx) == 'number') and map[mode_idx] or nil
+
+            if element.hotkey and mode_str and element.hotkey.set then
+                if type(keycode) == 'number' then
+                    pcall(function() element.hotkey:set(mode_str, keycode) end)
+                else
+                    pcall(function() element.hotkey:set(mode_str) end)
+                end
+            elseif (not element.hotkey) and element.set and mode_str then
+                if type(keycode) == 'number' then
+                    pcall(function() element:set(mode_str, keycode) end)
+                else
+                    pcall(function() element:set(mode_str) end)
+                end
             end
         end)
     end
@@ -5039,7 +5312,6 @@ configs = {} do
     function configs.apply_aa_only(data)
         if type(data) ~= 'table' then return end
         local values = data.values or {}
-        -- Only apply builder (antiaim) settings
         apply_group('builder', interface.builder, values)
     end
 
@@ -5148,11 +5420,12 @@ configs = {} do
             end
             idx = idx - 1
         end
-        -- Check if "+ new" is selected (always last item)
+
         local total_items = (has_default and 1 or 0) + #state.list + 1 -- +1 for "+ new"
         if idx0 + 1 == total_items then
             return '+ new'
         end
+
         local name = state.list[idx]
         return name
     end
@@ -5311,51 +5584,54 @@ configs = {} do
         local is_default = (name == 'default')
         local has_config = name and name ~= '+ new' and name ~= '<no configs>'
         
-        -- Show/hide textbox and create button based on selection
+        -- show/hide textbox and create button based on selection
         if interface.config.name then
             interface.config.name:set_visible(is_new)
         end
+
         if interface.config.create_button then
             interface.config.create_button:set_visible(is_new)
         end
         
-        -- Show load buttons for default and user configs (not for + new)
+        -- show load buttons for default and user configs (not for + new)
         if interface.config.load_button then
             interface.config.load_button:set_visible(has_config)
         end
+        
         if interface.config.load_aa_button then
             interface.config.load_aa_button:set_visible(has_config)
         end
         
-        -- Show save, load_on_startup only for user configs (not default, not + new)
-        local show_user_buttons = has_config and not is_default
+        -- show load_on_startup for all configs (default and user configs)
         if interface.config.load_on_startup then
-            interface.config.load_on_startup:set_visible(show_user_buttons)
-            if show_user_buttons and name then
+            interface.config.load_on_startup:set_visible(has_config)
+            if has_config and name then
                 interface.config.load_on_startup:set(state.load_on_startup == name)
             end
         end
+        
+        -- show save only for user configs (not default, not + new)
+        local show_user_buttons = has_config and not is_default
         if interface.config.save_button then
             interface.config.save_button:set_visible(show_user_buttons)
         end
         
-        -- Other group buttons
-        -- Import/Export - hide when + new is selected
+        -- import/export - hide when + new is selected
         if interface.config.import_button then
             interface.config.import_button:set_visible(not is_new)
         end
+
         if interface.config.export_button then
             interface.config.export_button:set_visible(not is_new)
         end
         
-        -- Delete - only for user configs (not default, not + new)
+        -- delete - only for user configs (not default, not + new)
         if interface.config.delete_button then
             interface.config.delete_button:set_visible(show_user_buttons)
         end
     end
     
     function configs.update_load_on_startup_checkbox()
-        -- This function is now merged into update_ui_visibility
         configs.update_ui_visibility()
     end
     
@@ -5411,29 +5687,34 @@ configs = {} do
                     configs.create(name)
                 end)
             end
+
             if interface.config.save_button and interface.config.save_button.set_callback then
                 interface.config.save_button:set_callback(configs.save_selected)
             end
+
             if interface.config.load_button and interface.config.load_button.set_callback then
                 interface.config.load_button:set_callback(configs.load_selected)
             end
+
             if interface.config.load_aa_button and interface.config.load_aa_button.set_callback then
                 interface.config.load_aa_button:set_callback(configs.load_aa_only)
             end
+
             if interface.config.delete_button and interface.config.delete_button.set_callback then
                 interface.config.delete_button:set_callback(configs.delete_selected)
             end
+
             if interface.config.export_button and interface.config.export_button.set_callback then
                 interface.config.export_button:set_callback(configs.export_to_clipboard)
             end
+
             if interface.config.import_button and interface.config.import_button.set_callback then
                 interface.config.import_button:set_callback(configs.import_from_clipboard)
             end
             
-            -- Add listbox callback to refresh UI when selection changes
             if interface.config.list and interface.config.list.set_callback then
                 interface.config.list:set_callback(function()
-                    -- UI will automatically update through paint_ui event
+                    -- replaced later
                 end)
             end
         end
