@@ -528,7 +528,9 @@ interface = {} do
     pui.macros.title = _name
 
     interface.header = {
-        general = pui.group('AA', 'Anti-Aimbot angles')
+        general = pui.group('AA', 'Anti-Aimbot angles'),
+        fake_lag = pui.group('AA', 'Fake lag'),
+        other = pui.group('AA', 'Other')
     }
 
     interface.additional = {
@@ -537,9 +539,7 @@ interface = {} do
  
     interface.search = interface.header.general:combobox(pui.macros.title .. ' - '.. _version, 'home', 'aimbot', 'antiaim', 'visuals', 'utility', 'models', 'config', 'other')
 
-    interface.aa = {
-        page = interface.header.general:combobox('\n', 'builder', 'extensions')
-    }
+    interface.aa = {}
 
     interface.aimbot = {
         enabled_aimbot = interface.header.general:checkbox('enable aimbot'),
@@ -553,7 +553,6 @@ interface = {} do
 
     interface.visuals = {
         enabled_visuals = interface.header.general:checkbox('enable visuals'),
-        group = interface.header.general:combobox('\n', 'general', 'other'),
         accent = interface.header.general:label('accent color', {120, 160, 180}),
         secondary = interface.header.general:label('secondary color', {215, 240, 255}),
         vgui = interface.header.general:label('vgui color', {255, 255, 255}), -- 140, 140, 140
@@ -567,20 +566,20 @@ interface = {} do
         logging_options_console = interface.header.general:multiselect('console', 'fire', 'hit', 'miss', 'buy', 'aimbot', 'anti aim'),
         logging_options_screen = interface.header.general:multiselect('screen', 'fire', 'hit', 'miss', 'aimbot', 'anti aim'),
         logging_slider = interface.header.general:slider('slider', 40, 450, 240),
-        aspect_ratio = interface.header.general:checkbox('override aspect ratio'),
-        aspect_ratio_slider = interface.header.general:slider('value', 0, aspect_ratio.steps, aspect_ratio.steps/2, true, '', 1, aspect_ratio.ratio_table),
-        thirdperson = interface.header.general:checkbox('override thirdperson distance'),
-        thirdperson_slider = interface.header.general:slider('distance', 30, 150, 50, true, ''),
-        viewmodel = interface.header.general:checkbox('override viewmodel'),
-        viewmodel_fov = interface.header.general:slider('fov', -90, 90, cvar.viewmodel_fov:get_float()),
-        viewmodel_x = interface.header.general:slider('x', -1000, 1000, cvar.viewmodel_offset_x:get_float(), true, '', 0.01),
-        viewmodel_y = interface.header.general:slider('y', -1000, 1000, cvar.viewmodel_offset_y:get_float(), true, '', 0.01),
-        viewmodel_z = interface.header.general:slider('z', -1000, 1000, cvar.viewmodel_offset_z:get_float(), true, '', 0.01),
-        zoom_animation = interface.header.general:checkbox('zoom animation'),
-        zoom_animation_speed = interface.header.general:slider('speed', 10, 100, 60, true, '%'),
-        zoom_animation_value = interface.header.general:slider('strength', 1, 100, 5, true, '%'),
-        spawn_zoom = interface.header.general:checkbox('spawn zoom'),
-        stickman = interface.header.general:checkbox('stickman', {255, 255, 255, 140})
+        aspect_ratio = interface.header.fake_lag:checkbox('override aspect ratio'),
+        aspect_ratio_slider = interface.header.fake_lag:slider('value', 0, aspect_ratio.steps, aspect_ratio.steps/2, true, '', 1, aspect_ratio.ratio_table),
+        thirdperson = interface.header.fake_lag:checkbox('override thirdperson distance'),
+        thirdperson_slider = interface.header.fake_lag:slider('distance', 30, 150, 50, true, ''),
+        viewmodel = interface.header.fake_lag:checkbox('override viewmodel'),
+        viewmodel_fov = interface.header.fake_lag:slider('fov', -90, 90, cvar.viewmodel_fov:get_float()),
+        viewmodel_x = interface.header.fake_lag:slider('x', -1000, 1000, cvar.viewmodel_offset_x:get_float(), true, '', 0.01),
+        viewmodel_y = interface.header.fake_lag:slider('y', -1000, 1000, cvar.viewmodel_offset_y:get_float(), true, '', 0.01),
+        viewmodel_z = interface.header.fake_lag:slider('z', -1000, 1000, cvar.viewmodel_offset_z:get_float(), true, '', 0.01),
+        stickman = interface.header.other:checkbox('stickman', {255, 255, 255, 140}),
+        zoom_animation = interface.header.other:checkbox('zoom animation'),
+        zoom_animation_speed = interface.header.other:slider('speed', 10, 100, 60, true, '%'),
+        zoom_animation_value = interface.header.other:slider('strength', 1, 100, 5, true, '%'),
+        spawn_zoom = interface.header.other:checkbox('spawn zoom')
     }
 
     interface.models = {
@@ -597,13 +596,14 @@ interface = {} do
     interface.config = {
         list = interface.header.general:listbox('configs', 300),
         name = (interface.header.general.textbox and interface.header.general:textbox('config name')) or interface.header.general:combobox('config name', ''),
-        load_on_startup = interface.header.general:checkbox('load on startup'),
         create_button = interface.header.general:button('create'),
+        load_on_startup = interface.header.general:checkbox('load on startup'),
         load_button = interface.header.general:button('load'),
+        load_aa_button = interface.header.general:button('load aa'),
         save_button = interface.header.general:button('save'),
-        delete_button = interface.header.general:button('delete'),
-        import_button = interface.header.general:button('import'),
-        export_button = interface.header.general:button('export'),
+        import_button = interface.header.other:button('import'),
+        export_button = interface.header.other:button('export'),
+        delete_button = interface.header.other:button('\aff4444ffdelete'),
     }
 
     interface.home = {
@@ -641,7 +641,7 @@ interface = {} do
         local tooltips  = {delay = {[1] = "off"}, body = {[0] = "off"}}
         interface.condition = interface.header.general:combobox("condition", e_statement)
         if interface.condition.depend then
-            interface.condition:depend({ interface.search, 'antiaim' }, { interface.aa.page, 'builder' })
+            interface.condition:depend({ interface.search, 'antiaim' })
         end
         for _, state in ipairs(e_statement) do
             interface.builder[state] = {}
@@ -694,7 +694,7 @@ interface = {} do
             this.def_body = interface.header.general:combobox("body defensive ",{ "default", "auto", "jitter"}):depend({this.defensive,true})
             for key, v in pairs(this) do
                 if type(v) == 'table' and v.depend then
-                    local arr = { { interface.search, 'antiaim' }, { interface.aa.page, 'builder' }, { interface.condition, state } }
+                    local arr = { { interface.search, 'antiaim' }, { interface.condition, state } }
                     if key ~= "enable" and state ~= "default" then
                         if not (state == "use" and key == "allow_use_aa") then
                             arr[#arr+1] = { this.enable, true }
@@ -707,33 +707,55 @@ interface = {} do
     end
 
     interface.builder.extensions = {} do
-        local group = interface.header.general
         local extensions = interface.builder.extensions
-        extensions.edge_yaw = group:hotkey("edge yaw")
-        extensions.freestanding = group:hotkey("freestanding")
-        extensions.dis_fs = group:multiselect("allow freestand on",{"idle","run","air","airc","duck","duck move","slow"})
-        extensions.anti_backstab = group:checkbox("avoid backstab")
-        -- extensions.fd_edge = group:checkbox("fakeduck edge")
-        extensions.ladder = group:checkbox("fast ladder")
-        extensions.anti_bruteforce = group:checkbox("anti-bruteforce")
-        extensions.anti_bruteforce_type = group:combobox("anti bruteforce type","increase","decrease")
-        extensions.defensive = group:multiselect("defensive",{"on shot","flashed","damage received","reloading","weapon switch"})
-        extensions.safe_head = group:multiselect("safe head",{ "height distance", "high distance", "knife", "zeus" })
-        extensions.warmup_aa = group:multiselect("warmup aa",{"warmup","round end"})
-        extensions.manual_aa = group:checkbox("manual antiaim")
-        for _, v in pairs(extensions) do
-            if v and v.depend then v:depend({ interface.search, 'antiaim' }, { interface.aa.page, "extensions" }) end
+        -- Extensions in Fake lag group
+        extensions.anti_backstab = interface.header.fake_lag:checkbox("avoid backstab")
+        -- extensions.fd_edge = interface.header.fake_lag:checkbox("fakeduck edge")
+        extensions.ladder = interface.header.fake_lag:checkbox("fast ladder")
+        extensions.anti_bruteforce = interface.header.fake_lag:checkbox("anti-bruteforce")
+        extensions.anti_bruteforce_type = interface.header.fake_lag:combobox("anti bruteforce type","increase","decrease")
+        extensions.defensive = interface.header.fake_lag:multiselect("defensive",{"on shot","flashed","damage received","reloading","weapon switch"})
+        extensions.safe_head = interface.header.fake_lag:multiselect("safe head",{ "height distance", "high distance", "knife", "zeus" })
+        extensions.warmup_aa = interface.header.fake_lag:multiselect("warmup aa",{"warmup","round end"})
+        
+        -- Extensions in Other group
+        extensions.edge_yaw = interface.header.other:hotkey("edge yaw")
+        extensions.freestanding = interface.header.other:hotkey("freestanding")
+        extensions.dis_fs = interface.header.other:multiselect("allow freestand on",{"idle","run","air","airc","duck","duck move","slow"})
+        extensions.manual_aa = interface.header.other:checkbox("manual antiaim")
+        
+        -- Add dependencies for Fake lag extensions
+        for key, v in pairs(extensions) do
+            if v and v.depend and (key == "anti_backstab" or key == "ladder" or key == "anti_bruteforce" or key == "defensive" or key == "safe_head" or key == "warmup_aa") then
+                v:depend({ interface.search, 'antiaim' })
+            end
         end
+        
+        -- Add dependencies for Other extensions
+        if extensions.edge_yaw and extensions.edge_yaw.depend then
+            extensions.edge_yaw:depend({ interface.search, 'antiaim' })
+        end
+        if extensions.freestanding and extensions.freestanding.depend then
+            extensions.freestanding:depend({ interface.search, 'antiaim' })
+        end
+        if extensions.manual_aa and extensions.manual_aa.depend then
+            extensions.manual_aa:depend({ interface.search, 'antiaim' })
+        end
+        
         if extensions.anti_bruteforce_type and extensions.anti_bruteforce_type.depend then
-            extensions.anti_bruteforce_type:depend({ interface.search, 'antiaim' }, { interface.aa.page, 'extensions' }, { extensions.anti_bruteforce, true })
+            extensions.anti_bruteforce_type:depend({ interface.search, 'antiaim' }, { extensions.anti_bruteforce, true })
         end
+        if extensions.dis_fs and extensions.dis_fs.depend then
+            extensions.dis_fs:depend({ interface.search, 'antiaim' }, { extensions.freestanding, true })
+        end
+        
         extensions.manual_aa_hotkey = extensions.manual_aa_hotkey or {}
-        extensions.manual_aa_hotkey.manual_left = group:hotkey("manual left")
-        extensions.manual_aa_hotkey.manual_right = group:hotkey("manual right")
-        extensions.manual_aa_hotkey.manual_forward = group:hotkey("manual forward")
-        extensions.manual_aa_hotkey.manual_back = group:hotkey("manual backward")
+        extensions.manual_aa_hotkey.manual_left = interface.header.other:hotkey("manual left")
+        extensions.manual_aa_hotkey.manual_right = interface.header.other:hotkey("manual right")
+        extensions.manual_aa_hotkey.manual_forward = interface.header.other:hotkey("manual forward")
+        extensions.manual_aa_hotkey.manual_back = interface.header.other:hotkey("manual backward")
         for _, v in pairs(extensions.manual_aa_hotkey) do
-            if v and v.depend then v:depend({ interface.search, 'antiaim' }, { interface.aa.page, "extensions" }, { extensions.manual_aa, true }) end
+            if v and v.depend then v:depend({ interface.search, 'antiaim' }, { extensions.manual_aa, true }) end
         end
     end
 
@@ -749,7 +771,16 @@ interface = {} do
         pui.reference("AA", "Anti-Aimbot angles", "Edge yaw"),
         pui.reference("AA", "Anti-Aimbot angles", "Freestanding body yaw"),
         pui.reference("AA", "Anti-Aimbot angles", "Freestanding"),
-        pui.reference("AA", "Anti-Aimbot angles", "Roll")
+        pui.reference("AA", "Anti-Aimbot angles", "Roll"),
+        pui.reference("AA", "Fake lag", "Enabled"),
+        pui.reference("AA", "Fake lag", "Amount"),
+        pui.reference("AA", "Fake lag", "Variance"),
+        pui.reference("AA", "Fake lag", "Limit"),
+        pui.reference("AA", "Other", "Slow motion"),
+        pui.reference("AA", "Other", "Leg movement"),
+        { pui.reference("AA", "Other", "Slow motion") },
+        pui.reference("AA", "Other", "On shot anti-aim"),
+        pui.reference("AA", "Other", "Fake peek")
     }
 
     interface.hide = function()
@@ -782,9 +813,6 @@ interface = {} do
 
     interface.setup = function()
         local selection = interface.search:get()
-        if interface.aa and interface.aa.page and interface.aa.page.set_visible then
-            interface.aa.page:set_visible(selection == 'antiaim')
-        end
         local groups = {
             home = interface.home,
             aimbot = interface.aimbot,
@@ -821,7 +849,6 @@ interface = {} do
                 groups_to_hide = { groups.home, groups.aimbot, groups.models, groups.utility, groups.config },
                 element_visibility_logic = function(element, path)
                     local key = path[#path]
-                    local is_other_selected = interface.visuals.group:get() == 'other'
                     local visuals_enabled = interface.visuals.enabled_visuals:get()
 
                     if key == 'enabled_visuals' then
@@ -834,63 +861,28 @@ interface = {} do
                         return
                     end
 
-                    local other_only_elements = {
-                        aspect_ratio = true,
-                        aspect_ratio_slider = true,
-                        thirdperson = true,
-                        thirdperson_slider = true,
-                        viewmodel = true,
-                        viewmodel_fov = true,
-                        viewmodel_x = true,
-                        viewmodel_y = true,
-                        viewmodel_z = true,
-                        zoom_animation = true,
-                        zoom_animation_speed = true,
-                        zoom_animation_value = true,
-                        spawn_zoom = true,
-                        logging_options = true,
-                        logging_options_console = true,
-                        logging_options_screen = true
-                    }
-
-                    if other_only_elements[key] then
-                        element:set_visible(is_other_selected)
-                        return
-                    end
-
-                    if key == 'group' then
-                        element:set_visible(true)
-                        return
-                    end
-
-                    if key == 'logging' or key:find('logging_') then
-                        element:set_visible(not is_other_selected)
-                        return
-                    end
-
                     if key == 'crosshair_style' then
-                        element:set_visible((not is_other_selected) and interface.visuals.crosshair_indicators:get())
+                        element:set_visible(interface.visuals.crosshair_indicators:get())
                         return
                     end
 
                     if key == 'crosshair_animate_scope' then
-                        local show_anim = (not is_other_selected)
-                            and interface.visuals.crosshair_indicators:get()
+                        local show_anim = interface.visuals.crosshair_indicators:get()
                             and (interface.visuals.crosshair_style:get() == 'center')
                         element:set_visible(show_anim)
                         return
                     end
 
-                    element:set_visible(not is_other_selected)
+                    element:set_visible(true)
                 end,
                 post_visibility_logic = function()
                     local visuals_enabled = interface.visuals.enabled_visuals:get()
                     
                     if interface.visuals.logging then
                         local logging_enabled = visuals_enabled and interface.visuals.logging:get() == true
-                        interface.visuals.logging_options:set_visible(logging_enabled and not (interface.visuals.group:get() == 'other'))
+                        interface.visuals.logging_options:set_visible(logging_enabled)
                         interface.visuals.logging_slider:set_visible(false)
-                        if logging_enabled and not (interface.visuals.group:get() == 'other') then
+                        if logging_enabled then
                             local opts = interface.visuals.logging_options:get()
                             local console_enabled = false
                             local screen_enabled = false
@@ -916,19 +908,19 @@ interface = {} do
                     end
 
                     if interface.visuals.aspect_ratio then
-                        local show_aspect = interface.visuals.group:get() == 'other' and visuals_enabled
+                        local show_aspect = visuals_enabled
                         interface.visuals.aspect_ratio:set_visible(show_aspect)
                         interface.visuals.aspect_ratio_slider:set_visible(show_aspect and interface.visuals.aspect_ratio:get())
                     end
 
                     if interface.visuals.thirdperson then
-                        local show_thirdperson = interface.visuals.group:get() == 'other' and visuals_enabled
+                        local show_thirdperson = visuals_enabled
                         interface.visuals.thirdperson:set_visible(show_thirdperson)
                         interface.visuals.thirdperson_slider:set_visible(show_thirdperson and interface.visuals.thirdperson:get())
                     end
 
                     if interface.visuals.viewmodel then
-                        local show_viewmodel = interface.visuals.group:get() == 'other' and visuals_enabled
+                        local show_viewmodel = visuals_enabled
                         interface.visuals.viewmodel:set_visible(show_viewmodel)
                         local show_viewmodel_settings = show_viewmodel and interface.visuals.viewmodel:get()
                         interface.visuals.viewmodel_fov:set_visible(show_viewmodel_settings)
@@ -937,12 +929,20 @@ interface = {} do
                         interface.visuals.viewmodel_z:set_visible(show_viewmodel_settings)
                     end
 
+                    if interface.visuals.stickman then
+                        interface.visuals.stickman:set_visible(visuals_enabled)
+                    end
+
                     if interface.visuals.zoom_animation then
-                        local show_zoom = interface.visuals.group:get() == 'other' and visuals_enabled
+                        local show_zoom = visuals_enabled
                         interface.visuals.zoom_animation:set_visible(show_zoom)
                         local show_zoom_settings = show_zoom and interface.visuals.zoom_animation:get()
                         interface.visuals.zoom_animation_speed:set_visible(show_zoom_settings)
                         interface.visuals.zoom_animation_value:set_visible(show_zoom_settings)
+                    end
+
+                    if interface.visuals.spawn_zoom then
+                        interface.visuals.spawn_zoom:set_visible(visuals_enabled)
                     end
                 end
             },
@@ -991,6 +991,10 @@ interface = {} do
                 groups_to_hide = { groups.home, groups.aimbot, groups.visuals, groups.models, groups.utility },
                 element_visibility_logic = function(element, path)
                     element:set_visible(true)
+                end,
+                post_visibility_logic = function()
+                    -- This will be called after all elements are shown
+                    -- We'll handle specific visibility in paint_ui callback
                 end
             },
             default = {
@@ -1006,17 +1010,11 @@ interface = {} do
             pui.traverse(interface.utility, function(element) if element and element.set_visible then element:set_visible(false) end end)
             pui.traverse(interface.config, function(element) if element and element.set_visible then element:set_visible(false) end end)
 
-            if interface.aa and interface.aa.page and interface.aa.page.set_visible then
-                interface.aa.page:set_visible(true)
+            if type(noctua_universeaa_visibility) == 'function' then
+                noctua_universeaa_visibility('')
             end
 
-            noctua_universeaa_visibility(interface.aa.page:get())
-
             return
-        end
-
-        if type(noctua_universeaa_visibility) == 'function' then
-            noctua_universeaa_visibility('')
         end
 
         local config = visibility_config[selection] or visibility_config.default
@@ -4958,16 +4956,15 @@ configs = {} do
         local items = {}
         local has_default = (type(default_config) == 'string' and default_config ~= '')
         if has_default then
-            table.insert(items, '<default>')
+            table.insert(items, 'default')
         end
         if type(state.list) == 'table' and #state.list > 0 then
             for _, n in ipairs(state.list) do
                 table.insert(items, n)
             end
         end
-        if #items == 0 then
-            items = { '<no configs>' }
-        end
+        -- Always add "+ new" at the end
+        table.insert(items, '+ new')
         if interface.config.list.update then
             pcall(function() interface.config.list:update(items) end)
         end
@@ -5037,6 +5034,13 @@ configs = {} do
             pcall(database.write, key, data.widgets)
             if widgets and widgets.load_from_db then widgets.load_from_db() end
         end
+    end
+
+    function configs.apply_aa_only(data)
+        if type(data) ~= 'table' then return end
+        local values = data.values or {}
+        -- Only apply builder (antiaim) settings
+        apply_group('builder', interface.builder, values)
     end
 
     function configs.export_to_clipboard()
@@ -5134,17 +5138,22 @@ configs = {} do
     end
 
     local function get_selected_name()
+        if not (interface and interface.config and interface.config.list) then return nil end
         local idx0 = tonumber(interface.config.list:get()) or 0
         local idx = idx0 + 1
         local has_default = (type(default_config) == 'string' and default_config ~= '')
         if has_default then
             if idx == 1 then
-                return '<default>'
+                return 'default'
             end
             idx = idx - 1
         end
+        -- Check if "+ new" is selected (always last item)
+        local total_items = (has_default and 1 or 0) + #state.list + 1 -- +1 for "+ new"
+        if idx0 + 1 == total_items then
+            return '+ new'
+        end
         local name = state.list[idx]
-        if name == '<no configs>' then return nil end
         return name
     end
 
@@ -5155,7 +5164,7 @@ configs = {} do
             client.exec("play ui/menu_invalid.wav")
             return
         end
-        if name == '<default>' then
+        if name == 'default' or name == '+ new' then
             logMessage('noctua ·', '', 'cannot overwrite default!')
             client.exec("play ui/menu_invalid.wav")
             return
@@ -5173,8 +5182,13 @@ configs = {} do
             client.exec("play ui/menu_invalid.wav")
             return
         end
-        if name == '<default>' then
+        if name == 'default' then
             configs.load_default()
+            return
+        end
+        if name == '+ new' then
+            logMessage('noctua ·', '', 'please create a new config first!')
+            client.exec("play ui/menu_invalid.wav")
             return
         end
         local data = state.data[name]
@@ -5188,6 +5202,55 @@ configs = {} do
         client.exec("play ui/beepclear.wav")
     end
 
+    function configs.load_aa_only()
+        local name = get_selected_name()
+        if not name then
+            logMessage('noctua ·', '', 'select a config first!')
+            client.exec("play ui/menu_invalid.wav")
+            return
+        end
+        if name == 'default' then
+            if not default_config or default_config == '' then
+                logMessage('noctua ·', '', 'default config is empty!')
+                return
+            end
+            local clip = default_config
+            clip = clip:gsub('^%s+', ''):gsub('%s+$', '')
+            if clip:find('^noctua:') then clip = clip:sub(8) end
+            clip = clip:gsub('^%s+', ''):gsub('%s+$', '')
+            local decoded = b64_decode(clip)
+            if not decoded or decoded == '' then
+                logMessage('noctua ·', '', 'failed to decode default base64!')
+                client.exec("play ui/menu_invalid.wav")
+                return
+            end
+            local data = json.decode(decoded)
+            if type(data) ~= 'table' or not data.values then
+                logMessage('noctua ·', '', 'failed to parse default config!')
+                client.exec("play ui/menu_invalid.wav")
+                return
+            end
+            configs.apply_aa_only(data)
+            logMessage('noctua ·', '', 'anti-aim loaded from default!')
+            client.exec("play ui/beepclear.wav")
+            return
+        end
+        if name == '+ new' then
+            logMessage('noctua ·', '', 'please create a new config first!')
+            client.exec("play ui/menu_invalid.wav")
+            return
+        end
+        local data = state.data[name]
+        if type(data) ~= 'table' then
+            logMessage('noctua ·', '', 'config data is invalid!')
+            client.exec("play ui/menu_invalid.wav")
+            return
+        end
+        configs.apply_aa_only(data)
+        logMessage('noctua ·', '', 'anti-aim loaded!')
+        client.exec("play ui/beepclear.wav")
+    end
+
     function configs.delete_selected()
         local name = get_selected_name()
         if not name then
@@ -5195,7 +5258,7 @@ configs = {} do
             client.exec("play ui/menu_invalid.wav")
             return
         end
-        if name == '<default>' then
+        if name == 'default' or name == '+ new' then
             logMessage('noctua ·', '', 'cannot delete default!')
             client.exec("play ui/menu_invalid.wav")
             return
@@ -5217,11 +5280,12 @@ configs = {} do
 
     function configs.toggle_autoload_for_current()
         local name = get_selected_name()
-        if not name or name == '<no configs>' then
+        if not name or name == '<no configs>' or name == '+ new' then
             return
         end
         
-        local checkbox_state = interface.config.load_on_startup and interface.config.load_on_startup:get() or false
+        if not (interface and interface.config and interface.config.load_on_startup) then return end
+        local checkbox_state = interface.config.load_on_startup:get() or false
         
         if checkbox_state then
             -- user enabled checkbox: set this config as autoload (disabling any other)
@@ -5238,40 +5302,68 @@ configs = {} do
     
     local _updating_checkbox = false
     
-    function configs.update_load_on_startup_checkbox()
-        if not interface.config.load_on_startup then return end
-        if _updating_checkbox then return end
-        
-        _updating_checkbox = true
-        
-        -- hide checkbox if not on config tab
-        if interface.search and interface.search:get() ~= 'config' then
-            interface.config.load_on_startup:set_visible(false)
-            _updating_checkbox = false
-            return
-        end
+    function configs.update_ui_visibility()
+        if not (interface and interface.config) then return end
+        if not interface.search or interface.search:get() ~= 'config' then return end
         
         local name = get_selected_name()
+        local is_new = (name == '+ new')
+        local is_default = (name == 'default')
+        local has_config = name and name ~= '+ new' and name ~= '<no configs>'
         
-        -- hide checkbox only for <no configs>
-        if not name or name == '<no configs>' then
-            interface.config.load_on_startup:set_visible(false)
-            _updating_checkbox = false
-            return
+        -- Show/hide textbox and create button based on selection
+        if interface.config.name then
+            interface.config.name:set_visible(is_new)
+        end
+        if interface.config.create_button then
+            interface.config.create_button:set_visible(is_new)
         end
         
-        -- show checkbox and sync state
-        interface.config.load_on_startup:set_visible(true)
-        interface.config.load_on_startup:set(state.load_on_startup == name)
+        -- Show load buttons for default and user configs (not for + new)
+        if interface.config.load_button then
+            interface.config.load_button:set_visible(has_config)
+        end
+        if interface.config.load_aa_button then
+            interface.config.load_aa_button:set_visible(has_config)
+        end
         
-        _updating_checkbox = false
+        -- Show save, load_on_startup only for user configs (not default, not + new)
+        local show_user_buttons = has_config and not is_default
+        if interface.config.load_on_startup then
+            interface.config.load_on_startup:set_visible(show_user_buttons)
+            if show_user_buttons and name then
+                interface.config.load_on_startup:set(state.load_on_startup == name)
+            end
+        end
+        if interface.config.save_button then
+            interface.config.save_button:set_visible(show_user_buttons)
+        end
+        
+        -- Other group buttons
+        -- Import/Export - hide when + new is selected
+        if interface.config.import_button then
+            interface.config.import_button:set_visible(not is_new)
+        end
+        if interface.config.export_button then
+            interface.config.export_button:set_visible(not is_new)
+        end
+        
+        -- Delete - only for user configs (not default, not + new)
+        if interface.config.delete_button then
+            interface.config.delete_button:set_visible(show_user_buttons)
+        end
+    end
+    
+    function configs.update_load_on_startup_checkbox()
+        -- This function is now merged into update_ui_visibility
+        configs.update_ui_visibility()
     end
     
     function configs.load_startup_config()
         if not state.load_on_startup then return end
         
-        -- handle <default> special case
-        if state.load_on_startup == '<default>' then
+        -- handle default special case
+        if state.load_on_startup == 'default' then
             configs.load_default()
             return
         end
@@ -5325,6 +5417,9 @@ configs = {} do
             if interface.config.load_button and interface.config.load_button.set_callback then
                 interface.config.load_button:set_callback(configs.load_selected)
             end
+            if interface.config.load_aa_button and interface.config.load_aa_button.set_callback then
+                interface.config.load_aa_button:set_callback(configs.load_aa_only)
+            end
             if interface.config.delete_button and interface.config.delete_button.set_callback then
                 interface.config.delete_button:set_callback(configs.delete_selected)
             end
@@ -5333,6 +5428,13 @@ configs = {} do
             end
             if interface.config.import_button and interface.config.import_button.set_callback then
                 interface.config.import_button:set_callback(configs.import_from_clipboard)
+            end
+            
+            -- Add listbox callback to refresh UI when selection changes
+            if interface.config.list and interface.config.list.set_callback then
+                interface.config.list:set_callback(function()
+                    -- UI will automatically update through paint_ui event
+                end)
             end
         end
     end
