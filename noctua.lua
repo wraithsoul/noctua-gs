@@ -569,7 +569,7 @@ interface = {} do
     interface.aimbot = {
         enabled_aimbot = interface.header.general:checkbox('enable aimbot'),
         enabled_resolver_tweaks = interface.header.general:checkbox('\aa5ab55ffresolver tweaks'),
-        resolver_mode = interface.header.general:combobox('mode', 'autopilot'),
+        resolver_mode = interface.header.general:combobox('mode', 'autopilot', 'experimental'),
         smart_safety = interface.header.general:checkbox('smart safety'),
         silent_shot = interface.header.general:checkbox('silent shot'),
         force_recharge = interface.header.general:checkbox('allow force recharge'),
@@ -1899,13 +1899,14 @@ end)()
 
 --@region: resolver
 resolver = {} do
-    resolver.layers     = {}
-    resolver.safepoints = {}
-    resolver.cache      = {}
-    resolver.history    = {}
+    resolver.layers      = {}
+    resolver.safepoints  = {}
+    resolver.cache       = {}
+    resolver.history     = {}
     resolver.state_cache = {}
     resolver.layer_cache = {}
-    resolver.precision  = {}
+    resolver.precision   = {}
+    resolver.bruteforce  = {}
     
     function resolver:calculate_layer_delta(idx)
         if not self.layers[idx] or not self.layers[idx][6] then return 0 end
@@ -1975,11 +1976,67 @@ resolver = {} do
     end
     
     function resolver:on_aim_miss(e)
-        -- empty block
+        if not e or not e.target then return end
+        if not interface or not interface.aimbot then return end
+        if not interface.aimbot.enabled_aimbot:get() or not interface.aimbot.enabled_resolver_tweaks:get() then return end
+        if interface.aimbot.resolver_mode:get() ~= 'experimental' then return end
+
+        local idx = e.target
+        if not idx or not entity.is_enemy(idx) then return end
+
+        local health = entity.get_prop(idx, "m_iHealth") or 0
+        if health <= 0 then return end
+
+        local reason = tostring(e.reason or '')
+        if reason == 'spread' or reason == 'prediction error' then
+            return
+        end
+
+        self.bruteforce[idx] = self.bruteforce[idx] or {}
+        local data = self.bruteforce[idx]
+
+        data.misses = (data.misses or 0) + 1
+        data.hits = 0
+        data.locked_yaw = nil
+        data.lock_expire = nil
+
+        local max_stage = 5
+        local stage = (data.stage or 1) + 1
+        if stage > max_stage then
+            stage = 1
+        end
+
+        data.stage = stage
+        data.last_miss_time = globals.curtime()
+
+        self.bruteforce[idx] = data
     end
 
     function resolver:on_aim_hit(e)
-        -- empty block
+        if not e or not e.target then return end
+        if not interface or not interface.aimbot then return end
+        if not interface.aimbot.enabled_aimbot:get() or not interface.aimbot.enabled_resolver_tweaks:get() then return end
+        if interface.aimbot.resolver_mode:get() ~= 'experimental' then return end
+
+        local idx = e.target
+        if not idx or not entity.is_enemy(idx) then return end
+
+        self.bruteforce[idx] = self.bruteforce[idx] or {}
+        local data = self.bruteforce[idx]
+
+        data.hits = (data.hits or 0) + 1
+        data.misses = 0
+        data.stage = 1
+
+        local yaw = self.cache[idx]
+        if type(yaw) == 'number' then
+            local now = globals.curtime()
+            local extra = math.min((data.hits or 0) * 0.5, 3)
+            data.locked_yaw = yaw
+            data.lock_expire = now + 1.5 + extra
+        end
+
+        self.bruteforce[idx] = data
     end
 
     resolver.getMaxDesyncDelta = function(idx)
@@ -2005,28 +2062,144 @@ resolver = {} do
     end
 
     resolver.updateLayers = function(self, idx)
-        if not idx then
-            return false
-        end
+        if not idx then return false end
 
         local animLayers = player.get_animlayer(idx)
-        if not animLayers then
-            return false
-        end
+        if not animLayers then return false end
         
         self.layers[idx] = self.layers[idx] or {}
         local playerLayers = self.layers[idx]
 
-        for i = 1, 12 do
+        -- Capture all relevant layers (0 to 12)
+        for i = 0, 12 do
             local layer = animLayers[i]
             if layer then
-                playerLayers[i] = playerLayers[i] or {}
-                local currentLayer = playerLayers[i]
-                currentLayer.m_playback_rate = layer.m_playback_rate or currentLayer.m_playback_rate or 0
-                currentLayer.m_sequence = layer.m_sequence or currentLayer.m_sequence or 0
+                playerLayers[i] = {
+                    m_sequence = layer.m_sequence,
+                    m_playback_rate = layer.m_playback_rate,
+                    m_cycle = layer.m_cycle,
+                    m_weight = layer.m_weight,
+                    m_order = layer.m_order,
+                    m_anim_time = layer.m_anim_time
+                }
             end
         end
         return true
+    end
+
+    resolver.logic_experimental = function(self, idx)
+        local animstate = player.get_animstate(idx)
+        if not animstate then return end
+        if not self:updateLayers(idx) then return end
+
+        local _, _, _, velocity_2d = player.get_velocity(idx)
+        if not velocity_2d then return end
+
+        local enemy_state = utils.get_enemy_state(idx)
+        local lby = entity.get_prop(idx, "m_flLowerBodyYawTarget") or 0
+        local eye_yaw = animstate.flEyeYaw or 0
+
+        local layers = self.layers[idx] or {}
+        local layer3 = layers[3]
+        local layer6 = layers[6]
+        local layer12 = layers[12]
+
+        local side = self:calc_side(idx, animstate, velocity_2d, lby)
+
+        if enemy_state == "air" or enemy_state == "airc" then
+            local lean = animstate.flLeanAmount or 0
+            if math.abs(lean) > 1 then
+                side = mathematic.sign(lean)
+            end
+        elseif enemy_state == "duck" or enemy_state == "duck move" then
+            local lby_delta = mathematic.angle_diff(eye_yaw, lby)
+            if math.abs(lby_delta) > 5 then
+                side = mathematic.sign(lby_delta)
+            end
+        end
+
+        if layer3 and (layer3.m_weight or 0) > 0.01 then
+            local lby_delta = mathematic.angle_diff(eye_yaw, lby)
+            if math.abs(lby_delta) > 1 then
+                side = mathematic.sign(lby_delta)
+            end
+        end
+
+        if layer6 and velocity_2d > 10 then
+            local calc_rate = velocity_2d / 260.0
+            if layer6.m_playback_rate and layer6.m_playback_rate < calc_rate * 0.5 then
+                side = -side
+            end
+        end
+
+        if side == 0 then
+            side = 1
+        end
+
+        local max_desync = self.getMaxDesyncDelta(idx) or 1
+        local base_desync = mathematic.clamp(max_desync * 58, 10, 58)
+
+        local precision = self:compute_precision(animstate, velocity_2d, lby)
+        self.precision[idx] = precision
+
+        local vel_factor = math.exp(-velocity_2d / 160)
+        local duck_amt = animstate.flDuckAmount or 0
+        local duck_factor = 1 - duck_amt * duck_amt * 0.35
+        local layer_activity = self:calculate_layer_delta(idx)
+        local layer_factor = 1 - mathematic.clamp(layer_activity * 2.0, 0, 0.4)
+
+        local amplitude = base_desync * vel_factor * duck_factor * layer_factor
+        amplitude = amplitude * (0.75 + 0.5 * precision)
+        amplitude = mathematic.clamp(amplitude, 18, 58)
+
+        self.bruteforce[idx] = self.bruteforce[idx] or {}
+        local bf = self.bruteforce[idx]
+
+        if bf.last_state ~= enemy_state then
+            bf.stage = 1
+            bf.locked_yaw = nil
+            bf.lock_expire = nil
+            bf.last_state = enemy_state
+        end
+
+        bf.stage = bf.stage or 1
+        local stage = bf.stage
+
+        local candidates = {}
+        candidates[1] = side * amplitude
+        candidates[2] = -side * amplitude
+        candidates[3] = side * amplitude * 0.5
+        candidates[4] = -side * amplitude * 0.5
+        candidates[5] = 0
+
+        local max_stage = #candidates
+        if stage < 1 or stage > max_stage then
+            stage = 1
+            bf.stage = stage
+        end
+
+        local yaw = candidates[stage]
+
+        if bf.locked_yaw and bf.lock_expire and globals.curtime() < bf.lock_expire then
+            yaw = bf.locked_yaw
+        end
+
+        yaw = mathematic.clamp(yaw, -58, 58)
+        if yaw >= 0 then
+            yaw = math.floor(yaw + 0.5)
+        else
+            yaw = math.ceil(yaw - 0.5)
+        end
+
+        self.bruteforce[idx] = bf
+        self.cache[idx] = yaw
+
+        player_list.SetForceBodyYawCheckbox(player_list, idx, true)
+        player_list.SetBodyYaw(player_list, idx, yaw)
+
+        local confidence = precision * (1 - (stage - 1) * 0.2)
+        confidence = mathematic.clamp(confidence, 0.1, 1)
+        self:updateSafety(idx, side, yaw, confidence)
     end
 
     resolver.updateSafety = function(self, idx, side, desync, precision)
@@ -2169,6 +2342,86 @@ resolver = {} do
         return clamp(precision, 0, 1)
     end
     
+    resolver.logic_autopilot = function(self, idx)
+        local animstate = player.get_animstate(idx)
+        if not animstate then return end
+        if not resolver:updateLayers(idx) then return end
+
+        local vx, vy, vz, velocity_2d = player.get_velocity(idx)
+        if not velocity_2d then return end
+        
+        local max_desync = resolver.getMaxDesyncDelta(idx)
+        if not max_desync then return end
+
+        local walk_to_run, _ = resolver:transition(
+            animstate.flWalkToRunTransition or 0,
+            false,
+            animstate.flLastUpdateIncrement or 0,
+            velocity_2d
+        )
+
+        local enemy_state = utils.get_enemy_state(idx)
+        local prev_state = self.state_cache[idx]
+        if prev_state ~= enemy_state then
+            self.history[idx] = nil
+            self.state_cache[idx] = enemy_state
+        end
+
+        local lby = entity.get_prop(idx, "m_flLowerBodyYawTarget")
+        if not lby then return end
+        
+        local predicted_yaw = resolver:predictedFootYaw(
+            animstate.flLastFeetYaw or 0,
+            animstate.flEyeYaw or 0,
+            lby,
+            walk_to_run,
+            velocity_2d,
+            animstate.flMinBodyYaw or -58,
+            animstate.flMaxBodyYaw or 58,
+            enemy_state
+        )
+        if not predicted_yaw then return end
+
+        local eye_yaw = animstate.flEyeYaw or 0
+        
+        local side = self:calc_side(idx, animstate, velocity_2d, lby)
+        
+        local precision = self:compute_precision(animstate, velocity_2d, lby)
+        self.precision[idx] = precision
+        
+        local base_desync = max_desync * 58
+        
+        local velocity_factor = math.exp(-velocity_2d / 130)
+        
+        local duck_amt = animstate.flDuckAmount or 0
+        local duck_factor = 1 - duck_amt * duck_amt * 0.4
+        
+        local feet_cycle = animstate.flFeetCycle or 0
+        local feet_speed = animstate.m_flFeetSpeedForwardsOrSideWays or 0
+        local cycle_factor = 1 - math.abs(math.sin(feet_cycle * math.pi)) * feet_speed * 0.2
+        
+        local lean_amount = animstate.flLeanAmount or 0
+        local lean_factor = 1 / (1 + math.abs(lean_amount) * 0.01)
+        
+        local stop_to_full = animstate.m_flStopToFullRunningFraction or 0
+        local ground_factor = 0.3 + 0.7 * (1 - stop_to_full)
+        
+        local desync_value = base_desync * velocity_factor * duck_factor * cycle_factor * lean_factor * ground_factor
+        desync_value = mathematic.clamp(desync_value, 0, 58)
+
+        if desync_value > 0 then
+            local amplitude = 0.5 + 0.5 * (self.precision[idx] or 0.5)
+            local raw_yaw = side * desync_value * amplitude
+            local final_yaw = raw_yaw >= 0 and math.floor(raw_yaw + 0.5) or math.ceil(raw_yaw - 0.5)
+
+            resolver.cache[idx] = final_yaw
+            player_list.SetForceBodyYawCheckbox(player_list, idx, true)
+            player_list.SetBodyYaw(player_list, idx, final_yaw)
+            resolver:updateSafety(idx, side, final_yaw, self.precision[idx])
+        end
+    end
+
+
     resolver.setup = function(self)
         if not (interface.aimbot.enabled_aimbot:get() and interface.aimbot.enabled_resolver_tweaks:get()) then return end
 
@@ -2180,6 +2433,8 @@ resolver = {} do
 
         local enemies = entity.get_players(true)
         if not enemies then return end
+
+        local mode = interface.aimbot.resolver_mode:get()
 
         for _, idx in ipairs(enemies) do
             repeat
@@ -2197,81 +2452,10 @@ resolver = {} do
                     break
                 end
 
-                local animstate = player.get_animstate(idx)
-                if not animstate then break end
-                if not resolver:updateLayers(idx) then break end
-
-                local vx, vy, vz, velocity_2d = player.get_velocity(idx)
-                if not velocity_2d then break end
-                
-                local max_desync = resolver.getMaxDesyncDelta(idx)
-                if not max_desync then break end
-
-                local walk_to_run, _ = resolver:transition(
-                    animstate.flWalkToRunTransition or 0,
-                    false,
-                    animstate.flLastUpdateIncrement or 0,
-                    velocity_2d
-                )
-
-                local enemy_state = utils.get_enemy_state(idx)
-                local prev_state = self.state_cache[idx]
-                if prev_state ~= enemy_state then
-                    self.history[idx] = nil
-                    self.state_cache[idx] = enemy_state
-                end
-
-                local lby = entity.get_prop(idx, "m_flLowerBodyYawTarget")
-                if not lby then break end
-                
-                local predicted_yaw = resolver:predictedFootYaw(
-                    animstate.flLastFeetYaw or 0,
-                    animstate.flEyeYaw or 0,
-                    lby,
-                    walk_to_run,
-                    velocity_2d,
-                    animstate.flMinBodyYaw or -58,
-                    animstate.flMaxBodyYaw or 58,
-                    enemy_state
-                )
-                if not predicted_yaw then break end
-
-                local eye_yaw = animstate.flEyeYaw or 0
-                
-                local side = self:calc_side(idx, animstate, velocity_2d, lby)
-                
-                local precision = self:compute_precision(animstate, velocity_2d, lby)
-                self.precision[idx] = precision
-                
-                local base_desync = max_desync * 58
-                
-                local velocity_factor = math.exp(-velocity_2d / 130)
-                
-                local duck_amt = animstate.flDuckAmount or 0
-                local duck_factor = 1 - duck_amt * duck_amt * 0.4
-                
-                local feet_cycle = animstate.flFeetCycle or 0
-                local feet_speed = animstate.m_flFeetSpeedForwardsOrSideWays or 0
-                local cycle_factor = 1 - math.abs(math.sin(feet_cycle * math.pi)) * feet_speed * 0.2
-                
-                local lean_amount = animstate.flLeanAmount or 0
-                local lean_factor = 1 / (1 + math.abs(lean_amount) * 0.01)
-                
-                local stop_to_full = animstate.m_flStopToFullRunningFraction or 0
-                local ground_factor = 0.3 + 0.7 * (1 - stop_to_full)
-                
-                local desync_value = base_desync * velocity_factor * duck_factor * cycle_factor * lean_factor * ground_factor
-                desync_value = mathematic.clamp(desync_value, 0, 58)
-
-                if desync_value > 0 then
-                    local amplitude = 0.5 + 0.5 * (self.precision[idx] or 0.5)
-                    local raw_yaw = side * desync_value * amplitude
-                    local final_yaw = raw_yaw >= 0 and math.floor(raw_yaw + 0.5) or math.ceil(raw_yaw - 0.5)
-
-                    resolver.cache[idx] = final_yaw
-                    player_list.SetForceBodyYawCheckbox(player_list, idx, true)
-                    player_list.SetBodyYaw(player_list, idx, final_yaw)
-                    resolver:updateSafety(idx, side, final_yaw, self.precision[idx])
+                if mode == 'autopilot' then
+                    self:logic_autopilot(idx)
+                elseif mode == 'experimental' then
+                    self:logic_experimental(idx)
                 end
             until true
         end
