@@ -9,7 +9,26 @@
 --@region: information
 local _name = 'noctua'
 local _version = '1.4a'
-local _nickname = entity.get_player_name(entity.get_local_player())
+local _nickname = nil
+
+local function update_nickname()
+    local local_player = entity.get_local_player()
+    if local_player then
+        local name = entity.get_player_name(local_player)
+        if name and name ~= "" then
+            _nickname = name
+        end
+    end
+end
+
+update_nickname()
+
+client.set_event_callback('player_spawn', function(e)
+    local me = entity.get_local_player()
+    if me and client.userid_to_entindex(e.userid) == me then
+        update_nickname()
+    end
+end)
 
 local update = [[
 what's new (1.4a):
@@ -8856,7 +8875,7 @@ end
 
 --@region: on load
 logging:push("checkout latest update in console")
-logging:push("nice to see you at " .. _name .. " " .. _version .. " (" .. _nickname .. ")")
+logging:push("nice to see you at " .. _name .. " " .. _version .. " (" .. (_nickname or "unknown") .. ")")
 client.exec("play items/flashlight1.wav")
 confetti:push(0, true)
 --@endregion
