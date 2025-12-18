@@ -662,7 +662,7 @@ interface = {} do
         export_button = interface.header.other:button('export'),
         delete_button = interface.header.other:button('\aff4444ffdelete'),
     }
-
+    
     interface.utility = {
         -- item_anti_crash = interface.header.general:checkbox('\aa5ab55ffchat filter (crash & noise)'),
         clantag = interface.header.general:checkbox('clantag'),
@@ -674,13 +674,13 @@ interface = {} do
         buybot_secondary = interface.header.general:combobox('secondary weapon', '-', 'r8 / deagle', 'tec-9 / five-s / cz-75', 'duals', 'p-250'),
         buybot_utility = interface.header.general:multiselect('utility', 'kevlar', 'helmet', 'defuser', 'taser', 'he', 'molotov', 'smoke'),
         party_mode = interface.header.general:checkbox('party mode'),
-        animation_breakers = interface.header.general:multiselect('animation breakers', 'pitch on land', 'modify legs', 'body lean'),
-        animation_breakers_leg = interface.header.general:combobox('modify legs', 'static', 'jitter'),
-        animation_breakers_leg_slider = interface.header.general:slider('value', 1, 10, 4, true, '', 1),
-        animation_breakers_static_legs_air = interface.header.general:checkbox('static legs in air'),
-        animation_breakers_body_lean = interface.header.general:slider('body lean', 0, 100, 50, true, '%', 1),
+        animation_breakers = interface.header.general:multiselect('animation breakers', 'zero on land', 'earthquake', 'sliding slow motion', 'sliding crouch', 'on ground', 'on air', 'quick peek legs'),
+        on_ground_options = interface.header.general:combobox('on ground', {'frozen', 'walking', 'jitter', 'sliding', 'star'}):depend({interface.utility.animation_breakers, 'on ground'}),
+        on_air_options = interface.header.general:combobox('on air', {'frozen', 'walking', 'kinguru'}):depend({interface.utility.animation_breakers, 'on air'}),
         streamer_mode = interface.header.fake_lag:checkbox('streamer mode'),
-        streamer_mode_type = interface.header.fake_lag:combobox('mode', 'rabbit')
+        streamer_mode_list = interface.header.fake_lag:listbox('images', 250),
+        streamer_mode_help = interface.header.fake_lag:label('type in console: .add name url'),
+        streamer_mode_delete = interface.header.fake_lag:button('\aff4444ffdelete')
     }
 
     interface.builder = {} do
@@ -1059,8 +1059,17 @@ interface = {} do
                             return
                         end
 
-                        if key == "streamer_mode_type" then
-                            element:set_visible(interface.utility.streamer_mode:get())
+                        if key == "streamer_mode_list" or key == "streamer_mode_help" then
+                            local enabled = interface.utility.streamer_mode:get()
+                            element:set_visible(enabled)
+                            return
+                        end
+
+                        if key == "streamer_mode_delete" then
+                            local enabled = interface.utility.streamer_mode:get()
+                            local sel = streamer_images and streamer_images.get_selected_name and streamer_images.get_selected_name() or nil
+                            local is_custom = sel ~= nil and (not streamer_images.is_builtin or not streamer_images.is_builtin(sel))
+                            element:set_visible(enabled and is_custom)
                             return
                         end
 
@@ -1134,7 +1143,6 @@ interface = {} do
     end
 end
 
--- initialize tab visibility on load
 interface.update_visibility()
 interface.setup()
 
@@ -2111,7 +2119,6 @@ resolver = {} do
         self.layers[idx] = self.layers[idx] or {}
         local playerLayers = self.layers[idx]
 
-        -- Capture all relevant layers (0 to 12)
         for i = 0, 12 do
             local layer = animLayers[i]
             if layer then
@@ -2518,13 +2525,13 @@ end)
 --         local local_player = entity.get_local_player()
 --         if not local_player then return end
 
---         if animation_breakers and interface.utility.animation_breakers_global:get('model scale') then
---             entity.set_prop(local_player, 'm_flModelScale', 0.5)
---             entity.set_prop(local_player, 'm_ScaleType', 1)
---         else
---             entity.set_prop(local_player, 'm_flModelScale', 1)
---             entity.set_prop(local_player, 'm_ScaleType', 0)
---         end
+        -- if animation_breakers and interface.utility.animation_breakers_global:get('model scale') then
+        --     entity.set_prop(local_player, 'm_flModelScale', 0.5)
+        --     entity.set_prop(local_player, 'm_ScaleType', 1)
+        -- else
+        --     entity.set_prop(local_player, 'm_flModelScale', 1)
+        --     entity.set_prop(local_player, 'm_ScaleType', 0)
+        -- end
 --     end
 -- end
 
@@ -6395,10 +6402,8 @@ configs = {} do
         local checkbox_state = interface.config.load_on_startup:get() or false
         
         if checkbox_state then
-            -- user enabled checkbox: set this config as autoload (disabling any other)
             state.load_on_startup = name
         else
-            -- user disabled checkbox: clear autoload if it was this config
             if state.load_on_startup == name then
                 state.load_on_startup = nil
             end
@@ -6418,7 +6423,6 @@ configs = {} do
         local is_default = (name == 'default')
         local has_config = name and name ~= '+ new' and name ~= '<no configs>'
         
-        -- show/hide textbox and create button based on selection
         if interface.config.name then
             interface.config.name:set_visible(is_new)
         end
@@ -6427,7 +6431,6 @@ configs = {} do
             interface.config.create_button:set_visible(is_new)
         end
         
-        -- show load buttons for default and user configs (not for + new)
         if interface.config.load_button then
             interface.config.load_button:set_visible(has_config)
         end
@@ -6436,7 +6439,6 @@ configs = {} do
             interface.config.load_aa_button:set_visible(has_config)
         end
         
-        -- show load_on_startup for all configs (default and user configs)
         if interface.config.load_on_startup then
             interface.config.load_on_startup:set_visible(has_config)
             if has_config and name then
@@ -6444,13 +6446,11 @@ configs = {} do
             end
         end
         
-        -- show save only for user configs (not default, not + new)
         local show_user_buttons = has_config and not is_default
         if interface.config.save_button then
             interface.config.save_button:set_visible(show_user_buttons)
         end
         
-        -- import/export - hide when + new is selected
         if interface.config.import_button then
             interface.config.import_button:set_visible(not is_new)
         end
@@ -6458,8 +6458,7 @@ configs = {} do
         if interface.config.export_button then
             interface.config.export_button:set_visible(not is_new)
         end
-        
-        -- delete - only for user configs (not default, not + new)
+
         if interface.config.delete_button then
             interface.config.delete_button:set_visible(show_user_buttons)
         end
@@ -6471,14 +6470,12 @@ configs = {} do
     
     function configs.load_startup_config()
         if not state.load_on_startup then return end
-        
-        -- handle default special case
+
         if state.load_on_startup == 'default' then
             configs.load_default()
             return
         end
-        
-        -- load user config
+
         if state.data[state.load_on_startup] then
             configs.apply(state.data[state.load_on_startup])
             logMessage('noctua ·', '', 'autoloaded config: ' .. state.load_on_startup)
@@ -6492,18 +6489,15 @@ configs = {} do
         configs.update_list_ui()
         configs.update_load_on_startup_checkbox()
         
-        -- load startup config after a brief delay
         client.delay_call(0.1, function()
             configs.load_startup_config()
         end)
         
         if interface and interface.config then
-            -- sync checkbox state every frame based on selected config
             client.set_event_callback('paint_ui', function()
                 configs.update_load_on_startup_checkbox()
             end)
             
-            -- load on startup checkbox callback
             if interface.config.load_on_startup and interface.config.load_on_startup.set_callback then
                 interface.config.load_on_startup:set_callback(function()
                     configs.toggle_autoload_for_current()
@@ -6559,6 +6553,200 @@ configs.init()
 client.set_event_callback('shutdown', function() pcall(database.flush) end)
 --@endregion
 
+--@region: streamer images db
+streamer_images = {} do
+    local DB_KEY = 'noctua.images'
+
+    local built_in = {
+        rabbit = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSPajxTkvKF1SeE1fOTFTyQOzCcYYZNjH_Afw&s",
+        cat = "https://media.tenor.com/sF-65FzDeFIAAAAe/cat-pondering-cat.png",
+        guinea_pig = "https://avatars.mds.yandex.net/i?id=105aeb7d42c5450af1d4f4d896b92ac2_l-4801254-images-thumbs&n=13"
+    }
+
+    local state = { list = {}, data = {} }
+    streamer_images.current_items = {}
+
+    function streamer_images.load_db()
+        local ok, data = pcall(database.read, DB_KEY)
+        if ok and type(data) == 'table' then
+            state.list = data.list or {}
+            state.data = data.data or {}
+        else
+            state.list = {}
+            state.data = {}
+        end
+    end
+
+    function streamer_images.save_db()
+        pcall(database.write, DB_KEY, { list = state.list, data = state.data })
+    end
+
+    function streamer_images.is_builtin(name)
+        return built_in[name] ~= nil
+    end
+
+    function streamer_images.get_url(name)
+        if built_in[name] then
+            return built_in[name]
+        end
+        return state.data[name]
+    end
+
+    function streamer_images.get_all_names()
+        local items = {}
+        for name, _ in pairs(built_in) do
+            table.insert(items, name)
+        end
+        table.sort(items)
+        if type(state.list) == 'table' then
+            for _, n in ipairs(state.list) do
+                if not streamer_images.is_builtin(n) then
+                    table.insert(items, n)
+                end
+            end
+        end
+        return items
+    end
+
+    function streamer_images.add(name, url)
+        if type(name) ~= 'string' then name = '' end
+        if type(url) ~= 'string' then url = '' end
+
+        name = name:gsub('^%s+', ''):gsub('%s+$', '')
+        url = url:gsub('^%s+', ''):gsub('%s+$', '')
+
+        if name == '' or name == 'how to use' then
+            logMessage('noctua ·', '', 'enter valid image name!')
+            client.exec("play ui/menu_invalid.wav")
+            return
+        end
+
+        if url == '' then
+            logMessage('noctua ·', '', 'enter valid image url!')
+            client.exec("play ui/menu_invalid.wav")
+            return
+        end
+
+        if streamer_images.is_builtin(name) then
+            logMessage('noctua ·', '', 'cannot override built-in image!')
+            client.exec("play ui/menu_invalid.wav")
+            return
+        end
+
+        local exists = false
+        for _, n in ipairs(state.list) do
+            if n == name then
+                exists = true
+                break
+            end
+        end
+
+        if not exists then
+            table.insert(state.list, name)
+        end
+
+        state.data[name] = url
+        streamer_images.save_db()
+        streamer_images.update_list_ui()
+        logMessage('noctua ·', '', 'image added: ' .. name)
+        client.exec("play ui/beepclear.wav")
+    end
+
+    function streamer_images.remove(name)
+        if not name or name == '' then return end
+        if streamer_images.is_builtin(name) then
+            logMessage('noctua ·', '', 'cannot delete built-in image!')
+            client.exec("play ui/menu_invalid.wav")
+            return
+        end
+
+        state.data[name] = nil
+        local new_list = {}
+        for _, n in ipairs(state.list) do
+            if n ~= name then
+                table.insert(new_list, n)
+            end
+        end
+        state.list = new_list
+        streamer_images.save_db()
+        streamer_images.update_list_ui()
+        if interface and interface.utility and interface.utility.streamer_mode_list and interface.utility.streamer_mode_list.set then
+            interface.utility.streamer_mode_list:set(0)
+        end
+        logMessage('noctua ·', '', 'image deleted: ' .. name)
+        client.exec("play ui/beepclear.wav")
+    end
+
+    function streamer_images.update_list_ui()
+        if not (interface and interface.utility and interface.utility.streamer_mode_list) then return end
+        local items = {}
+        local all = streamer_images.get_all_names()
+        for _, n in ipairs(all) do
+            table.insert(items, n)
+        end
+        streamer_images.current_items = items
+        if interface.utility.streamer_mode_list.update then
+            pcall(function() interface.utility.streamer_mode_list:update(items) end)
+        end
+        if interface.utility.streamer_mode_list.set then
+            pcall(function() interface.utility.streamer_mode_list:set(0) end)
+        end
+    end
+
+    function streamer_images.get_selected_name()
+        if not (interface and interface.utility and interface.utility.streamer_mode_list and interface.utility.streamer_mode_list.get) then
+            return nil
+        end
+        local idx = tonumber(interface.utility.streamer_mode_list:get())
+        if not idx then return nil end
+        idx = idx + 1
+        return streamer_images.current_items[idx]
+    end
+
+    function streamer_images.init()
+        streamer_images.load_db()
+        streamer_images.update_list_ui()
+
+        if interface and interface.utility then
+            if interface.utility.streamer_mode_delete and interface.utility.streamer_mode_delete.set_callback then
+                interface.utility.streamer_mode_delete:set_callback(function()
+                    local sel = streamer_images.get_selected_name()
+                    if not sel then
+                        logMessage('noctua ·', '', 'select image first!')
+                        client.exec("play ui/menu_invalid.wav")
+                        return
+                    end
+                    streamer_images.remove(sel)
+                end)
+            end
+
+            if interface.utility.streamer_mode_list and interface.utility.streamer_mode_list.set_callback then
+                interface.utility.streamer_mode_list:set_callback(function()
+                    if not (interface.utility.streamer_mode_delete and interface.utility.streamer_mode_delete.set_visible) then
+                        return
+                    end
+                    local sel = streamer_images.get_selected_name()
+                    local is_custom = sel ~= nil and not streamer_images.is_builtin(sel)
+                    interface.utility.streamer_mode_delete:set_visible(is_custom and interface.utility.streamer_mode:get())
+
+                    if streamer_mode and streamer_mode.on_selection_changed then
+                        streamer_mode.on_selection_changed()
+                    end
+                end)
+            end
+
+            if interface.utility.streamer_mode_delete and interface.utility.streamer_mode_delete.set_visible then
+                local sel = streamer_images.get_selected_name()
+                local is_custom = sel ~= nil and not streamer_images.is_builtin(sel)
+                interface.utility.streamer_mode_delete:set_visible(is_custom and interface.utility.streamer_mode:get())
+            end
+        end
+    end
+end
+
+streamer_images.init()
+--@endregion
+
 --@region: stats (home)
 stats = {} do
     local DB_KEY = 'noctua.stats'
@@ -6603,28 +6791,13 @@ stats = {} do
     end
 
     function stats.update_ui()
-        if not interface or not interface.home then return end
-        if interface.home.kills and interface.home.kills.set then
-            interface.home.kills:set(' · kills: ' .. tostring(state.personal.kills))
-        end
-        if interface.home.deaths and interface.home.deaths.set then
-            interface.home.deaths:set(' · deaths: ' .. tostring(state.personal.deaths))
-        end
-        if interface.home.kd and interface.home.kd.set then
-            interface.home.kd:set(' · kd ratio: ' .. fmt_ratio(state.personal.kills, state.personal.deaths))
-        end
-        if interface.home.hits and interface.home.hits.set then
-            interface.home.hits:set(' · hits: ' .. tostring(state.script.hits))
-        end
-        if interface.home.misses and interface.home.misses.set then
-            interface.home.misses:set(' · misses: ' .. tostring(state.script.misses))
-        end
-        if interface.home.evaded and interface.home.evaded.set then
-            interface.home.evaded:set(' · evaded shots: ' .. tostring(state.script.evaded))
-        end
-        if interface.home.ratio and interface.home.ratio.set then
-            interface.home.ratio:set(' · ratio: ' .. fmt_ratio(state.script.hits, state.script.misses))
-        end
+        interface.home.kills:set(' · kills: ' .. tostring(state.personal.kills))
+        interface.home.deaths:set(' · deaths: ' .. tostring(state.personal.deaths))
+        interface.home.kd:set(' · kd ratio: ' .. fmt_ratio(state.personal.kills, state.personal.deaths))
+        interface.home.hits:set(' · hits: ' .. tostring(state.script.hits))
+        interface.home.misses:set(' · misses: ' .. tostring(state.script.misses))
+        interface.home.evaded:set(' · evaded shots: ' .. tostring(state.script.evaded))
+        interface.home.ratio:set(' · ratio: ' .. fmt_ratio(state.script.hits, state.script.misses))
     end
 
     function stats.reset()
@@ -8022,12 +8195,6 @@ end
 
 --@region: animation breakers
 animation_breakers = {} do
-    -- State variables
-    local ground_ticks = 1
-    local end_time = 0
-    local static_leg_random = 0
-
-    -- FFI setup for animation layers
     local char_ptr = ffi.typeof('char*')
     local class_ptr = ffi.typeof('void***')
     local animation_layer_t = ffi.typeof([[struct {
@@ -8039,92 +8206,145 @@ animation_breakers = {} do
     }**]])
 
     local nullptr = ffi.new('void*')
+    local ground_ticks = 0
+    local end_time = 0
 
-    animation_breakers.update_pose_params = function()
-        local local_player = entity.get_local_player()
-        if not local_player or not entity.is_alive(local_player) then
+    local leg_movement_ref = u_reference.antiaim.leg_movement
+    local slowmotion_ref = u_reference.antiaim.slowmotion
+    local quick_peek_ref = u_reference.ragebot.quick_peek
+
+    local function get_player_state()
+        local me = entity.get_local_player()
+        if not me then return 'stand' end
+
+        local vx, vy = entity.get_prop(me, 'm_vecVelocity')
+        local speed = math.sqrt(vx*vx + vy*vy)
+        local flags = entity.get_prop(me, 'm_fFlags')
+        local on_ground = bit.band(flags, 1) == 1
+        local duck_amount = entity.get_prop(me, 'm_flDuckAmount')
+
+        if not on_ground then
+            return 'air'
+        elseif duck_amount > 0.7 then
+            return speed > 1 and 'crouch move' or 'crouch'
+        elseif speed > 1 then
+            return 'move'
+        else
+            return 'stand'
+        end
+    end
+
+    animation_breakers.update_pose_params = function(cmd)
+        local me = entity.get_local_player()
+        if not me or not entity.is_alive(me) then
+            return
+        end
+
+        local animlayers = u_memory.animlayers:get(me)
+        if not animlayers then
             return
         end
 
         local breakers_enabled = interface.utility.animation_breakers:get()
         if not breakers_enabled then
-            ground_ticks = 1
-            end_time = 0
             return
         end
 
-        -- Apply pitch on land animation fix
-        if utils.contains(breakers_enabled, "pitch on land") then
-            local on_ground = bit.band(entity.get_prop(local_player, "m_fFlags"), 1)
+        local player_state = get_player_state()
+        local on_ground = bit.band(entity.get_prop(me, 'm_fFlags'), 1) == 1
 
-            if on_ground == 1 then
-                ground_ticks = ground_ticks + 1
-            else
-                ground_ticks = 0
-                end_time = globals.curtime() + 1
-            end
+        if utils.contains(breakers_enabled, 'on ground') and on_ground then
+            local leg_move = interface.utility.on_ground_options:get()
 
-            local fakelag_limit = ui.get(ui_references.fakelag_limit) or 1
-            if ground_ticks > fakelag_limit + 1 and end_time > globals.curtime() then
-                entity.set_prop(local_player, "m_flPoseParameter", 0.5, 12)
+            if leg_move == 'frozen' then
+                entity.set_prop(me, 'm_flPoseParameter', 1, 0)
+                ui.set(leg_movement_ref, 'Always slide')
+            elseif leg_move == 'walking' then
+                entity.set_prop(me, 'm_flPoseParameter', 0.5, 7)
+                ui.set(leg_movement_ref, 'Never slide')
+            elseif leg_move == 'jitter' and player_state == 'move' then
+                entity.set_prop(me, 'm_flPoseParameter', client.random_float(0.65, 1), 0)
+                ui.set(leg_movement_ref, 'Always slide')
+            elseif leg_move == 'sliding' and player_state == 'move' then
+                entity.set_prop(me, 'm_flPoseParameter', 0, 9)
+                entity.set_prop(me, 'm_flPoseParameter', 0, 10)
+                ui.set(leg_movement_ref, 'Never slide')
+            elseif leg_move == 'star' then
+                entity.set_prop(me, 'm_flPoseParameter', 1, globals.tickcount() % 4 > 1 and 0.5 / 10 or 1)
             end
         end
 
-        -- Apply modify legs animation fix
-        if utils.contains(breakers_enabled, "modify legs") then
-            local leg_mode = interface.utility.animation_breakers_leg:get()
+        local move_type = entity.get_prop(me, 'm_MoveType')
+        if utils.contains(breakers_enabled, 'on air') and not on_ground and not (move_type == 9 or move_type == 8) then
+            local air_legs = interface.utility.on_air_options:get()
 
-            if leg_mode == "static" then
-                -- Static mode
-                ui.set(ui_references.leg_movement, "always slide")
-                entity.set_prop(local_player, "m_flPoseParameter", 1, 0)
-            elseif leg_mode == "jitter" then
-                -- Jitter mode
-                ui.set(ui_references.leg_movement, "never slide")
-
-                static_leg_random = math.random(1, 10)
-                local slider_value = interface.utility.animation_breakers_leg_slider:get() or 4
-
-                if static_leg_random > slider_value then
-                    entity.set_prop(local_player, "m_flPoseParameter", 1, 0)
+            if air_legs == 'frozen' then
+                entity.set_prop(me, 'm_flPoseParameter', 1, 6)
+            elseif air_legs == 'walking' then
+                local cycle = globals.realtime() * 0.7 % 2
+                if cycle > 1 then
+                    cycle = 1 - (cycle - 1)
                 end
+                animlayers[6]['weight'] = 1
+                animlayers[6]['cycle'] = cycle
+            elseif air_legs == 'kinguru' then
+                entity.set_prop(me, 'm_flPoseParameter', math.random(0, 10) / 10, 6)
             end
         end
 
-        -- Apply body lean animation fix
-        if utils.contains(breakers_enabled, "body lean") then
-            local player_ptr = ffi.cast(class_ptr, ffi_helpers.get_client_entity(ffi_helpers.ientitylist, local_player))
+        if utils.contains(breakers_enabled, 'sliding slow motion') and ui.get(slowmotion_ref) then
+            entity.set_prop(me, 'm_flPoseParameter', 0, 9)
+        end
+
+        if utils.contains(breakers_enabled, 'sliding crouch') and (player_state == 'crouch' or player_state == 'crouch move') then
+            entity.set_prop(me, 'm_flPoseParameter', 0, 8)
+        end
+
+        if utils.contains(breakers_enabled, 'zero on land') and u_memory.animstate:get(me).hit_in_ground_animation and on_ground then
+            entity.set_prop(me, 'm_flPoseParameter', 0.5, 12)
+        end
+
+        if utils.contains(breakers_enabled, 'earthquake') then
+            local player_ptr = ffi.cast(class_ptr, u_memory.get_client_entity(ffi.cast('int', me)))
             if player_ptr ~= nullptr then
                 local anim_layers = ffi.cast(animation_layer_t, ffi.cast(char_ptr, player_ptr) + 0x2990)[0]
                 if anim_layers ~= nullptr then
-                    local body_lean_value = interface.utility.animation_breakers_body_lean:get() or 50
-                    anim_layers[12].weight = body_lean_value / 100
+                    anim_layers[12].weight = client.random_float(-0.3, 0.75)
                 end
             end
         end
+    end
 
-        -- Apply static legs in air
-        if utils.contains(breakers_enabled, "modify legs") and interface.utility.animation_breakers_static_legs_air:get() then
-            entity.set_prop(local_player, "m_flPoseParameter", 1, 6)
+    animation_breakers.post = function(cmd)
+        if utils.contains(interface.utility.animation_breakers:get() or {}, 'quick peek legs') and ui.get(quick_peek_ref) then
+            local me = entity.get_local_player()
+            local move_type = entity.get_prop(me, 'm_MoveType')
+
+            if move_type == 2 then
+                local command = u_memory.user_input:get_command(cmd.command_number)
+                if command then
+                    command.buttons = bit.band(command.buttons, bit.bnot(8))
+                    command.buttons = bit.band(command.buttons, bit.bnot(16))
+                    command.buttons = bit.band(command.buttons, bit.bnot(512))
+                    command.buttons = bit.band(command.buttons, bit.bnot(1024))
+                end
+            end
         end
     end
 
     animation_breakers.setup = function()
         if interface.utility.animation_breakers:get() then
-            client.set_event_callback("pre_render", animation_breakers.update_pose_params)
+            client.set_event_callback('pre_render', animation_breakers.update_pose_params)
+            client.set_event_callback('post', animation_breakers.post)
         else
-            client.unset_event_callback("pre_render", animation_breakers.update_pose_params)
-            -- Reset state when disabled
-            ground_ticks = 1
-            end_time = 0
-            static_leg_random = 0
+            client.unset_event_callback('pre_render', animation_breakers.update_pose_params)
+            client.unset_event_callback('post', animation_breakers.post)
         end
     end
 
-    client.set_event_callback("paint", animation_breakers.setup)
+    client.set_event_callback('paint', animation_breakers.setup)
 end
 --@endregion
-
 
 do
     local u_reference = {} do
@@ -8271,6 +8491,159 @@ do
             end
         end
     end
+
+--@region: animation breakers
+animation_breakers = {} do
+    local char_ptr = ffi.typeof('char*')
+    local class_ptr = ffi.typeof('void***')
+    local animation_layer_t = ffi.typeof([[struct {
+        char pad0[0x18];
+        uint32_t sequence;
+        float prev_cycle, weight, weight_delta_rate, playback_rate, cycle;
+        void *entity;
+        char pad1[0x4];
+    }**]])
+
+    local nullptr = ffi.new('void*')
+    local ground_ticks = 0
+    local end_time = 0
+
+    local leg_movement_ref = u_reference.antiaim.leg_movement
+    local slowmotion_ref = u_reference.antiaim.slowmotion
+    local quick_peek_ref = u_reference.ragebot.quick_peek
+
+    local function get_player_state()
+        local me = entity.get_local_player()
+        if not me then return 'stand' end
+
+        local vx, vy = entity.get_prop(me, 'm_vecVelocity')
+        local speed = math.sqrt(vx*vx + vy*vy)
+        local flags = entity.get_prop(me, 'm_fFlags')
+        local on_ground = bit.band(flags, 1) == 1
+        local duck_amount = entity.get_prop(me, 'm_flDuckAmount')
+
+        if not on_ground then
+            return 'air'
+        elseif duck_amount > 0.7 then
+            return speed > 1 and 'crouch move' or 'crouch'
+        elseif speed > 1 then
+            return 'move'
+        else
+            return 'stand'
+        end
+    end
+
+    animation_breakers.update_pose_params = function(cmd)
+        local me = entity.get_local_player()
+        if not me or not entity.is_alive(me) then
+            return
+        end
+
+        local animlayers = u_memory.animlayers:get(me)
+        if not animlayers then
+            return
+        end
+
+        local breakers_enabled = interface.utility.animation_breakers:get()
+        if not breakers_enabled then
+            return
+        end
+
+        local player_state = get_player_state()
+        local on_ground = bit.band(entity.get_prop(me, 'm_fFlags'), 1) == 1
+
+        if utils.contains(breakers_enabled, 'on ground') and on_ground then
+            local leg_move = interface.utility.on_ground_options:get()
+
+            if leg_move == 'frozen' then
+                entity.set_prop(me, 'm_flPoseParameter', 1, 0)
+                ui.set(leg_movement_ref, 'Always slide')
+            elseif leg_move == 'walking' then
+                entity.set_prop(me, 'm_flPoseParameter', 0.5, 7)
+                ui.set(leg_movement_ref, 'Never slide')
+            elseif leg_move == 'jitter' and player_state == 'move' then
+                entity.set_prop(me, 'm_flPoseParameter', client.random_float(0.65, 1), 0)
+                ui.set(leg_movement_ref, 'Always slide')
+            elseif leg_move == 'sliding' and player_state == 'move' then
+                entity.set_prop(me, 'm_flPoseParameter', 0, 9)
+                entity.set_prop(me, 'm_flPoseParameter', 0, 10)
+                ui.set(leg_movement_ref, 'Never slide')
+            elseif leg_move == 'star' then
+                entity.set_prop(me, 'm_flPoseParameter', 1, globals.tickcount() % 4 > 1 and 0.5 / 10 or 1)
+            end
+        end
+
+        local move_type = entity.get_prop(me, 'm_MoveType')
+        if utils.contains(breakers_enabled, 'on air') and not on_ground and not (move_type == 9 or move_type == 8) then
+            local air_legs = interface.utility.on_air_options:get()
+
+            if air_legs == 'frozen' then
+                entity.set_prop(me, 'm_flPoseParameter', 1, 6)
+            elseif air_legs == 'walking' then
+                local cycle = globals.realtime() * 0.7 % 2
+                if cycle > 1 then
+                    cycle = 1 - (cycle - 1)
+                end
+                animlayers[6]['weight'] = 1
+                animlayers[6]['cycle'] = cycle
+            elseif air_legs == 'kinguru' then
+                entity.set_prop(me, 'm_flPoseParameter', math.random(0, 10) / 10, 6)
+            end
+        end
+
+        if utils.contains(breakers_enabled, 'sliding slow motion') and ui.get(slowmotion_ref) then
+            entity.set_prop(me, 'm_flPoseParameter', 0, 9)
+        end
+
+        if utils.contains(breakers_enabled, 'sliding crouch') and (player_state == 'crouch' or player_state == 'crouch move') then
+            entity.set_prop(me, 'm_flPoseParameter', 0, 8)
+        end
+
+        if utils.contains(breakers_enabled, 'zero on land') and u_memory.animstate:get(me).hit_in_ground_animation and on_ground then
+            entity.set_prop(me, 'm_flPoseParameter', 0.5, 12)
+        end
+
+        if utils.contains(breakers_enabled, 'earthquake') then
+            local player_ptr = ffi.cast(class_ptr, u_memory.get_client_entity(ffi.cast('int', me)))
+            if player_ptr ~= nullptr then
+                local anim_layers = ffi.cast(animation_layer_t, ffi.cast(char_ptr, player_ptr) + 0x2990)[0]
+                if anim_layers ~= nullptr then
+                    anim_layers[12].weight = client.random_float(-0.3, 0.75)
+                end
+            end
+        end
+    end
+
+    animation_breakers.post = function(cmd)
+        if utils.contains(interface.utility.animation_breakers:get() or {}, 'quick peek legs') and ui.get(quick_peek_ref) then
+            local me = entity.get_local_player()
+            local move_type = entity.get_prop(me, 'm_MoveType')
+
+            if move_type == 2 then
+                local command = u_memory.user_input:get_command(cmd.command_number)
+                if command then
+                    command.buttons = bit.band(command.buttons, bit.bnot(8))
+                    command.buttons = bit.band(command.buttons, bit.bnot(16))
+                    command.buttons = bit.band(command.buttons, bit.bnot(512))
+                    command.buttons = bit.band(command.buttons, bit.bnot(1024))
+                end
+            end
+        end
+    end
+
+    animation_breakers.setup = function()
+        if interface.utility.animation_breakers:get() then
+            client.set_event_callback('pre_render', animation_breakers.update_pose_params)
+            client.set_event_callback('post', animation_breakers.post)
+        else
+            client.unset_event_callback('pre_render', animation_breakers.update_pose_params)
+            client.unset_event_callback('post', animation_breakers.post)
+        end
+    end
+
+    client.set_event_callback('paint', animation_breakers.setup)
+end
+--@endregion
 
     local u_math = {} do
         u_math.normalize_yaw = function(a)
@@ -8976,25 +9349,39 @@ end
 --@region: streamer mode
 streamer_mode = {} do
     local image_data = nil
-    local current_mode = nil
-    local image_urls = {
-        rabbit = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSPajxTkvKF1SeE1fOTFTyQOzCcYYZNjH_Afw&s" -- ВСТАВЬТЕ URL ЗДЕСЬ
-    }
+    local current_name = nil
+    local is_loading = false  -- Флаг загрузки
 
     streamer_mode.load_image = function()
-        local selected_mode = interface.utility.streamer_mode_type:get()
-        local url = image_urls[selected_mode]
-        if not url or url == "" or (current_mode == selected_mode and image_data) then
+        if not (streamer_images and streamer_images.get_selected_name) then
             return
         end
 
+        local selected = streamer_images.get_selected_name()
+        if not selected then
+            image_data = nil
+            current_name = nil
+            is_loading = false
+            return
+        end
+
+        local url = streamer_images and streamer_images.get_url and streamer_images.get_url(selected) or nil
+        if not url or url == "" or (current_name == selected and image_data) then
+            return
+        end
+
+        -- Очищаем данные и ставим флаг загрузки
         image_data = nil
-        current_mode = selected_mode
+        current_name = selected
+        is_loading = true
 
         http.get(url, function(success, response)
             if success and response.status == 200 then
                 image_data = images.load(response.body)
+            else
+                image_data = nil
             end
+            is_loading = false
         end)
     end
 
@@ -9013,19 +9400,27 @@ streamer_mode = {} do
         return x, y, draw_size, draw_size
     end
 
+    streamer_mode.on_selection_changed = function()
+        image_data = nil
+        current_name = nil
+        is_loading = false  -- Сбрасываем флаг загрузки
+        streamer_mode.load_image()
+    end
+
     streamer_mode.draw = function()
         if not interface.utility.streamer_mode:get() then
             return
         end
 
-        if not image_data or current_mode ~= interface.utility.streamer_mode_type:get() then
+        -- Если нет данных и не в процессе загрузки — начинаем загрузку
+        if not image_data and not is_loading then
             streamer_mode.load_image()
             return
         end
 
+        -- Рисуем только если данные есть
         if image_data then
             local x, y, width, height = streamer_mode.get_draw_params()
-
             image_data:draw(x, y, width, height, 255, 255, 255, 255)
         end
     end
@@ -9033,6 +9428,24 @@ streamer_mode = {} do
     client.set_event_callback("paint", streamer_mode.draw)
 end
 --@endregion
+
+client.set_event_callback('console_input', function(str)
+    if type(str) ~= 'string' then return end
+    local line = str:gsub('^%s+', ''):gsub('%s+$', '')
+    if line:sub(1,4) ~= '.add' then return end
+
+    local name, url = line:match('^%.add%s+(%S+)%s+(.+)$')
+    if not name or not url then
+        logMessage('noctua ·', '', 'usage: .add <name> <url>')
+        return true
+    end
+
+    if streamer_images and streamer_images.add then
+        streamer_images.add(name, url)
+    end
+
+    return true
+end)
 
 --@region: on load
 logging:push("checkout latest update in console")
