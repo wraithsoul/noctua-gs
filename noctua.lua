@@ -229,6 +229,7 @@ local dependencies = {
     { name = "http",           path = "gamesense/http",           msg = "Failed to require http" },
     { name = "antiaim_funcs",  path = "gamesense/antiaim_funcs",  msg = "Failed to require antiaim_funcs" },
     { name = "clipboard",      path = "gamesense/clipboard",      msg = "Failed to require clipboard" },
+    { name = "images",         path = "gamesense/images",      msg = "Failed to require images" },
 }
 
 local modules = {}
@@ -245,6 +246,7 @@ local color = modules.color
 local http = modules.http
 local antiaim_funcs = modules.antiaim_funcs
 local clipboard = modules.clipboard
+local images = modules.images
 
 -- optional dependencies
 local ok_weapons, weapons = pcall(require, 'gamesense/csgo_weapons')
@@ -643,8 +645,9 @@ interface = {} do
         new_model_button = interface.header.general:button('import from clipboard'),
         model_enabled = interface.header.general:checkbox('enabled'),
         delete_model_button = interface.header.general:button('delete model'),
-        tip = interface.header.general:label('example: models/weapons/weapon_name.mdl'),
-        tip2 = interface.header.general:label('you can configure models in noctua-models.json from game directory'),
+        tip = interface.header.fake_lag:label('example: models/weapons/weapon_name.mdl'),
+        tip2 = interface.header.fake_lag:label('you can configure models in noctua-models.json...'),
+        tip3 = interface.header.fake_lag:label('...from game directory'),
     }
 
     interface.config = {
@@ -671,10 +674,13 @@ interface = {} do
         buybot_secondary = interface.header.general:combobox('secondary weapon', '-', 'r8 / deagle', 'tec-9 / five-s / cz-75', 'duals', 'p-250'),
         buybot_utility = interface.header.general:multiselect('utility', 'kevlar', 'helmet', 'defuser', 'taser', 'he', 'molotov', 'smoke'),
         party_mode = interface.header.general:checkbox('party mode'),
-        -- animation_breakers = interface.header.general:multiselect('animation breakers (wip)', 'global', 'ground', 'air'),
-        -- animation_breakers_global = interface.header.general:multiselect('global', 'smooth animation', '2021 animation', 'model scale', 'zero pitch'),
-        -- animation_breakers_ground = interface.header.general:combobox('ground', '-', 'follow', 'follow invert', 'jitter', 'jitter freeze', 'freeze', 'freeze invert', 'bug'),
-        -- animation_breakers_air = interface.header.general:combobox('air', '-', 'freeze', 'jitter', 'walk')
+        animation_breakers = interface.header.general:multiselect('animation breakers', 'pitch on land', 'modify legs', 'body lean'),
+        animation_breakers_leg = interface.header.general:combobox('modify legs', 'static', 'jitter'),
+        animation_breakers_leg_slider = interface.header.general:slider('value', 1, 10, 4, true, '', 1),
+        animation_breakers_static_legs_air = interface.header.general:checkbox('static legs in air'),
+        animation_breakers_body_lean = interface.header.general:slider('body lean', 0, 100, 50, true, '%', 1),
+        streamer_mode = interface.header.fake_lag:checkbox('streamer mode'),
+        streamer_mode_type = interface.header.fake_lag:combobox('mode', 'rabbit')
     }
 
     interface.builder = {} do
@@ -1018,32 +1024,46 @@ interface = {} do
                 element_visibility_logic = function(element, path)
                     if element and element.set_visible then
                         local key = path[#path]
-                        
-                        if key == "animation_breakers_global" then
-                            element:set_visible(interface.utility.animation_breakers and interface.utility.animation_breakers.get and interface.utility.animation_breakers:get("global"))
-                            return
-                        end
-                        
-                        if key == "animation_breakers_ground" then
-                            element:set_visible(interface.utility.animation_breakers and interface.utility.animation_breakers.get and interface.utility.animation_breakers:get("ground"))
-                            return
-                        end
-                        
-                        if key == "animation_breakers_air" then
-                            element:set_visible(interface.utility.animation_breakers and interface.utility.animation_breakers.get and interface.utility.animation_breakers:get("air"))
-                            return
-                        end
-                        
+
                         if key == "buybot_primary" or key == "buybot_secondary" or key == "buybot_utility" then
                             element:set_visible(interface.utility.buybot:get())
                             return
                         end
-                        
+
                         if key == "killsay_modes" then
                             element:set_visible(interface.utility.killsay:get())
                             return
                         end
-                        
+
+                        if key == "animation_breakers_leg" then
+                            local breakers_enabled = interface.utility.animation_breakers:get() or {}
+                            element:set_visible(utils.contains(breakers_enabled, "modify legs"))
+                            return
+                        end
+
+                        if key == "animation_breakers_leg_slider" then
+                            local breakers_enabled = interface.utility.animation_breakers:get() or {}
+                            element:set_visible(utils.contains(breakers_enabled, "modify legs") and interface.utility.animation_breakers_leg:get() == "jitter")
+                            return
+                        end
+
+                        if key == "animation_breakers_static_legs_air" then
+                            local breakers_enabled = interface.utility.animation_breakers:get() or {}
+                            element:set_visible(utils.contains(breakers_enabled, "modify legs"))
+                            return
+                        end
+
+                        if key == "animation_breakers_body_lean" then
+                            local breakers_enabled = interface.utility.animation_breakers:get() or {}
+                            element:set_visible(utils.contains(breakers_enabled, "body lean"))
+                            return
+                        end
+
+                        if key == "streamer_mode_type" then
+                            element:set_visible(interface.utility.streamer_mode:get())
+                            return
+                        end
+
                         element:set_visible(true)
                     end
                 end
@@ -1620,7 +1640,9 @@ local ui_references = {
     usercmd = ui.reference('misc', 'settings', 'sv_maxusrcmdprocessticks2'),
     slow_motion = { ui.reference("aa", "other", "Slow motion") },
     freestanding = { ui.reference('aa', 'anti-aimbot angles', 'freestanding') },
-    thirdperson = { ui.reference("visuals", "effects", "force third person (alive)") }
+    thirdperson = { ui.reference("visuals", "effects", "force third person (alive)") },
+    fakelag_limit = ui.reference("aa", "fake lag", "limit"),
+    leg_movement = ui.reference('aa', 'other', 'leg movement')
 }
 
 utils = {} do
@@ -5623,6 +5645,7 @@ model_changer = {} do
         model_changer.models_ui.new_model_button:set_visible(is_add_new and is_enabled)
         model_changer.models_ui.tip:set_visible(is_add_new and is_enabled)
         model_changer.models_ui.tip2:set_visible(is_add_new and is_enabled)
+        model_changer.models_ui.tip3:set_visible(is_add_new and is_enabled)
 
         if not is_add_new then
             local selected_item = model_changer.current_items[selected_index]
@@ -5764,6 +5787,7 @@ model_changer = {} do
             model_changer.models_ui.model_enabled:set_visible(not is_add_new)
             model_changer.models_ui.tip:set_visible(is_add_new)
             model_changer.models_ui.tip2:set_visible(is_add_new)
+            model_changer.models_ui.tip3:set_visible(is_add_new)
         else
             model_changer.models_ui.list:set_visible(false)
             model_changer.models_ui.delete_model_button:set_visible(false)
@@ -5772,6 +5796,7 @@ model_changer = {} do
             model_changer.models_ui.new_model_button:set_visible(false)
             model_changer.models_ui.tip:set_visible(false)
             model_changer.models_ui.tip2:set_visible(false)
+            model_changer.models_ui.tip3:set_visible(false)
         end
     end)
 
@@ -5826,6 +5851,7 @@ model_changer = {} do
     model_changer.models_ui.model_enabled:set_visible(false)
     model_changer.models_ui.tip:set_visible(false)
     model_changer.models_ui.tip2:set_visible(false)
+    model_changer.models_ui.tip3:set_visible(false)
 
     client.set_event_callback("paint_ui", function()
         local is_models_visible = interface.search:get():find("models") ~= nil
@@ -5840,6 +5866,7 @@ model_changer = {} do
             model_changer.models_ui.model_enabled:set_visible(false)
             model_changer.models_ui.tip:set_visible(false)
             model_changer.models_ui.tip2:set_visible(false)
+            model_changer.models_ui.tip3:set_visible(false)
             return
         end
 
@@ -5857,6 +5884,7 @@ model_changer = {} do
             model_changer.models_ui.new_model_button:set_visible(is_add_new)
             model_changer.models_ui.tip:set_visible(is_add_new)
             model_changer.models_ui.tip2:set_visible(is_add_new)
+            model_changer.models_ui.tip3:set_visible(is_add_new)
         else
             model_changer.models_ui.list:set_visible(false)
             model_changer.models_ui.delete_model_button:set_visible(false)
@@ -5865,6 +5893,7 @@ model_changer = {} do
             model_changer.models_ui.new_model_button:set_visible(false)
             model_changer.models_ui.tip:set_visible(false)
             model_changer.models_ui.tip2:set_visible(false)
+            model_changer.models_ui.tip3:set_visible(false)
         end
     end)
 
@@ -7396,31 +7425,7 @@ killsay = {} do
             "ликвидирован"
         },
         {
-            "ＦＵＣＫ ＹＯＵ ＡＮＤ ＹＯＵＲ ＦＡＭＩＬＹ $$$"
-        },
-        {
             "нокта сегодня бодрая"
-        },
-        {
-            "𝘍𝘙𝘌𝘌 𝘎𝘈𝘔𝘌 𝘈𝘎𝘈𝘐𝘕"
-        },
-        {
-            "ｓｐｏｎｓｏｒ ｏｆ ｙｏｕｒ ｄｅａｔｈ >>> ｎｏｃｔｕａ $$$"
-        },
-        {
-            "▄︻デ₲Ꝋ ꞨŁɆɆꝐ ⱲɆȺҞ ĐꝊ₲ ══━一"
-        },
-        {
-            "☆꧁✬◦°˚°◦. ɮʏ ɮɛֆȶ ʟʊǟ .◦°˚°◦✬꧂☆"
-        },
-        {
-            "Ｉ`Ｍ ＧＯＤ ＷＩＴＨ ＧＯＤＭＯＤＥ ＡＡ"
-        },
-        {
-            "ＧＯＤ ＢＬＥＳＳ ＲＵＳＳＩＡ"
-        },
-        {
-            "ＡＬＬ ＤＯＧＳ ＷＡＮＮＡ ＢＥ ＬＩＫＥ ＭＥ"
         },
         {
             "если ты хочешь сходить 5х5 то пиши --> Axsiimov#7777"
@@ -7457,9 +7462,6 @@ killsay = {} do
         },
         {
             "𝙣𝙤𝙘𝙩𝙪𝙖 𝙥𝙧𝙚𝙙𝙞𝙘𝙩𝙞𝙤𝙣 𝙩𝙚𝙘𝙝𝙣𝙤𝙡𝙤𝙜𝙞𝙚𝙨 (◣_◢)"
-        },
-        {
-            "G o d M o d e A c t i v a t e d, your career D e a c t i v a t e d #noctua"
         },
         {
             "прикупил ненужную луашку за деньги? Молодец, ебу тебя с #noctua"
@@ -7580,12 +7582,6 @@ killsay = {} do
             "купил emberlash - ебать ты долбаеб"
         },
         {
-            "𝕕𝕠𝕟'𝕥 𝕓𝕝𝕒𝕞𝕖 𝕞𝕖, 𝕓𝕝𝕒𝕞𝕖 𝕟𝕠𝕔𝕥𝕦𝕒"
-        },
-        {
-            "𝙩𝙝𝙞𝙨 𝙞𝙨 𝙩𝙝𝙚 𝙥𝙤𝙬𝙚𝙧 𝙤𝙛 𝙣𝙤𝙘𝙩𝙪𝙖 (◣_◢)"
-        },
-        {
             "твоя смерть была предрешена когда я запустил noctua"
         },
         {
@@ -7629,10 +7625,6 @@ killsay = {} do
             "1",
             "?",
             "ты че такой тупой ребенок бляди"
-        },
-        {
-            "скачать нокту можно здесь:",
-            "а хуй тебе"
         },
         {
             "заюш ты выебан бай нокта"
@@ -7734,6 +7726,9 @@ killsay = {} do
     killsay.multi_phrases_death = {
         {
             "анлак"
+        },
+        {
+            "бррр норм взбодрился"
         },
         {
             "ШЬТО",
@@ -8022,6 +8017,111 @@ party_mode = {} do
     end
     
     client.set_event_callback("paint", party_mode.setup)
+end
+--@endregion
+
+--@region: animation breakers
+animation_breakers = {} do
+    -- State variables
+    local ground_ticks = 1
+    local end_time = 0
+    local static_leg_random = 0
+
+    -- FFI setup for animation layers
+    local char_ptr = ffi.typeof('char*')
+    local class_ptr = ffi.typeof('void***')
+    local animation_layer_t = ffi.typeof([[struct {
+        char pad0[0x18];
+        uint32_t sequence;
+        float prev_cycle, weight, weight_delta_rate, playback_rate, cycle;
+        void *entity;
+        char pad1[0x4];
+    }**]])
+
+    local nullptr = ffi.new('void*')
+
+    animation_breakers.update_pose_params = function()
+        local local_player = entity.get_local_player()
+        if not local_player or not entity.is_alive(local_player) then
+            return
+        end
+
+        local breakers_enabled = interface.utility.animation_breakers:get()
+        if not breakers_enabled then
+            ground_ticks = 1
+            end_time = 0
+            return
+        end
+
+        -- Apply pitch on land animation fix
+        if utils.contains(breakers_enabled, "pitch on land") then
+            local on_ground = bit.band(entity.get_prop(local_player, "m_fFlags"), 1)
+
+            if on_ground == 1 then
+                ground_ticks = ground_ticks + 1
+            else
+                ground_ticks = 0
+                end_time = globals.curtime() + 1
+            end
+
+            local fakelag_limit = ui.get(ui_references.fakelag_limit) or 1
+            if ground_ticks > fakelag_limit + 1 and end_time > globals.curtime() then
+                entity.set_prop(local_player, "m_flPoseParameter", 0.5, 12)
+            end
+        end
+
+        -- Apply modify legs animation fix
+        if utils.contains(breakers_enabled, "modify legs") then
+            local leg_mode = interface.utility.animation_breakers_leg:get()
+
+            if leg_mode == "static" then
+                -- Static mode
+                ui.set(ui_references.leg_movement, "always slide")
+                entity.set_prop(local_player, "m_flPoseParameter", 1, 0)
+            elseif leg_mode == "jitter" then
+                -- Jitter mode
+                ui.set(ui_references.leg_movement, "never slide")
+
+                static_leg_random = math.random(1, 10)
+                local slider_value = interface.utility.animation_breakers_leg_slider:get() or 4
+
+                if static_leg_random > slider_value then
+                    entity.set_prop(local_player, "m_flPoseParameter", 1, 0)
+                end
+            end
+        end
+
+        -- Apply body lean animation fix
+        if utils.contains(breakers_enabled, "body lean") then
+            local player_ptr = ffi.cast(class_ptr, ffi_helpers.get_client_entity(ffi_helpers.ientitylist, local_player))
+            if player_ptr ~= nullptr then
+                local anim_layers = ffi.cast(animation_layer_t, ffi.cast(char_ptr, player_ptr) + 0x2990)[0]
+                if anim_layers ~= nullptr then
+                    local body_lean_value = interface.utility.animation_breakers_body_lean:get() or 50
+                    anim_layers[12].weight = body_lean_value / 100
+                end
+            end
+        end
+
+        -- Apply static legs in air
+        if utils.contains(breakers_enabled, "modify legs") and interface.utility.animation_breakers_static_legs_air:get() then
+            entity.set_prop(local_player, "m_flPoseParameter", 1, 6)
+        end
+    end
+
+    animation_breakers.setup = function()
+        if interface.utility.animation_breakers:get() then
+            client.set_event_callback("pre_render", animation_breakers.update_pose_params)
+        else
+            client.unset_event_callback("pre_render", animation_breakers.update_pose_params)
+            -- Reset state when disabled
+            ground_ticks = 1
+            end_time = 0
+            static_leg_random = 0
+        end
+    end
+
+    client.set_event_callback("paint", animation_breakers.setup)
 end
 --@endregion
 
@@ -8872,6 +8972,67 @@ do
     end
 end
 --@endregion: antiaim
+
+--@region: streamer mode
+streamer_mode = {} do
+    local image_data = nil
+    local current_mode = nil
+    local image_urls = {
+        rabbit = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSPajxTkvKF1SeE1fOTFTyQOzCcYYZNjH_Afw&s" -- ВСТАВЬТЕ URL ЗДЕСЬ
+    }
+
+    streamer_mode.load_image = function()
+        local selected_mode = interface.utility.streamer_mode_type:get()
+        local url = image_urls[selected_mode]
+        if not url or url == "" or (current_mode == selected_mode and image_data) then
+            return
+        end
+
+        image_data = nil
+        current_mode = selected_mode
+
+        http.get(url, function(success, response)
+            if success and response.status == 200 then
+                image_data = images.load(response.body)
+            end
+        end)
+    end
+
+    streamer_mode.get_draw_params = function()
+        local screen_x, screen_y = client.screen_size()
+        local base_res_x, base_res_y = 1920, 1080
+        local base_size = 300
+        local scale_x = screen_x / base_res_x
+        local scale_y = screen_y / base_res_y
+        local scale = math.min(scale_x, scale_y)
+        local draw_size = math.floor(base_size * scale)
+        local margin = math.floor(10 * scale)
+        local x = margin
+        local y = margin
+
+        return x, y, draw_size, draw_size
+    end
+
+    streamer_mode.draw = function()
+        if not interface.utility.streamer_mode:get() then
+            return
+        end
+
+        if not image_data or current_mode ~= interface.utility.streamer_mode_type:get() then
+            streamer_mode.load_image()
+            return
+        end
+
+        if image_data then
+            local x, y, width, height = streamer_mode.get_draw_params()
+
+            image_data:draw(x, y, width, height, 255, 255, 255, 255)
+        end
+    end
+
+    client.set_event_callback("paint", streamer_mode.draw)
+end
+--@endregion
 
 --@region: on load
 logging:push("checkout latest update in console")
