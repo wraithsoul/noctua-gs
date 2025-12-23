@@ -36,6 +36,7 @@ what's new (1.4b):
  - added streamer mode
  - added animation breakers
  - added buybot fallback option
+ - added enemy ping warning
  - removed autosniper tweaks
  - cleaned balabolka phrases
 
@@ -621,6 +622,8 @@ interface = {} do
         crosshair_animate_scope = interface.header.general:checkbox('animate on-scope'),
         damage_indicator = interface.header.general:checkbox('damage indicator'),
         lc_status = interface.header.general:checkbox('lc status'),
+        enemy_ping_warn = interface.header.other:checkbox('enemy ping warning'),
+        enemy_ping_minimum = interface.header.other:slider('minimum latency to show', 10, 100, 80, true, 'ms'),
         window = interface.header.general:checkbox('debug window'),
         watermark = interface.header.general:checkbox('watermark'),
         watermark_show = interface.header.general:multiselect('show', 'script', 'player', 'time', 'ping'),
@@ -937,6 +940,11 @@ interface = {} do
                         local show_anim = interface.visuals.crosshair_indicators:get()
                             and (style == 'center' or style == 'emoji')
                         element:set_visible(show_anim)
+                        return
+                    end
+
+                    if key == 'enemy_ping_minimum' then
+                        element:set_visible(interface.visuals.enemy_ping_warn:get())
                         return
                     end
 
@@ -9787,5 +9795,74 @@ end)
 
 client.set_event_callback('shutdown', function()
     reset_all_players()
+end)
+--@endregion
+
+--@region: enemy ping flag
+enemy_ping = {} do
+    enemy_ping.alphas = {}
+
+    enemy_ping.draw = function()
+        if not interface.visuals.enabled_visuals:get() then return end
+        if not interface.visuals.enemy_ping_warn:get() then return end
+
+        local player_resource = entity.get_player_resource()
+        if not player_resource then return end
+
+        local local_player = entity.get_local_player()
+        if not local_player then return end
+
+        local local_player_team = entity.get_prop(local_player, 'm_iTeamNum')
+        if not local_player_team then return end
+
+        local maxplayers = globals.maxplayers()
+
+        for player = 1, maxplayers do
+            if not enemy_ping.alphas[player] then
+                enemy_ping.alphas[player] = 0
+            end
+        end
+
+        for player = 1, maxplayers do
+            if entity.get_prop(player_resource, 'm_bConnected', player) == 1 then
+                local player_team = entity.get_prop(player, 'm_iTeamNum')
+                if player_team and player_team ~= local_player_team then
+                    if entity.get_prop(player_resource, 'm_bAlive', player) == 1 then
+                        local ping = entity.get_prop(player_resource, string.format('%03d', player))
+                        local value = interface.visuals.enemy_ping_minimum:get()
+
+                        if ping and ping >= value then
+                            local x1, y1, x2, y2, multiplier = entity.get_bounding_box(player)
+
+                            if x1 ~= nil and multiplier > 0 then
+                                local x_center = x1 + (x2 - x1) / 2
+
+                                local text = 'latency'
+                                local r, g, b, a = 214, 214, 214, 150
+
+                                if ping >= 150 then
+                                    text = 'latency!!!'
+                                    r, g, b, a = 255, 100, 100, 230
+                                end
+
+                                local target_alpha = a * multiplier
+                                local current_alpha = enemy_ping.alphas[player]
+
+                                enemy_ping.alphas[player] = mathematic.lerp(current_alpha, target_alpha, 0.2)
+                                renderer.text(x_center, y1 - 16, r, g, b, enemy_ping.alphas[player], 'c', 0, text)
+                            else
+                                local current_alpha = enemy_ping.alphas[player]
+                                enemy_ping.alphas[player] = mathematic.lerp(current_alpha, 0, 0.2)
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+end
+
+client.set_event_callback('paint', function()
+    enemy_ping.draw()
 end)
 --@endregion
