@@ -607,7 +607,8 @@ interface = {} do
         noscope_distance_autosnipers = interface.header.general:slider('autosnipers distance', 1, 800, 450, true, ''),
         noscope_distance_scout = interface.header.general:slider('scout distance', 1, 800, 450, true, ''),
         noscope_distance_awp = interface.header.general:slider('awp distance', 1, 800, 450, true, ''),
-        quick_stop = interface.header.general:checkbox('air stop', 0x00)
+        quick_stop = interface.header.general:checkbox('air stop', 0x00),
+        dump_resolver_data = interface.header.other:button('dump resolver data')
     }
 
     interface.visuals = {
@@ -897,6 +898,8 @@ interface = {} do
                         local v = (interface.aimbot.noscope_weapons:get() or {})
                         local has_awp = (type(v) == 'table') and utils.contains(v, 'awp')
                         element:set_visible(enabled and interface.aimbot.noscope_distance:get() and has_awp)
+                    elseif key == 'dump_resolver_data' then
+                        element:set_visible(enabled and interface.aimbot.enabled_resolver_tweaks:get())
                     else
                         element:set_visible(enabled)
                     end
@@ -2241,6 +2244,12 @@ resolver = {} do
         self.bruteforce[idx] = bf
         self.cache[idx] = yaw
 
+        self.history[idx] = self.history[idx] or {}
+        table.insert(self.history[idx], yaw)
+        if #self.history[idx] > 5 then
+            table.remove(self.history[idx], 1)
+        end
+
         player_list.SetForceBodyYawCheckbox(player_list, idx, true)
         player_list.SetBodyYaw(player_list, idx, yaw)
 
@@ -2468,6 +2477,96 @@ resolver = {} do
         end
     end
 
+    resolver.dump_data = function(self)
+        local r, g, b = unpack(interface.visuals.accent.color.value)
+        local white = {255, 255, 255}
+        local gray = {150, 150, 150}
+        local dark = {80, 80, 80}
+        local green = {100, 255, 100}
+        local any_data = false
+
+        for idx = 1, 64 do
+            local player_info = utils.get_player_info(idx)
+            local has_data = self.bruteforce[idx] or self.cache[idx] or self.precision[idx]
+            local is_enemy = entity.is_enemy(idx)
+    
+            if player_info and not player_info.__fakeplayer and (is_enemy or has_data) then
+                any_data = true
+                local name = ffi.string(player_info.__name)
+    
+                local status = ""
+                if not entity.is_alive(idx) then status = " (DEAD)"
+                elseif entity.is_dormant(idx) then status = " (DORMANT)" end
+    
+                client.color_log(r, g, b, " ▌ \0")
+                client.color_log(white[1], white[2], white[3], name .. status)
+                client.color_log(r, g, b, "    ├─ \0")
+                client.color_log(r, g, b, "bruteforce data:")
+    
+                if self.bruteforce[idx] then
+                    local bf = self.bruteforce[idx]
+
+                    client.color_log(r, g, b, "    │   ├─ \0")
+                    client.color_log(gray[1], gray[2], gray[3], "stats: \0")
+                    client.color_log(white[1], white[2], white[3], string.format("hits: %d | misses: %d | stage: %d", bf.hits or 0, bf.misses or 0, bf.stage or 0))
+    
+                    client.color_log(r, g, b, "    │   └─ \0")
+                    if bf.locked_yaw then
+                        local time_left = math.max(0, (bf.lock_expire or 0) - globals.curtime())
+                        client.color_log(gray[1], gray[2], gray[3], "status: \0")
+                        client.color_log(green[1], green[2], green[3], string.format("LOCKED (%.1f°) for %.1fs", bf.locked_yaw, time_left))
+                    else
+                        client.color_log(gray[1], gray[2], gray[3], "status: \0")
+                        client.color_log(dark[1], dark[2], dark[3], "searching...")
+                    end
+                else
+                    client.color_log(r, g, b, "    │   └─ \0")
+                    client.color_log(dark[1], dark[2], dark[3], "none")
+                end
+
+                client.color_log(r, g, b, "    └─ \0")
+                client.color_log(r, g, b, "angle information:")
+
+                local yaw = self.cache[idx]
+                client.color_log(r, g, b, "        ├─ \0")
+                client.color_log(gray[1], gray[2], gray[3], "calculated yaw: \0")
+                if yaw then
+                    client.color_log(white[1], white[2], white[3], string.format("%.2f°", yaw))
+                else
+                    client.color_log(dark[1], dark[2], dark[3], "none")
+                end
+
+                local prec = self.precision[idx]
+                client.color_log(r, g, b, "        ├─ \0")
+                client.color_log(gray[1], gray[2], gray[3], "precision: \0")
+                if prec then
+                    local prec_val = math.floor(prec * 100)
+                    client.color_log(white[1], white[2], white[3], string.format("%d%%", prec_val))
+                else
+                    client.color_log(dark[1], dark[2], dark[3], "N/A")
+                end
+
+                client.color_log(r, g, b, "        └─ \0")
+                client.color_log(gray[1], gray[2], gray[3], "yaw history: \0")
+                
+                if self.history[idx] and #self.history[idx] > 0 then
+                    local h_str = ""
+                    local hist = self.history[idx]
+                    local start = math.max(1, #hist - 4)
+                    for i = start, #hist do
+                        h_str = h_str .. string.format("[%.0f] ", hist[i])
+                    end
+                    client.color_log(white[1], white[2], white[3], h_str)
+                else
+                    client.color_log(dark[1], dark[2], dark[3], "none")
+                end
+            end
+        end
+    
+        if not any_data then
+            argLog("waiting for data...")
+        end
+    end
 
     resolver.setup = function(self)
         if not (interface.aimbot.enabled_aimbot:get() and interface.aimbot.enabled_resolver_tweaks:get()) then return end
@@ -9640,6 +9739,11 @@ client.set_event_callback('console_input', function(str)
     end
 
     return true
+end)
+
+-- callback for dump resolver data button
+interface.aimbot.dump_resolver_data:set_callback(function()
+    resolver:dump_data()
 end)
 
 --@region: on load
