@@ -10,6 +10,7 @@
 local _name = 'noctua'
 local _version = '1.4b'
 local _nickname = nil
+_G.noctua_runtime = _G.noctua_runtime or {}
 
 local function update_nickname()
     local local_player = entity.get_local_player()
@@ -34,6 +35,7 @@ local update = [[
 what's new (1.4b):
  - added streamer mode
  - added animation breakers
+ - added buybot fallback option
  - removed autosniper tweaks
  - cleaned balabolka phrases
 
@@ -676,6 +678,7 @@ interface = {} do
         hitsound = interface.header.general:checkbox('hitsound'),
         buybot = interface.header.general:checkbox('buybot'),
         buybot_primary = interface.header.general:combobox('primary weapon', '-', 'autosnipers', 'scout', 'awp'),
+        buybot_primary_fallback = interface.header.general:combobox('primary fallback', '-', 'autosnipers', 'scout', 'awp'),
         buybot_secondary = interface.header.general:combobox('secondary weapon', '-', 'r8 / deagle', 'tec-9 / five-s / cz-75', 'duals', 'p-250'),
         buybot_utility = interface.header.general:multiselect('utility', 'kevlar', 'helmet', 'defuser', 'taser', 'he', 'molotov', 'smoke'),
         party_mode = interface.header.other:checkbox('party mode'),
@@ -776,29 +779,16 @@ interface = {} do
         extensions.manual_aa = interface.header.other:checkbox("manual antiaim")
         
         for key, v in pairs(extensions) do
-            if v and v.depend and (key == "anti_backstab" or key == "ladder" or key == "anti_bruteforce" or key == "defensive" or key == "safe_head" or key == "warmup_aa") then
+            if (key == "anti_backstab" or key == "ladder" or key == "anti_bruteforce" or key == "defensive" or key == "safe_head" or key == "warmup_aa") then
                 v:depend({ interface.search, 'antiaim' })
             end
         end
-        
-        if extensions.edge_yaw and extensions.edge_yaw.depend then
-            extensions.edge_yaw:depend({ interface.search, 'antiaim' })
-        end
 
-        if extensions.freestanding and extensions.freestanding.depend then
-            extensions.freestanding:depend({ interface.search, 'antiaim' })
-        end
-        if extensions.manual_aa and extensions.manual_aa.depend then
-            extensions.manual_aa:depend({ interface.search, 'antiaim' })
-        end
-        
-        if extensions.anti_bruteforce_type and extensions.anti_bruteforce_type.depend then
-            extensions.anti_bruteforce_type:depend({ interface.search, 'antiaim' }, { extensions.anti_bruteforce, true })
-        end
-
-        if extensions.dis_fs and extensions.dis_fs.depend then
-            extensions.dis_fs:depend({ interface.search, 'antiaim' }, { extensions.freestanding, true })
-        end
+        extensions.edge_yaw:depend({ interface.search, 'antiaim' })
+        extensions.freestanding:depend({ interface.search, 'antiaim' })
+        extensions.manual_aa:depend({ interface.search, 'antiaim' })
+        extensions.anti_bruteforce_type:depend({ interface.search, 'antiaim' }, { extensions.anti_bruteforce, true })
+        extensions.dis_fs:depend({ interface.search, 'antiaim' }, { extensions.freestanding, true })
         
         extensions.manual_aa_hotkey = extensions.manual_aa_hotkey or {}
         extensions.manual_aa_hotkey.manual_left = interface.header.other:hotkey("manual left")
@@ -806,7 +796,7 @@ interface = {} do
         extensions.manual_aa_hotkey.manual_forward = interface.header.other:hotkey("manual forward")
         extensions.manual_aa_hotkey.manual_back = interface.header.other:hotkey("manual backward")
         for _, v in pairs(extensions.manual_aa_hotkey) do
-            if v and v.depend then v:depend({ interface.search, 'antiaim' }, { extensions.manual_aa, true }) end
+            v:depend({ interface.search, 'antiaim' }, { extensions.manual_aa, true })
         end
     end
 
@@ -1028,10 +1018,9 @@ interface = {} do
                 groups_to_show = { groups.utility },
                 groups_to_hide = { groups.home, groups.aimbot, groups.visuals, groups.models, groups.config },
                 element_visibility_logic = function(element, path)
-                    if element and element.set_visible then
-                        local key = path[#path]
+                    local key = path[#path]
 
-                        if key == "buybot_primary" or key == "buybot_secondary" or key == "buybot_utility" then
+                        if key == "buybot_primary" or key == "buybot_primary_fallback" or key == "buybot_secondary" or key == "buybot_utility" then
                             element:set_visible(interface.utility.buybot:get())
                             return
                         end
@@ -1092,7 +1081,6 @@ interface = {} do
                         end
 
                         element:set_visible(true)
-                    end
                 end
             },
             config = {
@@ -1111,12 +1099,12 @@ interface = {} do
         }
 
         if selection == 'antiaim' then
-            pui.traverse(interface.home, function(element) if element and element.set_visible then element:set_visible(false) end end)
-            pui.traverse(interface.aimbot, function(element) if element and element.set_visible then element:set_visible(false) end end)
-            pui.traverse(interface.visuals, function(element) if element and element.set_visible then element:set_visible(false) end end)
-            pui.traverse(interface.models, function(element) if element and element.set_visible then element:set_visible(false) end end)
-            pui.traverse(interface.utility, function(element) if element and element.set_visible then element:set_visible(false) end end)
-            pui.traverse(interface.config, function(element) if element and element.set_visible then element:set_visible(false) end end)
+            pui.traverse(interface.home, function(element) element:set_visible(false) end)
+            pui.traverse(interface.aimbot, function(element) element:set_visible(false) end)
+            pui.traverse(interface.visuals, function(element) element:set_visible(false) end)
+            pui.traverse(interface.models, function(element) element:set_visible(false) end)
+            pui.traverse(interface.utility, function(element) element:set_visible(false) end)
+            pui.traverse(interface.config, function(element) element:set_visible(false) end)
 
             if type(naac) == 'function' then
                 naac('')
@@ -1131,12 +1119,10 @@ interface = {} do
             for _, group in pairs(config.groups_to_show) do
                 if group then
                     pui.traverse(group, function(element, path)
-                        if element and element.set_visible then
-                            if config.element_visibility_logic then
-                                config.element_visibility_logic(element, path)
-                            else
-                                element:set_visible(true)
-                            end
+                        if config.element_visibility_logic then
+                            config.element_visibility_logic(element, path)
+                        else
+                            element:set_visible(true)
                         end
                     end)
                 end
@@ -1147,9 +1133,7 @@ interface = {} do
             for _, group in pairs(config.groups_to_hide) do
                 if group then
                     pui.traverse(group, function(element, path)
-                        if element and element.set_visible then
-                            element:set_visible(false)
-                        end
+                        element:set_visible(false)
                     end)
                 end
             end
@@ -1943,10 +1927,7 @@ antiaim_funcs = antiaim_funcs or {}
     end
 
     function antiaim_funcs.get_double_tap()
-        if utils and utils.weapon_ready then
-            return utils.weapon_ready() and (antiaim_funcs.get_tickbase_shifting() > 0)
-        end
-        return (antiaim_funcs.get_tickbase_shifting() > 0)
+        return utils.weapon_ready() and (antiaim_funcs.get_tickbase_shifting() > 0)
     end
 end)()
 --@endregion
@@ -2766,13 +2747,14 @@ end)
 --@endregion
 
 --@region: widgets
-widgets = {} do
+widgets = {}
+do
     local SNAP = 12
     local PAD = 4
     local LINE_ALPHA = 40
     local LINE_ALPHA_SNAP = 80
     local DIM_ALPHA = 120
-    local DIM_COLOR = {0, 0, 0}
+    local DIM_COLOR = { 0, 0, 0 }
 
     widgets.SNAP = SNAP
     widgets.PAD = PAD
@@ -2877,7 +2859,8 @@ widgets = {} do
     end
 
     local function get_rect(id)
-        local def = widgets.items[id]; if not def then return end
+        local def = widgets.items[id];
+        if not def then return end
         local st = widgets.state[id]
         local cx, cy = compute_center(id)
         local content_w, content_h = 100, 40
@@ -2903,14 +2886,17 @@ widgets = {} do
     local function hit_test(id, mx, my)
         local x, y, w, h = get_rect(id)
         if not x then return false end
-        x = x - PAD; y = y - PAD; w = w + PAD * 2; h = h + PAD * 2
+        x = x - PAD;
+        y = y - PAD;
+        w = w + PAD * 2;
+        h = h + PAD * 2;
         return mx >= x and mx <= x + w and my >= y and my <= y + h
     end
 
     function widgets.paint()
         local menuOpen = ui.is_menu_open()
         if menuOpen then return end
-        
+
         local function widget_enabled_paint(id)
             if not interface.visuals.enabled_visuals:get() then return false end
             if id == "debug_window" then
@@ -2928,21 +2914,19 @@ widgets = {} do
             end
             return true
         end
-        
+
         for _, id in ipairs(widgets.order) do
             if not widget_enabled_paint(id) then goto continue end
             local def = widgets.items[id]
-            if def and def.draw then
-                local x, y, w, h, cx, cy = get_rect(id)
-                if w and h and w > 0 and h > 0 then
-                    def.draw({
-                        id = id,
-                        x = x, y = y, w = w, h = h,
-                        cx = cx, cy = cy,
-                        edit_mode = false,
-                        snapped_x = false, snapped_y = false
-                    })
-                end
+            local x, y, w, h, cx, cy = get_rect(id)
+            if w and h and w > 0 and h > 0 then
+                def.draw({
+                    id = id,
+                    x = x, y = y, w = w, h = h,
+                    cx = cx, cy = cy,
+                    edit_mode = false,
+                    snapped_x = false, snapped_y = false
+                })
             end
             ::continue::
         end
@@ -2951,7 +2935,7 @@ widgets = {} do
     function widgets.paint_ui()
         local menuOpen = ui.is_menu_open()
         local local_player = entity.get_local_player()
-        
+
         local target_alpha = (menuOpen and widgets.is_dragging) and LINE_ALPHA or 0
         widgets.lines_alpha = mathematic.lerp(widgets.lines_alpha or 0, target_alpha, globals.frametime() * 12)
 
@@ -2959,7 +2943,7 @@ widgets = {} do
         widgets.frames_alpha = mathematic.lerp(widgets.frames_alpha or 0, target_frame, globals.frametime() * 12)
 
         if not menuOpen then widgets.is_dragging = false end
-        
+
         local sw, sh = client.screen_size()
         local mx, my = ui.mouse_position()
         local m1 = client.key_state(0x01)
@@ -2980,7 +2964,6 @@ widgets = {} do
                 local opts = interface.visuals.logging_options:get() or {}
                 return utils.contains(opts, "screen")
             end
-
             return true
         end
 
@@ -2989,8 +2972,8 @@ widgets = {} do
             for _, id in ipairs(widgets.order) do
                 if widget_enabled(id) then any_enabled = true; break end
             end
-            local target_alpha = (menuOpen and widgets.is_dragging and any_enabled) and LINE_ALPHA or 0
-            widgets.lines_alpha = mathematic.lerp(widgets.lines_alpha or 0, target_alpha, globals.frametime() * 12)
+            local target_alpha_do = (menuOpen and widgets.is_dragging and any_enabled) and LINE_ALPHA or 0
+            widgets.lines_alpha = mathematic.lerp(widgets.lines_alpha or 0, target_alpha_do, globals.frametime() * 12)
         end
 
         local allow_interact = menuOpen
@@ -3071,7 +3054,8 @@ widgets = {} do
             end
             widgets.is_dragging = false
             widgets.active_id = nil
-            widgets.drag_dx = 0; widgets.drag_dy = 0
+            widgets.drag_dx = 0;
+            widgets.drag_dy = 0
         end
 
         for _, id in ipairs(widgets.order) do
@@ -3152,7 +3136,7 @@ widgets = {} do
             local rect_h = h + PAD * 2
             local rx, ry, rw, rh = round(rect_x), round(rect_y), round(rect_w), round(rect_h)
             renderer.rectangle(rx + 1, ry + 1, rw - 2, rh - 2, 255, 255, 255, bg_alpha)
-            
+
             local inset = 2
             local oa = border_alpha
             -- top & bottom
@@ -3182,7 +3166,7 @@ widgets = {} do
             end
 
             local def = widgets.items[id]
-            if def and def.draw and allow_interact and enabled then
+            if allow_interact and enabled then
                 def.draw({ id = id, x = x, y = y, w = w, h = h, cx = cx, cy = cy, edit_mode = true, snapped_x = snapped_x_now, snapped_y = snapped_y_now })
             end
             ::continue::
@@ -3432,10 +3416,10 @@ visuals.window = function(self, base_x, base_y, align)
     end
 
     client.set_event_callback('player_death', function(e)
-        if visuals and visuals.emoji and visuals.emoji.on_player_death then visuals.emoji.on_player_death(e) end
+        visuals.emoji.on_player_death(e)
     end)
     client.set_event_callback('player_spawn', function(e)
-        if visuals and visuals.emoji and visuals.emoji.on_player_spawn then visuals.emoji.on_player_spawn(e) end
+        visuals.emoji.on_player_spawn(e)
     end)
 
     visuals.indicators = function(self, base_x, base_y)
@@ -3486,11 +3470,11 @@ visuals.window = function(self, base_x, base_y, align)
         self.animated_text.colors[2] = { r = r2, g = g2, b = b2, a = a2 }
 
         local state = utils.get_state()
-        if _G.noctua_runtime and _G.noctua_runtime.use_active then
+        if _G.noctua_runtime.use_active then
             state = "use"
-        elseif _G.noctua_runtime and _G.noctua_runtime.manual_active then
+        elseif _G.noctua_runtime.manual_active then
             state = "manual"
-        elseif _G.noctua_runtime and _G.noctua_runtime.safe_head_active then
+        elseif _G.noctua_runtime.safe_head_active then
             state = "safe head"
         end
         local isOS = ui.get(ui_references.on_shot_anti_aim[1]) and ui.get(ui_references.on_shot_anti_aim[2])
@@ -3906,33 +3890,31 @@ stickman = {} do
             local mats = materialsystem.find_materials("models/player")
             if mats then
                 for i, mat in ipairs(mats) do
-                    if mat and mat.set_shader_param then
-                        if not self.original_values then
-                            self.original_values = {
-                                alpha = 1,
-                                envmaptint = vector(1,1,1),
-                                envmapfresnelminmaxexp = vector(0,1,2),
-                                envmaplightscale = 1,
-                                phongboost = 1,
-                                rimlightexponent = 4,
-                                rimlightboost = 1,
-                                pearlescent = 0.5,
-                                basemapalphaphongmask = 1
-                            }
-                        end
-                        mat:set_shader_param("$alpha", 0)
-                        mat:set_shader_param("$envmaptint", vector(0,0,0))
-                        mat:set_shader_param("$envmapfresnelminmaxexp", vector(0,0,0))
-                        mat:set_shader_param("$envmaplightscale", 0)
-                        mat:set_shader_param("$phongboost", 0)
-                        mat:set_shader_param("$rimlightexponent", 0)
-                        mat:set_shader_param("$rimlightboost", 0)
-                        mat:set_shader_param("$pearlescent", 0)
-                        mat:set_shader_param("$basemapalphaphongmask", 0)
+                    if not self.original_values then
+                        self.original_values = {
+                            alpha = 1,
+                            envmaptint = vector(1,1,1),
+                            envmapfresnelminmaxexp = vector(0,1,2),
+                            envmaplightscale = 1,
+                            phongboost = 1,
+                            rimlightexponent = 4,
+                            rimlightboost = 1,
+                            pearlescent = 0.5,
+                            basemapalphaphongmask = 1
+                        }
                     end
+                    mat:set_shader_param("$alpha", 0)
+                    mat:set_shader_param("$envmaptint", vector(0,0,0))
+                    mat:set_shader_param("$envmapfresnelminmaxexp", vector(0,0,0))
+                    mat:set_shader_param("$envmaplightscale", 0)
+                    mat:set_shader_param("$phongboost", 0)
+                    mat:set_shader_param("$rimlightexponent", 0)
+                    mat:set_shader_param("$rimlightboost", 0)
+                    mat:set_shader_param("$pearlescent", 0)
+                    mat:set_shader_param("$basemapalphaphongmask", 0)
                 end
             end
-            if csm_shadows then csm_shadows:set_int(0) end
+            csm_shadows:set_int(0)
             self.last_state = true
         end
     end
@@ -3949,33 +3931,31 @@ stickman = {} do
         
         if mats then
             for i, mat in ipairs(mats) do
-                if mat and mat.set_shader_param then
-                    if self.original_values then
-                        mat:set_shader_param("$alpha", self.original_values.alpha)
-                        mat:set_shader_param("$envmaptint", self.original_values.envmaptint)
-                        mat:set_shader_param("$envmapfresnelminmaxexp", self.original_values.envmapfresnelminmaxexp)
-                        mat:set_shader_param("$envmaplightscale", self.original_values.envmaplightscale)
-                        mat:set_shader_param("$phongboost", self.original_values.phongboost)
-                        mat:set_shader_param("$rimlightexponent", self.original_values.rimlightexponent)
-                        mat:set_shader_param("$rimlightboost", self.original_values.rimlightboost)
-                        mat:set_shader_param("$pearlescent", self.original_values.pearlescent)
-                        mat:set_shader_param("$basemapalphaphongmask", self.original_values.basemapalphaphongmask)
-                    else
-                        mat:set_shader_param("$alpha", 1)
-                        mat:set_shader_param("$envmaptint", vector(1,1,1))
-                        mat:set_shader_param("$envmapfresnelminmaxexp", vector(0,1,2))
-                        mat:set_shader_param("$envmaplightscale", 1)
-                        mat:set_shader_param("$phongboost", 1)
-                        mat:set_shader_param("$rimlightexponent", 4)
-                        mat:set_shader_param("$rimlightboost", 1)
-                        mat:set_shader_param("$pearlescent", 0.5)
-                        mat:set_shader_param("$basemapalphaphongmask", 1)
-                    end
+                if self.original_values then
+                    mat:set_shader_param("$alpha", self.original_values.alpha)
+                    mat:set_shader_param("$envmaptint", self.original_values.envmaptint)
+                    mat:set_shader_param("$envmapfresnelminmaxexp", self.original_values.envmapfresnelminmaxexp)
+                    mat:set_shader_param("$envmaplightscale", self.original_values.envmaplightscale)
+                    mat:set_shader_param("$phongboost", self.original_values.phongboost)
+                    mat:set_shader_param("$rimlightexponent", self.original_values.rimlightexponent)
+                    mat:set_shader_param("$rimlightboost", self.original_values.rimlightboost)
+                    mat:set_shader_param("$pearlescent", self.original_values.pearlescent)
+                    mat:set_shader_param("$basemapalphaphongmask", self.original_values.basemapalphaphongmask)
+                else
+                    mat:set_shader_param("$alpha", 1)
+                    mat:set_shader_param("$envmaptint", vector(1,1,1))
+                    mat:set_shader_param("$envmapfresnelminmaxexp", vector(0,1,2))
+                    mat:set_shader_param("$envmaplightscale", 1)
+                    mat:set_shader_param("$phongboost", 1)
+                    mat:set_shader_param("$rimlightexponent", 4)
+                    mat:set_shader_param("$rimlightboost", 1)
+                    mat:set_shader_param("$pearlescent", 0.5)
+                    mat:set_shader_param("$basemapalphaphongmask", 1)
                 end
             end
         end
         local csm_shadows = cvar.cl_csm_shadows
-        if csm_shadows then csm_shadows:set_int(1) end
+        csm_shadows:set_int(1)
         self.last_state = false
         self.original_values = nil
     end
@@ -3993,13 +3973,11 @@ stickman = {} do
                 local mats = materialsystem.find_materials("models/player")
                 if mats then
                     for i, mat in ipairs(mats) do
-                        if mat and mat.set_shader_param then
-                            mat:set_shader_param("$alpha", 0)
-                        end
+                        mat:set_shader_param("$alpha", 0)
                     end
                 end
                 local csm_shadows = cvar.cl_csm_shadows
-                if csm_shadows then csm_shadows:set_int(0) end
+                csm_shadows:set_int(0)
             else
                 stickman:reset_materials()
             end
@@ -5135,7 +5113,7 @@ for event, callback in pairs(aimHandlers) do
 end
 
 client.set_event_callback("setup_command", function(cmd)
-    if widgets and widgets.is_dragging then
+    if widgets.is_dragging then
         cmd.in_attack = 0
     end
 end)
@@ -5271,30 +5249,53 @@ buybot = {} do
         ["smoke"] = "smokegrenade"
     }
     
+    buybot.has_primary_weapon = function()
+        local local_player = entity.get_local_player()
+        if not local_player then return false end
+
+        local weapon = entity.get_player_weapon(local_player)
+        if not weapon then return false end
+
+        local weap_class = entity.get_classname(weapon)
+        return weap_class == "CWeaponSSG08" or
+               weap_class == "CWeaponAWP" or
+               weap_class == "CWeaponSCAR20" or
+               weap_class == "CWeaponG3SG1"
+    end
+
     buybot.on_player_spawn = function(e)
         if client.userid_to_entindex(e.userid) ~= entity.get_local_player() then
             return
         end
-        
+
         client.delay_call(0.5, function()
             local money = entity.get_prop(entity.get_local_player(), "m_iAccount")
-            
+
             if not interface.utility.buybot:get() or (money >= 800 and money <= 1000) then
                 return
             end
-            
+
             local primary_item = buybot.primary_console[interface.utility.buybot_primary:get()]
+            local primary_fallback_item = buybot.primary_console[interface.utility.buybot_primary_fallback:get()]
             local secondary_item = buybot.secondary_console[interface.utility.buybot_secondary:get()]
             local selected_utilities = interface.utility.buybot_utility:get()
-            
+
             if primary_item and primary_item ~= "" then
                 client.exec("buy " .. primary_item .. ";")
+
+                client.delay_call(0.3, function()
+                    if primary_fallback_item and primary_fallback_item ~= "" and not buybot.has_primary_weapon() then
+                        client.exec("buy " .. primary_fallback_item .. ";")
+                    end
+                end)
+            elseif primary_fallback_item and primary_fallback_item ~= "" then
+                client.exec("buy " .. primary_fallback_item .. ";")
             end
-            
+
             if secondary_item and secondary_item ~= "" then
                 client.exec("buy " .. secondary_item .. ";")
             end
-            
+
             if selected_utilities then
                 for _, utility in ipairs(selected_utilities) do
                     local utility_item = buybot.utility_console[utility]
@@ -6008,7 +6009,6 @@ configs = {} do
     end
 
     function configs.update_list_ui()
-        if not (interface and interface.config and interface.config.list) then return end
         local items = {}
         local has_default = (type(default_config) == 'string' and default_config ~= '')
         if has_default then
@@ -6040,19 +6040,15 @@ configs = {} do
                 out.values[key] = v1
             end
 
-            if element.color and element.color.value then
-                local okc, cv = pcall(function() return element.color.value end)
-                if okc and type(cv) == 'table' then
-                    out.values[key .. '.color'] = cv
-                end
+            local okc, cv = pcall(function() return element.color.value end)
+            if okc and type(cv) == 'table' then
+                out.values[key .. '.color'] = cv
             end
 
-            if element.hotkey and element.hotkey.get then
-                local okh, _active, mode_idx, keycode = pcall(function() return element.hotkey:get() end)
-                if okh then
-                    out.values[key .. '.hotkey_mode_idx'] = mode_idx
-                    if keycode ~= nil then out.values[key .. '.hotkey_keycode'] = keycode end
-                end
+            local okh, _active, mode_idx, keycode = pcall(function() return element.hotkey:get() end)
+            if okh then
+                out.values[key .. '.hotkey_mode_idx'] = mode_idx
+                if keycode ~= nil then out.values[key .. '.hotkey_keycode'] = keycode end
             elseif got_ok and type(v1) == 'boolean' and type(v2) == 'number' then
                 out.values[key .. '.hotkey_mode_idx'] = v2
                 if v3 ~= nil then out.values[key .. '.hotkey_keycode'] = v3 end
@@ -6082,9 +6078,9 @@ configs = {} do
 
             local val = values[key]
             if val ~= nil then
-                if element.set then pcall(function() element:set(val) end)
-                elseif element.color and type(val) == 'table' then element.color.value = val end
+                pcall(function() element:set(val) end)
             end
+            if element.color and type(val) == 'table' then element.color.value = val end
 
             local cval = values[key .. '.color']
             if element.color and type(cval) == 'table' then
@@ -6096,13 +6092,13 @@ configs = {} do
             local map = { [0] = 'Always on', [1] = 'On hotkey', [2] = 'Toggle', [3] = 'Hold' }
             local mode_str = (type(mode_idx) == 'number') and map[mode_idx] or nil
 
-            if element.hotkey and mode_str and element.hotkey.set then
+            if element.hotkey and mode_str then
                 if type(keycode) == 'number' then
                     pcall(function() element.hotkey:set(mode_str, keycode) end)
                 else
                     pcall(function() element.hotkey:set(mode_str) end)
                 end
-            elseif (not element.hotkey) and element.set and mode_str then
+            elseif element.set and mode_str then
                 if type(keycode) == 'number' then
                     element:set(mode_str, keycode)
                 else
@@ -6228,7 +6224,6 @@ configs = {} do
     end
 
     local function get_selected_name()
-        if not (interface and interface.config and interface.config.list) then return nil end
         local idx0 = tonumber(interface.config.list:get()) or 0
         local idx = idx0 + 1
         local has_default = (type(default_config) == 'string' and default_config ~= '')
@@ -6363,9 +6358,7 @@ configs = {} do
         state.list = new_list
         configs.save_db()
         configs.update_list_ui()
-        if interface and interface.config and interface.config.list and interface.config.list.set then
-            interface.config.list:set(0)
-        end
+        interface.config.list:set(0)
         logMessage('noctua ·', '', 'config deleted!')
         client.exec("play ui/beepclear.wav")
     end
@@ -6375,8 +6368,7 @@ configs = {} do
         if not name or name == '<no configs>' or name == '+ new' then
             return
         end
-        
-        if not (interface and interface.config and interface.config.load_on_startup) then return end
+
         local checkbox_state = interface.config.load_on_startup:get() or false
         
         if checkbox_state then
@@ -6393,7 +6385,6 @@ configs = {} do
     local _updating_checkbox = false
     
     function configs.update_ui_visibility()
-        if not (interface and interface.config) then return end
         if not interface.search or interface.search:get() ~= 'config' then return end
         
         local name = get_selected_name()
@@ -6470,60 +6461,38 @@ configs = {} do
         client.delay_call(0.1, function()
             configs.load_startup_config()
         end)
-        
-        if interface and interface.config then
-            client.set_event_callback('paint_ui', function()
-                configs.update_load_on_startup_checkbox()
-            end)
-            
-            if interface.config.load_on_startup and interface.config.load_on_startup.set_callback then
-                interface.config.load_on_startup:set_callback(function()
-                    configs.toggle_autoload_for_current()
-                end)
-            end
-            
-            if interface.config.create_button and interface.config.create_button.set_callback then
-                interface.config.create_button:set_callback(function()
-                    local name = ''
-                    if interface.config.name and interface.config.name.get then
-                        name = interface.config.name:get() or ''
-                    end
-                    if type(name) ~= 'string' then name = tostring(name or '') end
-                    name = name:gsub('^%s+', ''):gsub('%s+$', '')
-                    configs.create(name)
-                end)
-            end
 
-            if interface.config.save_button and interface.config.save_button.set_callback then
-                interface.config.save_button:set_callback(configs.save_selected)
-            end
+        client.set_event_callback('paint_ui', function()
+            configs.update_load_on_startup_checkbox()
+        end)
 
-            if interface.config.load_button and interface.config.load_button.set_callback then
-                interface.config.load_button:set_callback(configs.load_selected)
-            end
+        interface.config.load_on_startup:set_callback(function()
+            configs.toggle_autoload_for_current()
+        end)
 
-            if interface.config.load_aa_button and interface.config.load_aa_button.set_callback then
-                interface.config.load_aa_button:set_callback(configs.load_aa_only)
-            end
+        interface.config.create_button:set_callback(function()
+            local name = ''
+            name = interface.config.name:get() or ''
+            if type(name) ~= 'string' then name = tostring(name or '') end
+            name = name:gsub('^%s+', ''):gsub('%s+$', '')
+            configs.create(name)
+        end)
 
-            if interface.config.delete_button and interface.config.delete_button.set_callback then
-                interface.config.delete_button:set_callback(configs.delete_selected)
-            end
+        interface.config.save_button:set_callback(configs.save_selected)
 
-            if interface.config.export_button and interface.config.export_button.set_callback then
-                interface.config.export_button:set_callback(configs.export_to_clipboard)
-            end
+        interface.config.load_button:set_callback(configs.load_selected)
 
-            if interface.config.import_button and interface.config.import_button.set_callback then
-                interface.config.import_button:set_callback(configs.import_from_clipboard)
-            end
-            
-            if interface.config.list and interface.config.list.set_callback then
-                interface.config.list:set_callback(function()
-                    -- replaced later
-                end)
-            end
-        end
+        interface.config.load_aa_button:set_callback(configs.load_aa_only)
+
+        interface.config.delete_button:set_callback(configs.delete_selected)
+
+        interface.config.export_button:set_callback(configs.export_to_clipboard)
+
+        interface.config.import_button:set_callback(configs.import_from_clipboard)
+
+        interface.config.list:set_callback(function()
+            -- replaced later
+        end)
     end
 end
 
@@ -6539,7 +6508,8 @@ streamer_images = {} do
         rabbit = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSPajxTkvKF1SeE1fOTFTyQOzCcYYZNjH_Afw&s",
         cat = "https://media.tenor.com/sF-65FzDeFIAAAAe/cat-pondering-cat.png",
         guinea_pig = "https://avatars.mds.yandex.net/i?id=105aeb7d42c5450af1d4f4d896b92ac2_l-4801254-images-thumbs&n=13",
-        gentlemen = "https://i.ibb.co/ksJMGPwN/csgo-gge-EMXGbc-O-1.png"
+        gentlemen = "https://i.ibb.co/ksJMGPwN/csgo-gge-EMXGbc-O-1.png",
+        fipp = "https://i.ibb.co/RGxMXq4X/image.png"
     }
 
     local state = { list = {}, data = {} }
@@ -6649,15 +6619,12 @@ streamer_images = {} do
         state.list = new_list
         streamer_images.save_db()
         streamer_images.update_list_ui()
-        if interface and interface.utility and interface.utility.streamer_mode_select and interface.utility.streamer_mode_select.set then
-            interface.utility.streamer_mode_select:set(0)
-        end
+        interface.utility.streamer_mode_select:set(0)
         logMessage('noctua ·', '', 'image deleted: ' .. name)
         client.exec("play ui/beepclear.wav")
     end
 
     function streamer_images.update_list_ui()
-        if not (interface and interface.utility and interface.utility.streamer_mode_select) then return end
         streamer_images.current_items = {}
         local all = streamer_images.get_all_names()
         for _, item in ipairs(all) do
@@ -6668,9 +6635,6 @@ streamer_images = {} do
     end
 
     function streamer_images.get_selected_name()
-        if not (interface and interface.utility and interface.utility.streamer_mode_select and interface.utility.streamer_mode_select.get) then
-            return nil
-        end
         local idx = tonumber(interface.utility.streamer_mode_select:get())
         if not idx or idx < 0 then return nil end
         idx = idx + 1
@@ -6685,50 +6649,35 @@ streamer_images = {} do
         local all = streamer_images.get_all_names()
         streamer_images.update_list_ui()
 
-        if interface and interface.utility then
-            if interface.utility.streamer_mode_delete and interface.utility.streamer_mode_delete.set_callback then
-                interface.utility.streamer_mode_delete:set_callback(function()
-                    local sel = streamer_images.get_selected_name()
-                    if not sel then
-                        logMessage('noctua ·', '', 'select image first!')
-                        client.exec("play ui/menu_invalid.wav")
-                        return
-                    end
-                    streamer_images.remove(sel)
-                end)
+        interface.utility.streamer_mode_delete:set_callback(function()
+            local sel = streamer_images.get_selected_name()
+            if not sel then
+                logMessage('noctua ·', '', 'select image first!')
+                client.exec("play ui/menu_invalid.wav")
+                return
             end
+            streamer_images.remove(sel)
+        end)
 
-            if interface.utility.streamer_mode_add and interface.utility.streamer_mode_add.set_callback then
-                interface.utility.streamer_mode_add:set_callback(function()
-                    local sel = streamer_images.get_selected_name()
-                    if not sel then
-                        logMessage('noctua ·', '', 'select image first!')
-                        client.exec("play ui/menu_invalid.wav")
-                        return
-                    end
-                    if streamer_mode and streamer_mode.add_image then
-                        streamer_mode.add_image(sel)
-                    end
-                end)
+        interface.utility.streamer_mode_add:set_callback(function()
+            local sel = streamer_images.get_selected_name()
+            if not sel then
+                logMessage('noctua ·', '', 'select image first!')
+                client.exec("play ui/menu_invalid.wav")
+                return
             end
+            streamer_mode.add_image(sel)
+        end)
 
-            if interface.utility.streamer_mode_select and interface.utility.streamer_mode_select.set_callback then
-                interface.utility.streamer_mode_select:set_callback(function()
-                    if not (interface.utility.streamer_mode_delete and interface.utility.streamer_mode_delete.set_visible) then
-                        return
-                    end
-                    local sel = streamer_images.get_selected_name()
-                    local is_custom = sel ~= nil and not streamer_images.is_builtin(sel)
-                    interface.utility.streamer_mode_delete:set_visible(is_custom and interface.utility.streamer_mode:get())
-                end)
-            end
+        interface.utility.streamer_mode_select:set_callback(function()
+            local sel = streamer_images.get_selected_name()
+            local is_custom = sel ~= nil and not streamer_images.is_builtin(sel)
+            interface.utility.streamer_mode_delete:set_visible(is_custom and interface.utility.streamer_mode:get())
+        end)
 
-            if interface.utility.streamer_mode_delete and interface.utility.streamer_mode_delete.set_visible then
-                local sel = streamer_images.get_selected_name()
-                local is_custom = sel ~= nil and not streamer_images.is_builtin(sel)
-                interface.utility.streamer_mode_delete:set_visible(is_custom and interface.utility.streamer_mode:get())
-            end
-        end
+        local sel = streamer_images.get_selected_name()
+        local is_custom = sel ~= nil and not streamer_images.is_builtin(sel)
+        interface.utility.streamer_mode_delete:set_visible(is_custom and interface.utility.streamer_mode:get())
     end
 end
 
@@ -6838,9 +6787,7 @@ stats = {} do
     function stats.init()
         stats.load_db()
         stats.update_ui()
-        if interface and interface.home and interface.home.reset and interface.home.reset.set_callback then
-            interface.home.reset:set_callback(stats.reset)
-        end
+        interface.home.reset:set_callback(stats.reset)
     end
 end
 
@@ -7869,6 +7816,9 @@ killsay = {} do
         },
         {
             "нет времени объяснять, грузи нокту"
+        },
+        {
+            "ЭТИ НИГЕРЫ НЕ УМЕЮТ ИГРАТЬ С noctua (ПОКАЗАЛ ИМ МАСТЕР КЛАСС) ft. keus, racen"
         }
     }
 
@@ -9035,13 +8985,11 @@ end
 
         function anti_aim.builder.main(cmd)
             local state = get_state(u_player.state)
-            if reference and reference.antiaim and reference.antiaim.angles and reference.antiaim.angles.enabled then
-                local ok = pcall(function()
-                    if ui.get(reference.antiaim.angles.enabled) ~= true then
-                        ui.set(reference.antiaim.angles.enabled, true)
-                    end
-                end)
-            end
+            local ok = pcall(function()
+                if ui.get(reference.antiaim.angles.enabled) ~= true then
+                    ui.set(reference.antiaim.angles.enabled, true)
+                end
+            end)
             local this =  (interface.builder[state] and interface.builder[state].enable and interface.builder[state].enable.value and interface.builder[state]) or interface.builder["default"]
             local pitch , yaw_type , yaw_base = yaw_base_for(this)
             local yaw_add = modifier(this)
@@ -9107,13 +9055,13 @@ end
                     local killed_recently = (last_death_tick ~= 0) and (last_death_tick >= data.created_tick) and (last_death_tick <= data.created_tick + 2)
                     local hurt_recently = (hurt_tick >= data.created_tick) and (hurt_tick <= data.created_tick + 2)
                     if not hurt_recently and not killed_recently then
-                        if interface and interface.visuals and interface.visuals.logging and interface.visuals.logging:get() then
-                            local logOptions = interface.visuals.logging_options and interface.visuals.logging_options:get() or {}
-                            local screenOptions = interface.visuals.logging_options_screen and interface.visuals.logging_options_screen:get() or {}
-                            local consoleOptions = interface.visuals.logging_options_console and interface.visuals.logging_options_console:get() or {}
+                        if interface.visuals.logging:get() then
+                            local logOptions = interface.visuals.logging_options:get()
+                            local screenOptions = interface.visuals.logging_options_screen:get()
+                            local consoleOptions = interface.visuals.logging_options_console:get()
 
-                            local doScreen = utils.contains and utils.contains(logOptions, 'screen') and utils.contains(screenOptions, 'anti aim')
-                            local doConsole = utils.contains and utils.contains(logOptions, 'console') and utils.contains(consoleOptions, 'anti aim')
+                            local doScreen = utils.contains(logOptions, 'screen') and utils.contains(screenOptions, 'anti aim')
+                            local doConsole = utils.contains(logOptions, 'console') and utils.contains(consoleOptions, 'anti aim')
 
                             if doScreen then
                                 logging:push(string.format("evaded %s's shot / value: %s - mode: %s", data.name, data.value, tostring(data.mode)))
@@ -9124,9 +9072,7 @@ end
                             end
                         end
 
-                        if stats and stats.on_evaded then
-                            stats.on_evaded(data.name, data.value, data.mode)
-                        end
+                        stats.on_evaded(data.name, data.value, data.mode)
                     end
                     pending_evade_logs[attacker] = nil
                 end
@@ -9134,7 +9080,7 @@ end
         end
 
         local function trigger(event)
-            local ab_enabled = (interface.builder.extensions.anti_bruteforce and interface.builder.extensions.anti_bruteforce.get and interface.builder.extensions.anti_bruteforce:get())
+            local ab_enabled = interface.builder.extensions.anti_bruteforce:get()
 
             local me = entity.get_local_player()
             local valid = (me and entity.is_alive(me))
@@ -9200,13 +9146,13 @@ end
         local show_builder = (page == 'builder')
         local show_settings = (page == 'extensions')
         pui.traverse(interface.builder, function(element)
-            if element and element.set_visible then element:set_visible(show_builder) end
+            element:set_visible(show_builder)
         end)
         pui.traverse(interface.builder.extensions, function(element)
-            if element and element.set_visible then element:set_visible(show_settings) end
+            element:set_visible(show_settings)
         end)
         pui.traverse(interface.builder.extensions.manual_aa_hotkey, function(element)
-            if element and element.set_visible then element:set_visible(show_settings and interface.builder.extensions.manual_aa:get()) end
+            element:set_visible(show_settings and interface.builder.extensions.manual_aa:get())
         end)
     end
 end
