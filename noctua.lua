@@ -776,6 +776,7 @@ interface = {} do
         extensions.defensive = interface.header.fake_lag:multiselect("defensive",{"on shot","flashed","damage received","reloading","weapon switch"})
         extensions.safe_head = interface.header.fake_lag:multiselect("safe head",{ "height distance", "high distance", "knife", "zeus" })
         extensions.warmup_aa = interface.header.fake_lag:multiselect("warmup aa",{"warmup","round end"})
+        extensions.automatic_osaa = interface.header.fake_lag:checkbox("automatic osaa")
         
         extensions.edge_yaw = interface.header.other:hotkey("edge yaw")
         extensions.freestanding = interface.header.other:hotkey("freestanding")
@@ -783,7 +784,7 @@ interface = {} do
         extensions.manual_aa = interface.header.other:checkbox("manual antiaim")
         
         for key, v in pairs(extensions) do
-            if (key == "anti_backstab" or key == "ladder" or key == "anti_bruteforce" or key == "defensive" or key == "safe_head" or key == "warmup_aa") then
+            if (key == "anti_backstab" or key == "ladder" or key == "anti_bruteforce" or key == "defensive" or key == "safe_head" or key == "warmup_aa" or key == "automatic_osaa") then
                 v:depend({ interface.search, 'antiaim' })
             end
         end
@@ -2689,6 +2690,66 @@ client.set_event_callback('setup_command', function(cmd)
 end)
 
 client.set_event_callback('shutdown', allow_force_recharge.shutdown)
+--@endregion
+
+--@region: automatic osaa
+automatic_osaa = {} do
+    automatic_osaa.state = false
+    automatic_osaa.last = false
+    automatic_osaa.dt_original = false
+
+    automatic_osaa.setup = function(self, cmd)
+        if not interface.builder.extensions.automatic_osaa:get() then
+            if self.state then
+                ui.set(ui_references.double_tap[1], self.dt_original)
+                ui.set(ui_references.on_shot_anti_aim[2], "Toggle")
+                self.state = false
+            end
+            return
+        end
+
+        local local_player = entity.get_local_player()
+        if not local_player or not entity.is_alive(local_player) then return end
+
+        if not self.state then
+            self.dt_original = ui.get(ui_references.double_tap[1])
+        end
+
+        local dt_active = (self.state and self.dt_original or ui.get(ui_references.double_tap[1])) and ui.get(ui_references.double_tap[2])
+        local state = utils.get_state()
+        local is_idle_or_duck = state == 'duck' or state == 'duck move'
+
+        local should_activate = dt_active and is_idle_or_duck
+
+        if should_activate ~= self.last then
+            self.last = should_activate
+            
+            if should_activate then
+                ui.set(ui_references.double_tap[1], false)
+                ui.set(ui_references.on_shot_anti_aim[2], "Always on")
+                self.state = true
+            else
+                ui.set(ui_references.on_shot_anti_aim[2], "Toggle")
+                ui.set(ui_references.double_tap[1], self.dt_original)
+                self.state = false
+            end
+        end
+    end
+
+    automatic_osaa.shutdown = function()
+        if automatic_osaa.state then
+            ui.set(ui_references.double_tap[1], true)
+            ui.set(ui_references.on_shot_anti_aim[2], "Toggle")
+            automatic_osaa.state = false
+        end
+    end
+end
+
+client.set_event_callback('setup_command', function(cmd)
+    automatic_osaa:setup(cmd)
+end)
+
+client.set_event_callback('shutdown', automatic_osaa.shutdown)
 --@endregion
 
 --@region: quick stop in air
