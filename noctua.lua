@@ -7590,13 +7590,13 @@ end
 
 --@region: killsay
 killsay = {} do
-    killsay.multi_phrases_kill = {}
-    killsay.multi_phrases_death = {}
     killsay.last_say_time = 0
     killsay.cooldown = 2.0
 
-    killsay.kill_json_url = ""
-    killsay.death_json_url = ""
+    killsay.kill_json_url = "https://raw.githubusercontent.com/wraithsoul/noctua-gs/refs/heads/main/phrases/kill.json"
+    killsay.death_json_url = "https://raw.githubusercontent.com/wraithsoul/noctua-gs/refs/heads/main/phrases/death.json"
+    killsay.multi_phrases_kill = {}
+    killsay.multi_phrases_death = {}
 
     killsay.load_phrases_from_url = function(url, target_table, phrase_type)
         if not url or url == "" then
