@@ -8,7 +8,7 @@
 
 --@region: information
 local _name = 'noctua'
-local _version = '1.4b'
+local _version = '1.4c'
 local _nickname = nil
 _G.noctua_runtime = _G.noctua_runtime or {}
 
@@ -30,59 +30,6 @@ client.set_event_callback('player_spawn', function(e)
         update_nickname()
     end
 end)
-
-local update = [[
-what's new (1.4b):
- - added streamer mode
- - added animation breakers
- - added buybot fallback option
- - added enemy ping warning
- - removed autosniper tweaks
- - cleaned balabolka phrases
-
-changelog 1.4a (18/12/2025):
- - added autosniper tweaks
- - added noscope distance
- - added damage indicator
- - added "emoji" indicator style
- - added watermark
- - added lc status
- - added "load aa" option
- - added new confetti modes
- - reworked ui
- - fixed color/hotkeys saving
- - fixed crosshair indicators aligment
-
-changelog 1.4 (22/10/2025):
- - added anti aim builder
- - added extensions for builder
- - added anti aim support for logging & indicators
- - added config system
- - added many balabolka replicas
- - added user statistics
- - now killsay works only if kd >= 1.0
- - fixed issue when "fire" event reported mismatch yaw
-
-changelog 1.3a (18/10/2025):
- - added "on death" to balabolka (killsay) mode
- - added crosshair indicator "center" mode
- - added animate on-scope animation
- - added spawn zoom effect
- - added zoom animation
- - added round counter
- - added buy logging
- - added hitsound
- - added buybot
- - reworked "resolver tweaks" logic
- - reworked "reload" status
- - reworked smart safety
- - reworked widgets
- - fixed game crashes
- - fixed stickman shaders
- - removed chat filter
-
-.. 3 changelogs behind
-]]
 --@endregion
 
 --@region: news
@@ -594,7 +541,15 @@ interface = {} do
         ratio = interface.header.fake_lag:label(' · ratio: 0'),
         reset = interface.header.fake_lag:button('reset'),
         confetti = interface.header.general:button('confetti'),
+        show_updates = interface.header.general:checkbox("show what's new"),
+        winter_label = interface.header.other:label('\a89cff0ff❄ winter'),
+        menu_snow = interface.header.other:checkbox('menu snow'),
+        world_snow = interface.header.other:checkbox('world snow')
     }
+
+    interface.home.show_updates:override(true)
+    interface.home.show_updates:set_enabled(false)
+    interface.home.menu_snow:override(true)
 
     interface.aimbot = {
         enabled_aimbot = interface.header.general:checkbox('enable aimbot'),
@@ -614,7 +569,7 @@ interface = {} do
 
     interface.visuals = {
         enabled_visuals = interface.header.general:checkbox('enable visuals'),
-        accent = interface.header.general:label('accent color', {120, 160, 180}),
+        accent = interface.header.general:label('accent color', {157, 230, 254}),
         secondary = interface.header.general:label('secondary color', {215, 240, 255}),
         vgui = interface.header.general:label('vgui color', {255, 255, 255}), -- 140, 140, 140
         crosshair_indicators = interface.header.general:checkbox('crosshair indicator'),
@@ -872,11 +827,11 @@ interface = {} do
         local visibility_config = {
             home = {
                 groups_to_show = { groups.home },
-                groups_to_hide = { groups.aimbot, groups.visuals, groups.models, groups.utility, groups.config }
+                groups_to_hide = { groups.aimbot, groups.visuals, groups.builder, groups.models, groups.utility, groups.config }
             },
             aimbot = {
                 groups_to_show = { groups.aimbot },
-                groups_to_hide = { groups.home, groups.visuals, groups.models, groups.utility, groups.config },
+                groups_to_hide = { groups.home, groups.visuals, groups.builder, groups.models, groups.utility, groups.config },
                 element_visibility_logic = function(element, path)
                     local key = path[#path]
                     local enabled = (interface.aimbot.enabled_aimbot:get() == true)
@@ -911,7 +866,7 @@ interface = {} do
             },
             visuals = {
                 groups_to_show = { groups.visuals },
-                groups_to_hide = { groups.home, groups.aimbot, groups.models, groups.utility, groups.config },
+                groups_to_hide = { groups.home, groups.aimbot, groups.builder, groups.models, groups.utility, groups.config },
                 element_visibility_logic = function(element, path)
                     local key = path[#path]
                     local visuals_enabled = interface.visuals.enabled_visuals:get()
@@ -1024,11 +979,11 @@ interface = {} do
             },
             models = {
                 groups_to_show = { groups.models },
-                groups_to_hide = { groups.home, groups.aimbot, groups.visuals, groups.utility, groups.config }
+                groups_to_hide = { groups.home, groups.aimbot, groups.visuals, groups.builder, groups.utility, groups.config }
             },
             utility = {
                 groups_to_show = { groups.utility },
-                groups_to_hide = { groups.home, groups.aimbot, groups.visuals, groups.models, groups.config },
+                groups_to_hide = { groups.home, groups.aimbot, groups.visuals, groups.builder, groups.models, groups.config },
                 element_visibility_logic = function(element, path)
                     local key = path[#path]
 
@@ -1097,7 +1052,7 @@ interface = {} do
             },
             config = {
                 groups_to_show = { groups.config },
-                groups_to_hide = { groups.home, groups.aimbot, groups.visuals, groups.models, groups.utility },
+                groups_to_hide = { groups.home, groups.aimbot, groups.visuals, groups.builder, groups.models, groups.utility },
                 element_visibility_logic = function(element, path)
                     element:set_visible(true)
                 end,
@@ -1106,7 +1061,7 @@ interface = {} do
                 end
             },
             default = {
-                groups_to_hide = { groups.home, groups.aimbot, groups.visuals, groups.models, groups.utility, groups.config }
+                groups_to_hide = { groups.home, groups.aimbot, groups.visuals, groups.builder, groups.models, groups.utility, groups.config }
             }
         }
 
@@ -1161,8 +1116,8 @@ interface.update_visibility()
 interface.setup()
 
 client.set_event_callback('paint_ui', function()
-    interface.update_visibility()
-    interface.setup()
+     interface.update_visibility()
+     interface.setup()
 end)
 
 client.set_event_callback('shutdown', interface.show)
@@ -1247,9 +1202,12 @@ local function logMessage(prefix, extra, message)
     client.color_log(r, g, b, prefix .. " \0")
     client.color_log(255, 255, 255, message .. "\n\0")
 end
---@endregion
 
-logMessage("noctua ·", "", update)
+local function logPlain(message)
+    local r, g, b = unpack(interface.visuals.accent.color.value)
+    client.color_log(255, 255, 255, message .. "\n\0")
+end
+--@endregion
 
 --@region: logging with arguments
 local function argLog(fmt, ...)    
@@ -2915,8 +2873,7 @@ end)
 --@endregion
 
 --@region: widgets
-widgets = {}
-do
+widgets = {} do
     local SNAP = 12
     local PAD = 4
     local LINE_ALPHA = 40
@@ -4406,15 +4363,201 @@ confetti = {} do
 end
 --@endregion
 
+--@region: snow
+local snow = {} do
+    snow.particles = {}
+    snow.max_particles = 250
+    snow.last_time = nil
+
+    snow.spawn = function(self, sw, sh)
+        table.insert(self.particles, {
+            x = math.random(0, sw),
+            y = math.random(-sh, 0),
+            vx = math.random(-5, 5) / 10,
+            vy = math.random(5, 15) / 10,
+            size = math.random(1, 3),
+            drift = math.random() * math.pi,
+            drift_speed = math.random(1, 3) / 100,
+            alpha = math.random(150, 255)
+        })
+    end
+
+    snow.update = function(self)
+        local is_enabled = interface.home.menu_snow:get()
+        local menu_open = ui.is_menu_open()
+        local sw, sh = client.screen_size()
+        local current_time = globals.realtime()
+        
+        if not self.last_time then self.last_time = current_time end
+        local dt = (current_time - self.last_time) * 100
+        self.last_time = current_time
+    
+        if is_enabled and menu_open and #self.particles < self.max_particles then
+            for i = 1, 2 do 
+                if #self.particles < self.max_particles then
+                    self:spawn(sw, sh)
+                end
+            end
+        end
+    
+        for i = #self.particles, 1, -1 do
+            local p = self.particles[i]
+    
+            p.drift = p.drift + p.drift_speed * dt
+            p.y = p.y + p.vy * dt
+            p.x = p.x + (p.vx + math.sin(p.drift) * 0.5) * dt
+    
+            if not menu_open or not is_enabled then
+                p.alpha = p.alpha - 2 * dt
+            end
+    
+            if p.y > sh + 10 or p.alpha <= 0 then
+                table.remove(self.particles, i)
+            end
+        end
+    end
+
+    snow.draw = function(self)
+        if #self.particles == 0 then return end
+
+        for _, p in ipairs(self.particles) do
+            renderer.rectangle(math.floor(p.x), math.floor(p.y), p.size, p.size, 255, 255, 255, math.floor(p.alpha))
+        end
+    end
+end
+--@endregion
+
+--@region: world snow
+local renderer_rectangle, renderer_world_to_screen, client_trace_line, entity_get_origin, math_random, math_floor, table_remove, table_insert = renderer.rectangle, renderer.world_to_screen, client.trace_line, entity.get_origin, math.random, math.floor, table.remove, table.insert
+world_snow = {} do
+    world_snow.particles = {}
+    world_snow.max_particles = 600
+    world_snow.spawn_radius = 1500
+    world_snow.spawn_height = 800
+    world_snow.wind = {x = 15, y = 10}
+    world_snow.last_time = 0
+    world_snow.check_index = 1
+
+    world_snow.update = function(self)
+        if not interface.home.world_snow:get() then return end
+
+        local lp = entity.get_local_player()
+        if not lp then return end
+
+        local health = entity.get_prop(lp, "m_iHealth")
+        if not health or health <= 0 then return end
+
+        local current_time = globals.realtime()
+        local dt = (current_time - self.last_time)
+        if dt > 0.1 then dt = 0.01 end
+        self.last_time = current_time
+
+        local ox, oy, oz = entity_get_origin(lp)
+        
+        local p_count = #self.particles
+        if p_count < self.max_particles then
+            for i = 1, 4 do
+                local tx = ox + math_random(-self.spawn_radius, self.spawn_radius)
+                local ty = oy + math_random(-self.spawn_radius, self.spawn_radius)
+                local tz = oz + self.spawn_height + math_random(-100, 300)
+                
+                local f_check = client_trace_line(-1, tx, ty, tz, tx, ty, tz + 50)
+                if f_check > 0.5 then
+                    local f_down = client_trace_line(-1, tx, ty, tz, tx, ty, tz - 2000)
+                    local ground_z = tz - (2000 * f_down)
+
+                    if ground_z < oz + 500 then
+                        table_insert(self.particles, {
+                            x = tx, y = ty, z = tz,
+                            ground_z = ground_z,
+                            vx = self.wind.x + math_random(-5, 5),
+                            vy = self.wind.y + math_random(-5, 5),
+                            vz = math_random(-160, -100),
+                            size = math_random(10, 25) / 10,
+                            alpha = 0,
+                            visible = true,
+                            dist_alpha = 255
+                        })
+                    end
+                end
+            end
+        end
+
+        if p_count > 0 then
+            local ex, ey, ez = client.eye_position()
+            local spawn_rad = self.spawn_radius
+            for i = 1, 20 do
+                self.check_index = self.check_index + 1
+                if self.check_index > p_count then self.check_index = 1 end
+                
+                local p = self.particles[self.check_index]
+                if p then
+                    local fraction = client_trace_line(lp, ex, ey, ez, p.x, p.y, p.z)
+                    p.visible = (fraction >= 0.9)
+                    
+                    local dx, dy, dz = p.x - ox, p.y - oy, p.z - oz
+                    local d = (dx*dx + dy*dy + dz*dz)^0.5
+                    p.dist_alpha = math.max(0, 255 - (d / spawn_rad) * 255)
+                end
+            end
+        end
+
+        for i = p_count, 1, -1 do
+            local p = self.particles[i]
+            p.x = p.x + p.vx * dt
+            p.y = p.y + p.vy * dt
+            p.z = p.z + p.vz * dt
+            if p.alpha < 200 then p.alpha = p.alpha + 150 * dt end
+
+            local dx, dy = p.x - ox, p.y - oy
+            if p.z <= p.ground_z or (dx*dx + dy*dy) > 5062500 then
+                table_remove(self.particles, i)
+            end
+        end
+    end
+
+    world_snow.draw = function(self)
+        if not interface.home.world_snow:get() then return end
+
+        local lp = entity.get_local_player()
+        if not lp then return end
+
+        local health = entity.get_prop(lp, "m_iHealth")
+        if not health or health <= 0 then return end
+        
+        local particles = self.particles
+        for i=1, #particles do
+            local p = particles[i]
+            if p.visible and p.dist_alpha > 5 then
+                local wx, wy = renderer_world_to_screen(p.x, p.y, p.z)
+                if wx ~= nil then
+                    local final_alpha = p.alpha
+                    if p.dist_alpha < final_alpha then final_alpha = p.dist_alpha end
+                    
+                    renderer_rectangle(math_floor(wx), math_floor(wy), p.size, p.size, 255, 255, 255, math_floor(final_alpha))
+                end
+            end
+        end
+    end
+end
+--@endregion
+
 interface.home.confetti:set_callback(function()
     confetti:push(0, false)
 end)
 
+client.set_event_callback('paint', function()
+    stickman:setup()
+    world_snow:update()
+    world_snow:draw()
+end)
+
 client.set_event_callback('paint_ui', function()
     widgets.paint()
-    stickman:setup()
     confetti:update()
     confetti:draw()
+    snow:update()
+    snow:draw()
 end)
 
 logging = {} do
@@ -9308,13 +9451,6 @@ interface.aimbot.dump_resolver_data:set_callback(function()
     resolver:dump_data()
 end)
 
---@region: on load
-logging:push("checkout latest update in console")
-logging:push("nice to see you at " .. _name .. " " .. _version .. " (" .. (_nickname or "unknown") .. ")")
-client.exec("play items/flashlight1.wav")
-confetti:push(0, true)
---@endregion
-
 --@region: on shutdown
 local function reset_player_plist(idx)
     if not idx or not entity.is_enemy(idx) then return end
@@ -9420,3 +9556,173 @@ client.set_event_callback('paint', function()
     enemy_ping.draw()
 end)
 --@endregion
+
+--@region: menu info
+menu_info = {} do
+    menu_info.alpha = 0
+    menu_info.expanded = true
+    menu_info.mouse_pressed = false
+    menu_info.is_interacting = false 
+
+    local function point_in_rect(px, py, rx, ry, rw, rh)
+        return px >= rx and px <= rx + rw and py >= ry and py <= ry + rh
+    end
+
+    local function get_menu_rect()
+        local mx, my = ui.menu_position()
+        local mw, mh = ui.menu_size()
+        return mx or 0, my or 0, mw or 0, mh or 0
+    end
+
+    menu_info.paint = function()
+        local is_open = ui.is_menu_open()
+        local target_alpha = is_open and 255 or 0
+        
+        menu_info.alpha = mathematic.lerp(menu_info.alpha, target_alpha, globals.frametime() * 20)
+
+        if menu_info.alpha < 1 then 
+            menu_info.is_interacting = false
+            return 
+        end
+
+        local x, y = ui.menu_position()
+        local w, h = ui.menu_size()
+        local r, g, b = unpack(interface.visuals.accent.color.value)
+        local up = 18
+        
+        local realtime = globals.realtime()
+        local pulse = (math.sin(realtime * 1.8) + 1) / 2 
+        local star_alpha = menu_info.alpha * (0.4 + 0.6 * pulse)
+        
+        renderer.text(x, y - up, r, g, b, star_alpha, 'l', 0, "✦ ")
+        renderer.text(x + renderer.measure_text(0, "✦ "), y - up, r, g, b, menu_info.alpha, 'lb', 0, "noctua")
+        renderer.text(x + w, y - up, 255, 255, 255, menu_info.alpha, 'r', 0, _nickname or "user")
+
+        local list_x = x - 7
+        local list_y = y + 10
+        local line_height = 13
+        
+        local status_text = menu_info.expanded and "(close)" or "(open)"
+        local update_header = string.format("what's new %s", status_text)
+        local tw, th = renderer.measure_text(0, update_header)
+
+        local mx, my = ui.mouse_position()
+        local m1 = client.key_state(0x01)
+
+        if is_open then
+            local menu_x, menu_y, menu_w, menu_h = get_menu_rect()
+            local is_hovering = point_in_rect(mx, my, list_x - tw, list_y, tw, th) and not point_in_rect(mx, my, menu_x, menu_y, menu_w, menu_h)
+
+            if m1 then
+                if is_hovering or menu_info.is_interacting then
+                    menu_info.is_interacting = true 
+                    if not menu_info.mouse_pressed and is_hovering then
+                        menu_info.expanded = not menu_info.expanded
+                        menu_info.mouse_pressed = true
+                    end
+                end
+            else
+                menu_info.is_interacting = false
+                menu_info.mouse_pressed = false
+            end
+        else
+            menu_info.is_interacting = false
+        end
+
+        renderer.text(list_x, list_y, r, g, b, menu_info.alpha, 'rb', 0, update_header)
+        
+        if menu_info.expanded then
+            local update_list = {
+                "streamer mode",
+                "animation breakers",
+                "buybot fallback option",
+                "enemy ping warning",
+                "dump resolver data",
+                "automatic osaa",
+                "winter mode ❄️"
+            }
+            for i, line in ipairs(update_list) do
+                renderer.text(list_x, list_y + (i * line_height), 255, 255, 255, menu_info.alpha, 'r', 0, line)
+            end
+        end
+    end
+
+    menu_info.setup_command = function(cmd)
+        if menu_info.is_interacting then
+            cmd.in_attack = 0
+            cmd.in_attack2 = 0
+        end
+    end
+end
+
+client.set_event_callback('paint_ui', menu_info.paint)
+client.set_event_callback('setup_command', menu_info.setup_command)
+
+client.set_event_callback('paint_ui', function()
+    local shimmer_text = table.concat(colors.shimmer(
+        globals.realtime() * 2,
+        "winter mode",
+        157, 230, 254, 255,
+        255, 255, 255, 255
+    ))
+    interface.home.winter_label:set(shimmer_text)
+end)
+--@endregion
+
+--@region: on load
+logging:push("happy new year! ❄️")
+logging:push("nice to see you at " .. _name .. " " .. _version .. " (" .. (_nickname or "user") .. ")")
+client.exec("play items/flashlight1.wav")
+confetti:push(0, true)
+--@endregion
+
+--@region: art
+local star = [[
+       .-.                         .-.                    |     '      .        
+      (   )    '        +         (   )                  -o-               o    
+       `-'     .-.                 `-'             '      |        +          + 
+              ( (    ~~+                      .               o               + 
+        .      `-'.              +    .         o     * .            .          
+              '                                                                 
+     '       .-.    *                      /                               .  ' 
+              ) )       '    noctua.sbs   /                           | o      
+  '.         '-´       '    o            *   version: {ver}          -+-       
+ +                  *   ' .                    .-.       '            |        
+         ' o                    |     . .       ) )                   +       
+       .         '             -o- .         o '-´   / +        .               
+       *                        |       .           /      +                    
+                                                   *       '                    
+                '                              .-.           .                  
+               '           *                .   ) )                             
+          o '     *                            '-´                      .       
+   '       +      .           '               +                      +        ''
+           .                                                  +'      .       . 
+ +          +                         ' o           '               *     *     
+]]
+
+local function artHighlight()
+    local r, g, b = unpack(interface.visuals.accent.color.value)
+    local white_r, white_g, white_b = 255, 255, 255
+    
+    local target1 = "noctua.sbs"
+    local placeholder = "{ver}"
+    local s1, e1 = star:find(target1, 1, true)
+    local s2, e2 = star:find(placeholder, (e1 or 0) + 1, true)
+
+    if not s1 or not s2 then
+        client.color_log(white_r, white_g, white_b, star .. "\n\0")
+        return
+    end
+
+    client.color_log(white_r, white_g, white_b, star:sub(1, s1 - 1) .. "\0")
+    client.color_log(r, g, b, star:sub(s1, e1) .. "\0")
+    client.color_log(white_r, white_g, white_b, star:sub(e1 + 1, s2 - 1) .. "\0")
+    client.color_log(r, g, b, tostring(_version) .. "\0")
+    client.color_log(white_r, white_g, white_b, star:sub(e2 + 1) .. "\n\0")
+end
+
+client.exec('clear')
+artHighlight()
+--@endregion
+
+-- ^~^!
