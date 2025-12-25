@@ -5573,21 +5573,41 @@ function json.decode(str)
                 return table.concat(parts)
             elseif c == "\\" then
                 pos = pos + 1
+                if pos > #str then return nil end
                 c = str:sub(pos, pos)
-                if c == "n" then c = "\n"
-                elseif c == "r" then c = "\r"
-                elseif c == "t" then c = "\t"
+                if c == "n" then 
+                    parts[#parts + 1] = "\n"
+                elseif c == "r" then 
+                    parts[#parts + 1] = "\r"
+                elseif c == "t" then 
+                    parts[#parts + 1] = "\t"
+                elseif c == "\\" then 
+                    parts[#parts + 1] = "\\"
+                elseif c == '"' then 
+                    parts[#parts + 1] = '"'
+                elseif c == "'" then 
+                    parts[#parts + 1] = "'"
+                elseif c == "/" then 
+                    parts[#parts + 1] = "/"
+                elseif c == "b" then 
+                    parts[#parts + 1] = "\b"
+                elseif c == "f" then 
+                    parts[#parts + 1] = "\f"
+                else
+                    parts[#parts + 1] = c
                 end
+                pos = pos + 1
+            else
+                parts[#parts + 1] = c
+                pos = pos + 1
             end
-            parts[#parts + 1] = c
-            pos = pos + 1
         end
         return nil
     end
     
     local function decode_number()
         local start = pos
-        while pos <= #str and string.find(str:sub(pos, pos), "[%d%.%-]") do
+        while pos <= #str and string.find(str:sub(pos, pos), "[%d%.eE%+%-]") do
             pos = pos + 1
         end
         local num = tonumber(str:sub(start, pos - 1))
@@ -5597,6 +5617,7 @@ function json.decode(str)
     
     local function decode_value()
         skip_whitespace()
+        if pos > #str then return nil end
         local c = str:sub(pos, pos)
         
         if c == "{" then
@@ -5608,13 +5629,12 @@ function json.decode(str)
                     pos = pos + 1
                     return obj
                 end
-                local key = decode_string() or decode_number()
+                local key = decode_string()
                 if not key then return nil end
                 skip_whitespace()
                 if str:sub(pos, pos) ~= ":" then return nil end
                 pos = pos + 1
                 local val = decode_value()
-                if val == nil then return nil end
                 obj[key] = val
                 skip_whitespace()
                 if str:sub(pos, pos) == "}" then
@@ -5637,7 +5657,6 @@ function json.decode(str)
                     return arr
                 end
                 local val = decode_value()
-                if val == nil then return nil end
                 arr[index] = val
                 index = index + 1
                 skip_whitespace()
@@ -5663,15 +5682,13 @@ function json.decode(str)
                 return false
             elseif str:sub(pos, pos + 3) == "null" then
                 pos = pos + 4
-                return json.null
+                return nil
             end
         end
         return nil
     end
     
     local result = decode_value()
-    skip_whitespace()
-    if pos <= #str then return nil end
     return result
 end
 
@@ -6301,14 +6318,14 @@ configs = {} do
         local payload = configs.collect()
         local ok, json_str = pcall(json.encode, payload, false)
         if not ok or not json_str then
-            logMessage('noctua ·', '', 'failed to encode config!')
+            logMessage('noctua · config', '', 'failed to encode config!')
             client.exec("play ui/menu_invalid.wav")
             return
         end
         -- print(json_str)
         local enc = b64_encode(json_str)
         clipboard.set('noctua:' .. enc)
-        logMessage('noctua ·', '', 'config exported to clipboard!')
+        logMessage('noctua · config', '', 'config exported to clipboard!')
         client.exec("play ui/beepclear.wav")
     end
 
@@ -6318,35 +6335,35 @@ configs = {} do
         if clip:find('^noctua:') then clip = clip:sub(8) end
         clip = clip:gsub('^%s+', ''):gsub('%s+$', '')
         if clip == '' then
-            logMessage('noctua ·', '', 'clipboard is empty!')
+            logMessage('noctua · config', '', 'clipboard is empty!')
             client.exec("play ui/menu_invalid.wav")
             return
         end
         local decoded = b64_decode(clip)
         if not decoded or decoded == '' then
-            logMessage('noctua ·', '', 'failed to decode base64!')
+            logMessage('noctua · config', '', 'failed to decode base64!')
             client.exec("play ui/menu_invalid.wav")
             return
         end
         local ok_json, data = pcall(json.decode, decoded)
         if not ok_json then
-            logMessage('noctua ·', '', 'json decode error: ' .. tostring(data))
+            logMessage('noctua · config', '', 'json decode error: ' .. tostring(data))
             client.exec("play ui/menu_invalid.wav")
             return
         end
         if type(data) ~= 'table' or not data.values then
-            logMessage('noctua ·', '', 'failed to parse config! (invalid structure)')
+            logMessage('noctua · config', '', 'failed to parse config! (invalid structure)')
             client.exec("play ui/menu_invalid.wav")
             return
         end
         configs.apply(data)
-        logMessage('noctua ·', '', 'config imported successfully!')
+        logMessage('noctua · config', '', 'config imported successfully!')
         client.exec("play ui/beepclear.wav")
     end
 
     function configs.load_default()
         if not default_config or default_config == '' then
-            logMessage('noctua ·', '', 'default config is empty!')
+            logMessage('noctua · config', '', 'default config is empty!')
             return
         end
         local clip = default_config
@@ -6355,18 +6372,18 @@ configs = {} do
         clip = clip:gsub('^%s+', ''):gsub('%s+$', '')
         local decoded = b64_decode(clip)
         if not decoded or decoded == '' then
-            logMessage('noctua ·', '', 'failed to decode default base64!')
+            logMessage('noctua · config', '', 'failed to decode default base64!')
             client.exec("play ui/menu_invalid.wav")
             return
         end
         local data = json.decode(decoded)
         if type(data) ~= 'table' or not data.values then
-            logMessage('noctua ·', '', 'failed to parse default config!')
+            logMessage('noctua · config', '', 'failed to parse default config!')
             client.exec("play ui/menu_invalid.wav")
             return
         end
         configs.apply(data)
-        logMessage('noctua ·', '', 'default config loaded successfully!')
+        logMessage('noctua · config', '', 'default config loaded successfully!')
         client.exec("play ui/beepclear.wav")
     end
 
@@ -6374,12 +6391,12 @@ configs = {} do
         if type(name) ~= 'string' then name = '' end
         name = name:gsub('^%s+', ''):gsub('%s+$', '')
         if name == '' or name == '<no configs>' or name == '<default>' or not name:match('%S') then
-            logMessage('noctua ·', '', 'enter valid config name!')
+            logMessage('noctua · config', '', 'enter valid config name!')
             client.exec("play ui/menu_invalid.wav")
             return
         end
         if state.data[name] ~= nil then
-            logMessage('noctua ·', '', 'config already exists!')
+            logMessage('noctua · config', '', 'config already exists!')
             client.exec("play ui/menu_invalid.wav")
             return
         end
@@ -6387,7 +6404,7 @@ configs = {} do
         table.insert(state.list, name)
         configs.save_db()
         configs.update_list_ui()
-        logMessage('noctua ·', '', 'config created!')
+        logMessage('noctua · config', '', 'config created!')
         client.exec("play ui/beepclear.wav")
     end
 
@@ -6414,26 +6431,26 @@ configs = {} do
     function configs.save_selected()
         local name = get_selected_name()
         if not name then
-            logMessage('noctua ·', '', 'select a config first!')
+            logMessage('noctua · config', '', 'select a config first!')
             client.exec("play ui/menu_invalid.wav")
             return
         end
         if name == 'default' or name == '+ new' then
-            logMessage('noctua ·', '', 'cannot overwrite default!')
+            logMessage('noctua · config', '', 'cannot overwrite default!')
             client.exec("play ui/menu_invalid.wav")
             return
         end
         state.data[name] = configs.collect()
         configs.save_db()
         widgets.save_all()
-        logMessage('noctua ·', '', 'config saved!')
+        logMessage('noctua · config', '', 'config saved!')
         client.exec("play ui/beepclear.wav")
     end
 
     function configs.load_selected()
         local name = get_selected_name()
         if not name then
-            logMessage('noctua ·', '', 'select a config first!')
+            logMessage('noctua · config', '', 'select a config first!')
             client.exec("play ui/menu_invalid.wav")
             return
         end
@@ -6442,31 +6459,31 @@ configs = {} do
             return
         end
         if name == '+ new' then
-            logMessage('noctua ·', '', 'please create a new config first!')
+            logMessage('noctua · config', '', 'please create a new config first!')
             client.exec("play ui/menu_invalid.wav")
             return
         end
         local data = state.data[name]
         if type(data) ~= 'table' then
-            logMessage('noctua ·', '', 'config data is invalid!')
+            logMessage('noctua · config', '', 'config data is invalid!')
             client.exec("play ui/menu_invalid.wav")
             return
         end
         configs.apply(data)
-        logMessage('noctua ·', '', 'config loaded!')
+        logMessage('noctua · config', '', 'config loaded!')
         client.exec("play ui/beepclear.wav")
     end
 
     function configs.load_aa_only()
         local name = get_selected_name()
         if not name then
-            logMessage('noctua ·', '', 'select a config first!')
+            logMessage('noctua · config', '', 'select a config first!')
             client.exec("play ui/menu_invalid.wav")
             return
         end
         if name == 'default' then
             if not default_config or default_config == '' then
-                logMessage('noctua ·', '', 'default config is empty!')
+                logMessage('noctua · config', '', 'default config is empty!')
                 return
             end
             local clip = default_config
@@ -6475,34 +6492,34 @@ configs = {} do
             clip = clip:gsub('^%s+', ''):gsub('%s+$', '')
             local decoded = b64_decode(clip)
             if not decoded or decoded == '' then
-                logMessage('noctua ·', '', 'failed to decode default base64!')
+                logMessage('noctua · config', '', 'failed to decode default base64!')
                 client.exec("play ui/menu_invalid.wav")
                 return
             end
             local data = json.decode(decoded)
             if type(data) ~= 'table' or not data.values then
-                logMessage('noctua ·', '', 'failed to parse default config!')
+                logMessage('noctua · config', '', 'failed to parse default config!')
                 client.exec("play ui/menu_invalid.wav")
                 return
             end
             configs.apply_aa_only(data)
-            logMessage('noctua ·', '', 'anti-aim loaded from default!')
+            logMessage('noctua · config', '', 'anti-aim loaded from default!')
             client.exec("play ui/beepclear.wav")
             return
         end
         if name == '+ new' then
-            logMessage('noctua ·', '', 'please create a new config first!')
+            logMessage('noctua · config', '', 'please create a new config first!')
             client.exec("play ui/menu_invalid.wav")
             return
         end
         local data = state.data[name]
         if type(data) ~= 'table' then
-            logMessage('noctua ·', '', 'config data is invalid!')
+            logMessage('noctua · config', '', 'config data is invalid!')
             client.exec("play ui/menu_invalid.wav")
             return
         end
         configs.apply_aa_only(data)
-        logMessage('noctua ·', '', 'anti-aim loaded!')
+        logMessage('noctua · config', '', 'anti-aim loaded!')
         client.exec("play ui/beepclear.wav")
     end
 
@@ -6514,7 +6531,7 @@ configs = {} do
             return
         end
         if name == 'default' or name == '+ new' then
-            logMessage('noctua ·', '', 'cannot delete default!')
+            logMessage('noctua · config', '', 'cannot delete default!')
             client.exec("play ui/menu_invalid.wav")
             return
         end
@@ -6527,7 +6544,7 @@ configs = {} do
         configs.save_db()
         configs.update_list_ui()
         interface.config.list:set(0)
-        logMessage('noctua ·', '', 'config deleted!')
+        logMessage('noctua · config', '', 'config deleted!')
         client.exec("play ui/beepclear.wav")
     end
 
@@ -6615,9 +6632,9 @@ configs = {} do
 
         if state.data[state.load_on_startup] then
             configs.apply(state.data[state.load_on_startup])
-            logMessage('noctua ·', '', 'autoloaded config: ' .. state.load_on_startup)
+            logMessage('noctua · config', '', 'autoloaded config: ' .. state.load_on_startup)
         else
-            logMessage('noctua ·', '', 'autoload config not found: ' .. state.load_on_startup)
+            logMessage('noctua · config', '', 'autoload config not found: ' .. state.load_on_startup)
         end
     end
 
@@ -6733,19 +6750,19 @@ streamer_images = {} do
         url = url:gsub('^%s+', ''):gsub('%s+$', '')
 
         if name == '' or name == 'how to use' then
-            logMessage('noctua ·', '', 'enter valid image name!')
+            logMessage('noctua · streamer', '', 'enter valid image name!')
             client.exec("play ui/menu_invalid.wav")
             return
         end
 
         if url == '' then
-            logMessage('noctua ·', '', 'enter valid image url!')
+            logMessage('noctua · streamer', '', 'enter valid image url!')
             client.exec("play ui/menu_invalid.wav")
             return
         end
 
         if streamer_images.is_builtin(name) then
-            logMessage('noctua ·', '', 'cannot override built-in image!')
+            logMessage('noctua · streamer', '', 'cannot override built-in image!')
             client.exec("play ui/menu_invalid.wav")
             return
         end
@@ -6765,14 +6782,14 @@ streamer_images = {} do
         state.data[name] = url
         streamer_images.save_db()
         streamer_images.update_list_ui()
-        logMessage('noctua ·', '', 'image added: ' .. name)
+        logMessage('noctua · streamer', '', 'image added: ' .. name)
         client.exec("play ui/beepclear.wav")
     end
 
     function streamer_images.remove(name)
         if not name or name == '' then return end
         if streamer_images.is_builtin(name) then
-            logMessage('noctua ·', '', 'cannot delete built-in image!')
+            logMessage('noctua · streamer', '', 'cannot delete built-in image!')
             client.exec("play ui/menu_invalid.wav")
             return
         end
@@ -6788,7 +6805,7 @@ streamer_images = {} do
         streamer_images.save_db()
         streamer_images.update_list_ui()
         interface.utility.streamer_mode_select:set(0)
-        logMessage('noctua ·', '', 'image deleted: ' .. name)
+        logMessage('noctua · streamer', '', 'image deleted: ' .. name)
         client.exec("play ui/beepclear.wav")
     end
 
@@ -6820,7 +6837,7 @@ streamer_images = {} do
         interface.utility.streamer_mode_delete:set_callback(function()
             local sel = streamer_images.get_selected_name()
             if not sel then
-                logMessage('noctua ·', '', 'select image first!')
+                logMessage('noctua · streamer', '', 'select image first!')
                 client.exec("play ui/menu_invalid.wav")
                 return
             end
@@ -6830,7 +6847,7 @@ streamer_images = {} do
         interface.utility.streamer_mode_add:set_callback(function()
             local sel = streamer_images.get_selected_name()
             if not sel then
-                logMessage('noctua ·', '', 'select image first!')
+                logMessage('noctua · streamer', '', 'select image first!')
                 client.exec("play ui/menu_invalid.wav")
                 return
             end
@@ -7603,26 +7620,23 @@ killsay = {} do
             logMessage('noctua · killsay', '', 'no URL set for ' .. phrase_type .. ' phrases')
             return
         end
-
+    
         http.get(url, function(success, response)
             if success and response and response.status == 200 then
-                local ok, decoded = pcall(json.parse, response.body)
-                if ok and decoded then
-                    target_table = {}
+                local ok, decoded = pcall(json.decode, response.body)
+                if ok and decoded and type(decoded) == "table" then
+                    for i = #target_table, 1, -1 do
+                        target_table[i] = nil
+                    end
                     for i, phrase_set in ipairs(decoded) do
                         target_table[i] = {}
                         for j, line in ipairs(phrase_set) do
                             target_table[i][j] = tostring(line)
                         end
                     end
-                    if phrase_type == "kill" then
-                        killsay.multi_phrases_kill = target_table
-                    else
-                        killsay.multi_phrases_death = target_table
-                    end
                     logMessage('noctua · killsay', '', 'loaded ' .. #target_table .. ' ' .. phrase_type .. ' phrase sets')
                 else
-                    logMessage('noctua · killsay', '', 'failed to parse JSON for ' .. phrase_type .. ' phrases: ' .. tostring(decoded))
+                    logMessage('noctua · killsay', '', 'failed to parse JSON for ' .. phrase_type .. ' phrases')
                 end
             else
                 logMessage('noctua · killsay', '', 'failed to load ' .. phrase_type .. ' phrases (' .. (success and response.status or 'no response') .. ')')
@@ -8864,7 +8878,7 @@ streamer_mode = {} do
 
         local url = streamer_images and streamer_images.get_url and streamer_images.get_url(name)
         if not url or url == "" then
-            logMessage('noctua ·', '', 'no url for image: ' .. name)
+            logMessage('noctua · streamer', '', 'no url for image: ' .. name)
             return
         end
 
@@ -8873,9 +8887,9 @@ streamer_mode = {} do
         http.get(url, function(success, response)
             if success and response and response.status == 200 then
                 streamer_mode.image_cache[name] = images.load(response.body)
-                logMessage('noctua ·', '', 'loaded image: ' .. name)
+                logMessage('noctua · streamer', '', 'loaded image: ' .. name)
             else
-                logMessage('noctua ·', '', 'failed to load image: ' .. name .. ' (' .. (success and response.status or 'no response') .. ')')
+                logMessage('noctua · streamer', '', 'failed to load image: ' .. name .. ' (' .. (success and response.status or 'no response') .. ')')
             end
             streamer_mode.loading[name] = false
         end)
@@ -9019,7 +9033,7 @@ streamer_mode = {} do
         streamer_mode.register_image_widget(img)
         streamer_mode.save_db()
 
-        logMessage('noctua ·', '', 'widget added: ' .. name)
+        logMessage('noctua · streamer', '', 'widget added: ' .. name)
         client.exec("play ui/beepclear.wav")
     end
 
@@ -9034,7 +9048,7 @@ streamer_mode = {} do
                 
                 table.remove(streamer_mode.active_images, i)
                 streamer_mode.save_db()
-                logMessage('noctua ·', '', 'image removed: ' .. name)
+                logMessage('noctua · streamer', '', 'image removed: ' .. name)
                 client.exec("play ui/beepclear.wav")
                 return
             end
@@ -9257,7 +9271,7 @@ client.set_event_callback('console_input', function(str)
 
     local name, url = line:match('^%.add%s+(%S+)%s+(.+)$')
     if not name or not url then
-        logMessage('noctua ·', '', 'usage: .add <name> <url>')
+        logMessage('noctua · streamer', '', 'usage: .add <name> <url>')
         return true
     end
 
@@ -9268,7 +9282,6 @@ client.set_event_callback('console_input', function(str)
     return true
 end)
 
--- callback for dump resolver data button
 interface.aimbot.dump_resolver_data:set_callback(function()
     resolver:dump_data()
 end)
