@@ -4420,6 +4420,7 @@ end)
 logging = {} do
     client.exec("con_filter_enable 1") 
     client.exec("con_filter_text noctua")
+    logging.logweapon_original = ui.reference('misc', 'miscellaneous', 'log weapon purchases')
     logging.hitgroup_names = {"generic", "head", "chest", "stomach", "left arm", "right arm", "left leg", "right leg", "neck", "?", "gear"}
     logging.animatedMessages = {}
     logging.cache = {}
@@ -4751,7 +4752,7 @@ logging = {} do
         end
     
         if reason == "spread" or reason == "prediction error" then
-            -- keep original reason
+            -- keep reason
         elseif health <= 0 then
             reason = "player death"
         elseif reason == "death" then
@@ -4832,22 +4833,42 @@ logging = {} do
         
         if doScreen then self:push(msg) end
     end
-    
-    logging.on_item_purchase = function(e)
-        if not interface.visuals.logging:get() then return end
+
+    logging.setup_logweapon = function()
+        if not interface.visuals.logging:get() then 
+            ui.set_enabled(logging.logweapon_original, true)
+            return 
+        end
         
         local logOptions = interface.visuals.logging_options:get()
         local consoleOptions = interface.visuals.logging_options_console:get()
-        
         local doConsole = utils.contains(logOptions, "console") and utils.contains(consoleOptions, "buy")
+        
+        if doConsole then
+            ui.set(logging.logweapon_original, false)
+            ui.set_enabled(logging.logweapon_original, false)
+        else
+            ui.set_enabled(logging.logweapon_original, true)
+        end
+    end
+    
+    logging.on_item_purchase = function(e)
+        if not interface.visuals.logging:get() then return end
+        local logOptions = interface.visuals.logging_options:get()
+        local consoleOptions = interface.visuals.logging_options_console:get()
+        local doConsole = utils.contains(logOptions, "console") and utils.contains(consoleOptions, "buy")
+        
         if not doConsole then return end
         
         local player_idx = client.userid_to_entindex(e.userid)
         if not player_idx or not entity.is_enemy(player_idx) then return end
         
-        local playerName = entity.get_player_name(player_idx) or "unknown"
         local weapon = e.weapon or "unknown item"
+        if weapon == "weapon_unknown" then return end
         
+        weapon = weapon:gsub("^weapon_", "")
+        
+        local playerName = entity.get_player_name(player_idx) or "unknown"
         argLog("%s bought %s", playerName, weapon)
     end
     
@@ -4876,6 +4897,7 @@ end
 
 client.set_event_callback("round_prestart", logging.on_round_prestart)
 client.set_event_callback("item_purchase", logging.on_item_purchase)
+client.set_event_callback("paint", logging.setup_logweapon)
 
 widgets.register({
     id = "crosshair_indicators",
