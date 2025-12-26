@@ -3382,7 +3382,7 @@ visuals = {} do
             local indent = (align == 'l') and "   " or "" 
             local r, g, b = unpack(interface.visuals.accent.color.value)
             local name_w = select(1, renderer.measure_text("lb", _name))
-            local ver_w = select(1, renderer.measure_text("lb", _version))
+            local ver_w = select(1, renderer.measure_text("l", _version))
             local spacing = 4 
             local total_w = name_w + spacing + ver_w
 
@@ -3394,7 +3394,7 @@ visuals = {} do
             end
 
             renderer.text(start_x, y, r, g, b, self.windowAlpha, "lb", 0, _name)
-            renderer.text(start_x + name_w + spacing, y, 255, 255, 255, self.windowAlpha, "lb", 0, _version)
+            renderer.text(start_x + name_w + spacing, y, 255, 255, 255, self.windowAlpha, "l", 0, _version)
 
             y = y + line_spacing + 5
 
@@ -4832,10 +4832,15 @@ logging = {} do
         if not doConsole and not doScreen then return end
 
         local yawDisplay = (type(desiredYaw) == "number") and (desiredYaw.."°") or (tostring(desiredYaw).."°")
-        local msg = string.format("fired at %s's %s for %d / lc: %d - yaw: %s", playerName, hitbox, hitChance, lagComp, yawDisplay)
 
-        if doConsole then argLog(msg) end
-        if doScreen then self:push(msg) end
+        if doConsole then 
+            argLog("fired at %s's %s for %d / lc: %d - yaw: %d°", playerName, hitbox, damage, lagComp, desiredYaw) 
+        end
+
+        if doScreen then 
+            local msg = string.format("fired at %s's %s for %d / lc: %d - yaw: %s°", playerName, hitbox, damage, lagComp, tostring(desiredYaw))
+            self:push(msg) 
+        end
     end
 
     logging.handleAimHit = function(self, e)
@@ -9285,7 +9290,7 @@ art = {} do
         log_val(star:sub(1, s1 - 1))
         log_accent(star:sub(s1, e1))
         log_val(star:sub(e1 + 1, s2 - 1))
-        log_accent(tostring(_version or "1.0.0"))
+        log_accent(tostring(_version))
         log_val(star:sub(e2 + 1) .. "\n")
     end
 
