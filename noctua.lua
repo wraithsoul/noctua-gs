@@ -3391,16 +3391,21 @@ visuals = {} do
             local y = base_y
             local indent = (align == 'l') and "   " or "" 
             local r, g, b = unpack(interface.visuals.accent.color.value)
-            local align_flags = align .. "b"
-            renderer.text(base_x, y, r, g, b, self.windowAlpha, align_flags, 0, _name)
-            
-            local name_width = select(1, renderer.measure_text(align_flags, _name))
-            local ver_x = (align == 'l') and (base_x + name_width + 4) or 
-                        (align == 'c' and (base_x + name_width/2 + 4) or base_x)
+            local name_w = select(1, renderer.measure_text("lb", _name))
+            local ver_w = select(1, renderer.measure_text("lb", _version))
+            local spacing = 4 
+            local total_w = name_w + spacing + ver_w
 
-            if align ~= 'r' then
-                renderer.text(ver_x, y, 255, 255, 255, self.windowAlpha, align, 0, _version)
+            local start_x = base_x
+            if align == 'c' then
+                start_x = base_x - (total_w / 2)
+            elseif align == 'r' then
+                start_x = base_x - total_w
             end
+
+            renderer.text(start_x, y, r, g, b, self.windowAlpha, "lb", 0, _name)
+            renderer.text(start_x + name_w + spacing, y, 255, 255, 255, self.windowAlpha, "lb", 0, _version)
+
             y = y + line_spacing + 5
 
             if t_yaw ~= "off" then
@@ -5168,7 +5173,6 @@ widgets.register({
     z = 5
 })
 
-
 widgets.register({
     id = "debug_window",
     title = "Debug Window",
@@ -5221,6 +5225,7 @@ widgets.register({
     end,
     z = 6
 })
+
 widgets.register({
     id = "watermark",
     title = "Watermark",
