@@ -9567,7 +9567,8 @@ menu_info = {} do
                 "enemy ping warning",
                 "dump resolver data",
                 "automatic osaa & disablers",
-                "winter mode ❄️"
+                "damage rejection reason",
+                "winter mode ❄️",
             }
             for i, line in ipairs(update_list) do
                 renderer.text(list_x, list_y + (i * line_height), 255, 255, 255, menu_info.alpha, 'r', 0, line)
