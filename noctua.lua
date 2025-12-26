@@ -577,8 +577,6 @@ interface = {} do
         crosshair_animate_scope = interface.header.general:checkbox('animate on-scope'),
         damage_indicator = interface.header.general:checkbox('damage indicator'),
         lc_status = interface.header.general:checkbox('lc status'),
-        enemy_ping_warn = interface.header.other:checkbox('enemy ping warning'),
-        enemy_ping_minimum = interface.header.other:slider('minimum latency to show', 10, 100, 80, true, 'ms'),
         window = interface.header.general:checkbox('debug window'),
         window_style = interface.header.general:combobox('style', 'old', 'modern'),
         watermark = interface.header.general:checkbox('watermark'),
@@ -602,7 +600,9 @@ interface = {} do
         zoom_animation = interface.header.other:checkbox('zoom animation'),
         zoom_animation_speed = interface.header.other:slider('speed', 10, 100, 50, true, '%'),
         zoom_animation_value = interface.header.other:slider('strength', 1, 100, 2, true, '%'),
-        spawn_zoom = interface.header.other:checkbox('spawn zoom')
+        spawn_zoom = interface.header.other:checkbox('spawn zoom'),
+        enemy_ping_warn = interface.header.other:checkbox('enemy ping warning'),
+        enemy_ping_minimum = interface.header.other:slider('minimum latency to show', 10, 100, 80, true, 'ms')
     }
 
     interface.models = {
@@ -8206,9 +8206,6 @@ animation_breakers = {} do
     }**]])
 
     local nullptr = ffi.new('void*')
-    local ground_ticks = 0
-    local end_time = 0
-
     local leg_movement_ref = u_reference.antiaim.leg_movement
     local slowmotion_ref = u_reference.antiaim.slowmotion
     local quick_peek_ref = u_reference.ragebot.quick_peek
@@ -8234,21 +8231,15 @@ animation_breakers = {} do
         end
     end
 
-    animation_breakers.update_pose_params = function(cmd)
+    animation_breakers.update_pose_params = function()
         local me = entity.get_local_player()
-        if not me or not entity.is_alive(me) then
-            return
-        end
-
-        local animlayers = u_memory.animlayers:get(me)
-        if not animlayers then
-            return
-        end
+        if not me or not entity.is_alive(me) then return end
 
         local breakers_enabled = interface.utility.animation_breakers:get()
-        if not breakers_enabled then
-            return
-        end
+        if not breakers_enabled then return end
+
+        local animlayers = u_memory.animlayers:get(me)
+        if not animlayers then return end
 
         if utils.contains(breakers_enabled, 'keus scale') then
             entity.set_prop(me, 'm_flModelScale', 0.5)
@@ -8290,9 +8281,7 @@ animation_breakers = {} do
                 entity.set_prop(me, 'm_flPoseParameter', 1, 6)
             elseif air_legs == 'walking' then
                 local cycle = globals.realtime() * 0.7 % 2
-                if cycle > 1 then
-                    cycle = 1 - (cycle - 1)
-                end
+                if cycle > 1 then cycle = 1 - (cycle - 1) end
                 animlayers[6]['weight'] = 1
                 animlayers[6]['cycle'] = cycle
             elseif air_legs == 'kinguru' then
@@ -8312,33 +8301,31 @@ animation_breakers = {} do
             entity.set_prop(me, 'm_flPoseParameter', 0.5, 12)
         end
 
-        if utils.contains(breakers_enabled, 'earthquake') then
+        if utils.contains(breakers_enabled, 'earthquake') or utils.contains(breakers_enabled, 'body lean') then
             local player_ptr = ffi.cast(class_ptr, u_memory.get_client_entity(ffi.cast('int', me)))
             if player_ptr ~= nullptr then
                 local anim_layers = ffi.cast(animation_layer_t, ffi.cast(char_ptr, player_ptr) + 0x2990)[0]
                 if anim_layers ~= nullptr then
-                    anim_layers[12].weight = client.random_float(-0.3, 0.75)
-                end
-            end
-        end
-
-        if utils.contains(breakers_enabled, 'body lean') then
-            local player_ptr = ffi.cast(class_ptr, u_memory.get_client_entity(ffi.cast('int', me)))
-            if player_ptr ~= nullptr then
-                local anim_layers = ffi.cast(animation_layer_t, ffi.cast(char_ptr, player_ptr) + 0x2990)[0]
-                if anim_layers ~= nullptr then
-                    local body_lean_value = interface.utility.body_lean_amount:get() or 50
-                    anim_layers[12].weight = body_lean_value / 100
+                    if utils.contains(breakers_enabled, 'earthquake') then
+                        anim_layers[12].weight = client.random_float(-0.3, 0.75)
+                    elseif utils.contains(breakers_enabled, 'body lean') then
+                        local body_lean_value = interface.utility.body_lean_amount:get() or 50
+                        anim_layers[12].weight = body_lean_value / 100
+                    end
                 end
             end
         end
     end
 
     animation_breakers.post = function(cmd)
-        if utils.contains(interface.utility.animation_breakers:get() or {}, 'quick peek legs') and quick_peek_ref.hotkey:get() then
-            local me = entity.get_local_player()
-            local move_type = entity.get_prop(me, 'm_MoveType')
+        local enabled = interface.utility.animation_breakers:get()
+        if not enabled then return end
 
+        if utils.contains(enabled, 'quick peek legs') and quick_peek_ref.hotkey:get() then
+            local me = entity.get_local_player()
+            if not me then return end
+            
+            local move_type = entity.get_prop(me, 'm_MoveType')
             if move_type == 2 then
                 local command = u_memory.user_input:get_command(cmd.command_number)
                 if command then
@@ -8352,16 +8339,11 @@ animation_breakers = {} do
     end
 
     animation_breakers.setup = function()
-        if interface.utility.animation_breakers:get() then
-            client.set_event_callback('pre_render', animation_breakers.update_pose_params)
-            client.set_event_callback('post', animation_breakers.post)
-        else
-            client.unset_event_callback('pre_render', animation_breakers.update_pose_params)
-            client.unset_event_callback('post', animation_breakers.post)
-        end
+        client.set_event_callback('pre_render', animation_breakers.update_pose_params)
+        client.set_event_callback('post', animation_breakers.post)
     end
 
-    client.set_event_callback('paint', animation_breakers.setup)
+    animation_breakers.setup()
 end
 --@endregion
 
