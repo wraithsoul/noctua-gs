@@ -9395,40 +9395,49 @@ interface.aimbot.dump_resolver_data:set_callback(function()
 end)
 
 --@region: on shutdown
-local function reset_player_plist(idx)
-    if not idx or not entity.is_enemy(idx) then return end
-    plist.set(idx, 'Force body yaw', false)
-    plist.set(idx, 'Force body yaw value', 0)
-    plist.set(idx, 'Force pitch', false)
-    plist.set(idx, 'Force pitch value', 0)
-    plist.set(idx, 'Correction active', false)
-    plist.set(idx, 'Override safe point', "-")
-    plist.set(idx, 'Override safe point value', "Off")
-    plist.set(idx, 'Override prefer body aim', "-")
-end
+shutdown_handler = {} do
+    local controller = {
+        was_enabled = false
+    }
 
-local function reset_all_players()
-    local enemies = entity.get_players(true)
-    if not enemies then return end
-    for _, idx in ipairs(enemies) do
-        if idx and entity.is_alive(idx) then
-            reset_player_plist(idx)
+    local function reset_player_plist(idx)
+        if not idx or not entity.is_enemy(idx) then return end
+        plist.set(idx, 'Force body yaw', false)
+        plist.set(idx, 'Force body yaw value', 0)
+        plist.set(idx, 'Force pitch', false)
+        plist.set(idx, 'Force pitch value', 0)
+        plist.set(idx, 'Correction active', false)
+        plist.set(idx, 'Override safe point', "-")
+        plist.set(idx, 'Override safe point value', "Off")
+        plist.set(idx, 'Override prefer body aim', "-")
+    end
+
+    shutdown_handler.reset_all_players = function()
+        local enemies = entity.get_players(true)
+        if not enemies then return end
+        for _, idx in ipairs(enemies) do
+            if idx and entity.is_alive(idx) then
+                reset_player_plist(idx)
+            end
         end
     end
-end
 
-local resolver_controller = { was_enabled = false }
-client.set_event_callback('paint', function()
-    local enabled = (interface.aimbot.enabled_aimbot:get() and interface.aimbot.enabled_resolver_tweaks:get())
-    if resolver_controller.was_enabled and not enabled then
-        reset_all_players()
+    shutdown_handler.setup = function()
+        client.set_event_callback('paint', function()
+            local enabled = (interface.aimbot.enabled_aimbot:get() and interface.aimbot.enabled_resolver_tweaks:get())
+            if controller.was_enabled and not enabled then
+                shutdown_handler.reset_all_players()
+            end
+            controller.was_enabled = enabled
+        end)
+
+        client.set_event_callback('shutdown', function()
+            shutdown_handler.reset_all_players()
+        end)
     end
-    resolver_controller.was_enabled = enabled
-end)
 
-client.set_event_callback('shutdown', function()
-    reset_all_players()
-end)
+    shutdown_handler.setup()
+end
 --@endregion
 
 --@region: enemy ping flag
