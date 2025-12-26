@@ -3329,9 +3329,9 @@ visuals = {} do
         local local_player = entity.get_local_player()
         local health = local_player and entity.get_prop(local_player, "m_iHealth") or 0
         local menuOpen = ui.is_menu_open()
-        
+
         local is_game_over = entity.get_all("CCSGameRulesProxy")[1] and entity.get_prop(entity.get_all("CCSGameRulesProxy")[1], "m_gamePhase") >= 5
-        local windowEnabled = interface.visuals.enabled_visuals:get() 
+        local windowEnabled = interface.visuals.enabled_visuals:get()
                             and interface.visuals.window:get()
                             and not is_game_over
                             and ((local_player and health > 0) or menuOpen)
@@ -3345,8 +3345,10 @@ visuals = {} do
         local target = client.current_threat()
         local t_name = "none"
         local t_state = "none"
-        local t_yaw = "none"
         local resolver_enabled = interface.aimbot.enabled_aimbot:get() and interface.aimbot.enabled_resolver_tweaks:get()
+        self._yaw_cache = self._yaw_cache or { val = "none", for_target = nil, time = 0 }
+        local t_yaw = "none"
+        local cur_time = globals.realtime()
 
         if target then
             local player_info = utils.get_player_info(target)
@@ -3356,11 +3358,26 @@ visuals = {} do
                 if resolver_enabled then
                     if player_info.__fakeplayer or player_info.bot then
                         t_yaw = "none (bot)"
+                        self._yaw_cache = { val = t_yaw, for_target = target, time = cur_time }
                     else
-                        t_yaw = tostring(resolver.cache[target] or 0)
+                        local update = false
+                        if self._yaw_cache.for_target ~= target then
+                            update = true
+                        elseif (cur_time - self._yaw_cache.time) > 0.15 then
+                            update = true
+                        end
+                        if update then
+                            self._yaw_cache = {
+                                val = tostring(resolver.cache[target] or 0),
+                                for_target = target,
+                                time = cur_time
+                            }
+                        end
+                        t_yaw = self._yaw_cache.val
                     end
                 else
                     t_yaw = "off"
+                    self._yaw_cache = { val = t_yaw, for_target = target, time = cur_time }
                 end
             end
         end
@@ -3378,7 +3395,7 @@ visuals = {} do
                         (align == 'c' and (base_x + name_width/2 + 4) or base_x)
 
             if align ~= 'r' then
-            renderer.text(ver_x, y, 255, 255, 255, self.windowAlpha, align, 0, _version)
+                renderer.text(ver_x, y, 255, 255, 255, self.windowAlpha, align, 0, _version)
             end
             y = y + line_spacing + 5
 
@@ -3415,16 +3432,16 @@ visuals = {} do
                 local exp_state = "ready"
 
                 if isDT then
-                local dt_ready = antiaim_funcs.get_double_tap()
-                local tickbase = antiaim_funcs.get_tickbase_shifting()
-                
-                if tickbase >= 4 and dt_ready then
-                    exp_state = "ready"
-                elseif not utils.weapon_ready() then
-                    exp_state = "waiting"
-                else
-                    exp_state = "ready"
-                end
+                    local dt_ready = antiaim_funcs.get_double_tap()
+                    local tickbase = antiaim_funcs.get_tickbase_shifting()
+                    
+                    if tickbase >= 4 and dt_ready then
+                        exp_state = "ready"
+                    elseif not utils.weapon_ready() then
+                        exp_state = "waiting"
+                    else
+                        exp_state = "ready"
+                    end
                 end
 
                 renderer.text(base_x, y, 215, 215, 215, self.windowAlpha, align, 0, indent .. "- type: " .. exp_type)
@@ -5382,8 +5399,6 @@ widgets.register({
 widgets.load_from_db()
 client.set_event_callback("paint_ui", function()
     widgets.paint_ui()
-    streamer_mode.process_widget_removals()
-    streamer_mode.handle_image_input()
 end)
 client.set_event_callback('pre_config_save', function() widgets.save_all() end)
 client.set_event_callback('post_config_load', function() 
@@ -5406,7 +5421,6 @@ if interface.utility.streamer_mode then
                     end
                     widgets.state[widget_id] = nil
                 end
-                streamer_mode.register_image_widget(img)
             end
         else
             for _, img in ipairs(streamer_mode.active_images) do
@@ -9049,21 +9063,21 @@ end
 --@endregion: antiaim
 
 --@region: streamer mode
+--@region: streamer mode
 streamer_mode = {} do
     local DB_KEY = 'noctua.streamer_mode_images'
     local MIN_SIZE = 50
-    local MAX_SIZE = 800
+    local MAX_SIZE = 1200
     local DEFAULT_SIZE = 200
     local HANDLE_SIZE = 12
     local CLOSE_SIZE = 16
-    local PAD = 4
     local SNAP = 12
-    local FRAME_CORNER_SIZE = 8
 
     streamer_mode.active_images = {}
     streamer_mode.image_cache = {}
     streamer_mode.loading = {}
     streamer_mode.next_id = 1
+    
     streamer_mode.drag_id = nil
     streamer_mode.drag_offset_x = 0
     streamer_mode.drag_offset_y = 0
@@ -9074,6 +9088,7 @@ streamer_mode = {} do
     streamer_mode.resize_start_my = 0
     streamer_mode.resize_keep_ratio = false
     streamer_mode.was_m1_down = false
+    streamer_mode.is_interacting = false
 
     local function clamp(v, mn, mx)
         if v < mn then return mn end
@@ -9127,139 +9142,16 @@ streamer_mode = {} do
         end
 
         local url = streamer_images and streamer_images.get_url and streamer_images.get_url(name)
-        if not url or url == "" then
-            logMessage('noctua · streamer', '', 'no url for image: ' .. name)
-            return
-        end
+        if not url or url == "" then return end
 
         streamer_mode.loading[name] = true
 
         http.get(url, function(success, response)
             if success and response and response.status == 200 then
                 streamer_mode.image_cache[name] = images.load(response.body)
-                logMessage('noctua · streamer', '', 'loaded image: ' .. name)
-            else
-                logMessage('noctua · streamer', '', 'failed to load image: ' .. name .. ' (' .. (success and response.status or 'no response') .. ')')
             end
             streamer_mode.loading[name] = false
         end)
-    end
-
-    function streamer_mode.get_display_name(name, id)
-        local count = 0
-        local my_index = 1
-        for _, img in ipairs(streamer_mode.active_images) do
-            if img.name == name then
-                count = count + 1
-                if img.id == id then
-                    my_index = count
-                end
-            end
-        end
-        if count > 1 then
-            return name .. " (" .. my_index .. ")"
-        end
-        return name
-    end
-
-    function streamer_mode.register_image_widget(img)
-        widgets.register({
-            id = "streamer_mode_img_" .. img.id,
-            title = "Image: " .. img.name,
-            defaults = { anchor_x = nil, anchor_y = nil, offset_x = img.x, offset_y = img.y, w = img.w, h = img.h },
-            get_size = function(st)
-                return img.w, img.h
-            end,
-            draw = function(ctx)
-                if not interface.utility.streamer_mode:get() then return end
-                
-                img.x = ctx.x
-                img.y = ctx.y
-                img.w = ctx.w
-                img.h = ctx.h
-                
-                local image_data = streamer_mode.image_cache[img.name]
-                if image_data then
-                    image_data:draw(img.x, img.y, img.w, img.h, 255, 255, 255, 255)
-                elseif not streamer_mode.loading[img.name] then
-                    streamer_mode.load_image_data(img.name)
-                end
-                
-                if ctx.edit_mode then
-                    streamer_mode.draw_controls(img)
-                end
-            end,
-            z = 5
-        })
-    end
-    
-    function streamer_mode.handle_image_input()
-        if not interface.utility.streamer_mode:get() then return end
-        if not ui.is_menu_open() then 
-            streamer_mode.resize_id = nil
-            return 
-        end
-        
-        local mx, my = ui.mouse_position()
-        local m1 = client.key_state(0x01)
-        local shift = client.key_state(0x10)
-        
-        streamer_mode.resize_id = streamer_mode.resize_id or nil
-        
-        for _, img in ipairs(streamer_mode.active_images) do
-            local widget_id = "streamer_mode_img_" .. img.id
-            local widget_st = widgets.state[widget_id]
-            if not widget_st then goto continue end
-            
-            local cx, cy, cw, ch = img.x + img.w - CLOSE_SIZE, img.y, CLOSE_SIZE, CLOSE_SIZE
-            if m1 and point_in_rect(mx, my, cx, cy, cw, ch) then
-                streamer_mode.images_to_remove = streamer_mode.images_to_remove or {}
-                table.insert(streamer_mode.images_to_remove, img.id)
-            end
-            
-            local expand = 8
-            local rx, ry, rw, rh = img.x + img.w - HANDLE_SIZE - expand, img.y + img.h - HANDLE_SIZE - expand, HANDLE_SIZE + expand, HANDLE_SIZE + expand
-            if point_in_rect(mx, my, rx, ry, rw, rh) then
-                if m1 then
-                    if streamer_mode.resize_id ~= img.id then
-                        streamer_mode.resize_id = img.id
-                        streamer_mode.resize_start_w = img.w
-                        streamer_mode.resize_start_h = img.h
-                        streamer_mode.resize_start_mx = mx
-                        streamer_mode.resize_start_my = my
-                        streamer_mode.resize_keep_ratio = shift
-                    end
-                end
-            end
-            
-            if streamer_mode.resize_id == img.id and m1 and streamer_mode.resize_start_w then
-                local dx = mx - streamer_mode.resize_start_mx
-                local dy = my - streamer_mode.resize_start_my
-                local new_w = streamer_mode.resize_start_w + dx
-                local new_h = streamer_mode.resize_start_h + dy
-                if shift or streamer_mode.resize_keep_ratio then
-                    local delta = math.max(dx, dy)
-                    new_w = streamer_mode.resize_start_w + delta
-                    new_h = streamer_mode.resize_start_h + delta
-                end
-                new_w = clamp(new_w, MIN_SIZE, MAX_SIZE)
-                new_h = clamp(new_h, MIN_SIZE, MAX_SIZE)
-                img.w = new_w
-                img.h = new_h
-            elseif streamer_mode.resize_id == img.id and not m1 then
-                streamer_mode.resize_id = nil
-                streamer_mode.save_db()
-            end
-            
-            ::continue::
-        end
-        
-        if streamer_mode.images_to_remove then
-            for _, id in ipairs(streamer_mode.images_to_remove) do
-                streamer_mode.remove_image(id)
-            end
-            streamer_mode.images_to_remove = {}
-        end
     end
 
     function streamer_mode.add_image(name)
@@ -9272,85 +9164,28 @@ streamer_mode = {} do
         local img = {
             id = id,
             name = name,
-            x = sw / 2 - DEFAULT_SIZE / 2,
-            y = sh / 2 - DEFAULT_SIZE / 2,
+            x = math.floor(sw / 2 - DEFAULT_SIZE / 2),
+            y = math.floor(sh / 2 - DEFAULT_SIZE / 2),
             w = DEFAULT_SIZE,
             h = DEFAULT_SIZE
         }
 
         table.insert(streamer_mode.active_images, img)
         streamer_mode.load_image_data(name)
-        streamer_mode.register_image_widget(img)
         streamer_mode.save_db()
 
-        logMessage('noctua · streamer', '', 'widget added: ' .. name)
         client.exec("play ui/beepclear.wav")
     end
 
     function streamer_mode.remove_image(id)
         for i, img in ipairs(streamer_mode.active_images) do
             if img.id == id then
-                local name = img.name
-                local widget_id = "streamer_mode_img_" .. id
-                
-                streamer_mode.widgets_to_remove = streamer_mode.widgets_to_remove or {}
-                table.insert(streamer_mode.widgets_to_remove, widget_id)
-                
                 table.remove(streamer_mode.active_images, i)
                 streamer_mode.save_db()
-                logMessage('noctua · streamer', '', 'image removed: ' .. name)
                 client.exec("play ui/beepclear.wav")
                 return
             end
         end
-    end
-    
-    function streamer_mode.process_widget_removals()
-        if not streamer_mode.widgets_to_remove then return end
-        for _, widget_id in ipairs(streamer_mode.widgets_to_remove) do
-            widgets.items[widget_id] = nil
-            for idx, order_id in ipairs(widgets.order) do
-                if order_id == widget_id then
-                    table.remove(widgets.order, idx)
-                    break
-                end
-            end
-            widgets.state[widget_id] = nil
-        end
-        streamer_mode.widgets_to_remove = {}
-    end
-
-    function streamer_mode.get_image_at(mx, my)
-        for i = #streamer_mode.active_images, 1, -1 do
-            local img = streamer_mode.active_images[i]
-            if point_in_rect(mx, my, img.x, img.y, img.w, img.h) then
-                return img, i
-            end
-        end
-        return nil, nil
-    end
-
-    function streamer_mode.get_resize_handle_rect(img)
-        local hx = img.x + img.w - HANDLE_SIZE
-        local hy = img.y + img.h - HANDLE_SIZE
-        return hx, hy, HANDLE_SIZE, HANDLE_SIZE
-    end
-
-    function streamer_mode.get_close_button_rect(img)
-        local cx = img.x + img.w - CLOSE_SIZE
-        local cy = img.y
-        return cx, cy, CLOSE_SIZE, CLOSE_SIZE
-    end
-
-    function streamer_mode.hit_resize_handle(img, mx, my)
-        local hx, hy, hw, hh = streamer_mode.get_resize_handle_rect(img)
-        local expand = 8
-        return point_in_rect(mx, my, hx - expand, hy - expand, hw + expand, hh + expand)
-    end
-
-    function streamer_mode.hit_close_button(img, mx, my)
-        local cx, cy, cw, ch = streamer_mode.get_close_button_rect(img)
-        return point_in_rect(mx, my, cx, cy, cw, ch)
     end
 
     function streamer_mode.bring_to_front(id)
@@ -9363,11 +9198,38 @@ streamer_mode = {} do
         end
     end
 
+    function streamer_mode.draw_controls(img)
+        renderer.rectangle(img.x - 1, img.y - 1, img.w + 2, 1, 255, 255, 255, 100)
+        renderer.rectangle(img.x - 1, img.y + img.h, img.w + 2, 1, 255, 255, 255, 100)
+        renderer.rectangle(img.x - 1, img.y, 1, img.h, 255, 255, 255, 100)
+        renderer.rectangle(img.x + img.w, img.y, 1, img.h, 255, 255, 255, 100)
+
+        local hx = img.x + img.w - HANDLE_SIZE
+        local hy = img.y + img.h - HANDLE_SIZE
+        renderer.rectangle(hx, hy, HANDLE_SIZE, HANDLE_SIZE, 40, 40, 40, 200)
+        
+        for i = 0, 2 do
+            local lx = hx + 3 + i * 3
+            local ly = hy + HANDLE_SIZE - 4 - i * 3
+            local len = 1 + i * 3
+            renderer.rectangle(lx, ly, len, 1, 255, 255, 255, 180)
+        end
+
+        local cx = img.x + img.w - CLOSE_SIZE
+        local cy = img.y
+        renderer.rectangle(cx, cy, CLOSE_SIZE, CLOSE_SIZE, 180, 60, 60, 220)
+        
+        local xc = cx + CLOSE_SIZE / 2
+        local yc = cy + CLOSE_SIZE / 2
+        renderer.line(xc - 3, yc - 3, xc + 3, yc + 3, 255, 255, 255, 255)
+        renderer.line(xc - 3, yc + 3, xc + 3, yc - 3, 255, 255, 255, 255)
+    end
+
     function streamer_mode.handle_input()
-        if not interface.utility.streamer_mode:get() then return end
         if not ui.is_menu_open() then
             streamer_mode.drag_id = nil
             streamer_mode.resize_id = nil
+            streamer_mode.is_interacting = false
             return
         end
 
@@ -9380,14 +9242,17 @@ streamer_mode = {} do
         if m1 and not streamer_mode.was_m1_down and not in_menu then
             for i = #streamer_mode.active_images, 1, -1 do
                 local img = streamer_mode.active_images[i]
-
-                if streamer_mode.hit_close_button(img, mx, my) then
+                
+                local cx, cy = img.x + img.w - CLOSE_SIZE, img.y
+                if point_in_rect(mx, my, cx, cy, CLOSE_SIZE, CLOSE_SIZE) then
                     streamer_mode.remove_image(img.id)
                     streamer_mode.was_m1_down = true
+                    streamer_mode.is_interacting = true
                     return
                 end
 
-                if streamer_mode.hit_resize_handle(img, mx, my) then
+                local hx, hy = img.x + img.w - HANDLE_SIZE, img.y + img.h - HANDLE_SIZE
+                if point_in_rect(mx, my, hx - 8, hy - 8, HANDLE_SIZE + 16, HANDLE_SIZE + 16) then
                     streamer_mode.resize_id = img.id
                     streamer_mode.resize_start_w = img.w
                     streamer_mode.resize_start_h = img.h
@@ -9396,6 +9261,7 @@ streamer_mode = {} do
                     streamer_mode.resize_keep_ratio = shift
                     streamer_mode.bring_to_front(img.id)
                     streamer_mode.was_m1_down = true
+                    streamer_mode.is_interacting = true
                     return
                 end
 
@@ -9405,17 +9271,39 @@ streamer_mode = {} do
                     streamer_mode.drag_offset_y = img.y - my
                     streamer_mode.bring_to_front(img.id)
                     streamer_mode.was_m1_down = true
+                    streamer_mode.is_interacting = true
                     return
                 end
             end
         end
 
+        if m1 and streamer_mode.drag_id then
+            streamer_mode.is_interacting = true
+            local sw, sh = client.screen_size()
+            for _, img in ipairs(streamer_mode.active_images) do
+                if img.id == streamer_mode.drag_id then
+                    local new_x = mx + streamer_mode.drag_offset_x
+                    local new_y = my + streamer_mode.drag_offset_y
+
+                    local cx = new_x + img.w / 2
+                    local cy = new_y + img.h / 2
+                    if math.abs(cx - sw / 2) <= SNAP then new_x = sw / 2 - img.w / 2 end
+                    if math.abs(cy - sh / 2) <= SNAP then new_y = sh / 2 - img.h / 2 end
+
+                    img.x = clamp(new_x, 0, sw - img.w)
+                    img.y = clamp(new_y, 0, sh - img.h)
+                    break
+                end
+            end
+        end
+
         if m1 and streamer_mode.resize_id then
+            streamer_mode.is_interacting = true
             for _, img in ipairs(streamer_mode.active_images) do
                 if img.id == streamer_mode.resize_id then
                     local dx = mx - streamer_mode.resize_start_mx
                     local dy = my - streamer_mode.resize_start_my
-
+                    
                     local new_w = streamer_mode.resize_start_w + dx
                     local new_h = streamer_mode.resize_start_h + dy
 
@@ -9430,84 +9318,54 @@ streamer_mode = {} do
                     break
                 end
             end
-        elseif m1 and streamer_mode.drag_id then
-            local sw, sh = client.screen_size()
-            for _, img in ipairs(streamer_mode.active_images) do
-                if img.id == streamer_mode.drag_id then
-                    local new_x = mx + streamer_mode.drag_offset_x
-                    local new_y = my + streamer_mode.drag_offset_y
-                    
-                    local cx = new_x + img.w / 2
-                    local cy = new_y + img.h / 2
-                    local snapped_x = math.abs(cx - sw / 2) <= SNAP
-                    local snapped_y = math.abs(cy - sh / 2) <= SNAP
-                    local snapped_top = math.abs(cy - 20) <= SNAP
-                    if snapped_x then cx = sw / 2 end
-                    if snapped_y then cy = sh / 2 end
-                    if snapped_top then cy = 20 end
-                    
-                    new_x = cx - img.w / 2
-                    new_y = cy - img.h / 2
-                    
-                    img.x = clamp(new_x, 0, sw - img.w)
-                    img.y = clamp(new_y, 0, sh - img.h)
-                    break
-                end
-            end
         end
 
         if not m1 then
-            if streamer_mode.resize_id or streamer_mode.drag_id then
+            if streamer_mode.drag_id or streamer_mode.resize_id then
                 streamer_mode.save_db()
             end
             streamer_mode.drag_id = nil
             streamer_mode.resize_id = nil
+            streamer_mode.is_interacting = false
         end
 
         streamer_mode.was_m1_down = m1
     end
 
-    function streamer_mode.draw_controls(img)
-        local hx, hy, hw, hh = streamer_mode.get_resize_handle_rect(img)
-        renderer.rectangle(hx, hy, hw, hh, 40, 40, 40, 200)
-        renderer.rectangle(hx, hy, hw, 1, 255, 255, 255, 100)
-        renderer.rectangle(hx, hy + hh - 1, hw, 1, 255, 255, 255, 100)
-        renderer.rectangle(hx, hy, 1, hh, 255, 255, 255, 100)
-        renderer.rectangle(hx + hw - 1, hy, 1, hh, 255, 255, 255, 100)
+    function streamer_mode.on_paint()
+        if not interface.utility.streamer_mode:get() then return end
 
-        for i = 0, 2 do
-            local lx = hx + 3 + i * 3
-            local ly = hy + hh - 4 - i * 3
-            local len = 1 + i * 3
-            renderer.rectangle(lx, ly, len, 1, 255, 255, 255, 150)
-        end
+        streamer_mode.handle_input()
 
-        local cx, cy, cw, ch = streamer_mode.get_close_button_rect(img)
-        renderer.rectangle(cx, cy, cw, ch, 180, 60, 60, 220)
-        renderer.rectangle(cx, cy, cw, 1, 255, 255, 255, 100)
-        renderer.rectangle(cx, cy + ch - 1, cw, 1, 255, 255, 255, 100)
-        renderer.rectangle(cx, cy, 1, ch, 255, 255, 255, 100)
-        renderer.rectangle(cx + cw - 1, cy, 1, ch, 255, 255, 255, 100)
+        for _, img in ipairs(streamer_mode.active_images) do
+            local image_data = streamer_mode.image_cache[img.name]
+            
+            if image_data then
+                image_data:draw(img.x, img.y, img.w, img.h, 255, 255, 255, 255)
+            elseif not streamer_mode.loading[img.name] then
+                streamer_mode.load_image_data(img.name)
+            end
 
-        local xc = cx + cw / 2
-        local yc = cy + ch / 2
-        local xs = 4
-        for ox = -1, 1 do
-            for oy = -1, 1 do
-                renderer.rectangle(xc - xs + ox, yc - 1 + oy, xs * 2, 2, 0, 0, 0, 100)
+            if ui.is_menu_open() then
+                streamer_mode.draw_controls(img)
             end
         end
-        renderer.rectangle(xc - xs, yc - 1, xs * 2, 2, 255, 255, 255, 255)
+    end
+
+    function streamer_mode.setup_command(cmd)
+        if streamer_mode.is_interacting then
+            cmd.in_attack = 0
+            cmd.in_attack2 = 0
+        end
     end
 
     function streamer_mode.init()
         streamer_mode.load_db()
-        for _, img in ipairs(streamer_mode.active_images) do
-            streamer_mode.register_image_widget(img)
-        end
+        client.set_event_callback("paint", streamer_mode.on_paint)
+        client.set_event_callback("setup_command", streamer_mode.setup_command)
     end
 
-
+    streamer_mode.init()
 end
 
 streamer_images.init()
