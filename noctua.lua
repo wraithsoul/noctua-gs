@@ -4815,12 +4815,21 @@ logging = {} do
         local currentTick = globals.tickcount()
         local lagComp = math.max(currentTick - e.tick, 0)
 
+        local vx, vy, vz = entity.get_prop(e.target, "m_vecVelocity")
+        local speed = math.sqrt(vx*vx + vy*vy)
+
         self.cache[e.target] = { 
             hitbox = hitbox, 
             damage = damage, 
             lagComp = lagComp,
             had_impact = false,
-            got_hurt = false
+            got_hurt = false,
+            aim_x = e.x,
+            aim_y = e.y,
+            aim_z = e.z,
+            teleported = e.teleported,
+            extrapolated = e.extrapolated,
+            start_speed = speed
         }
 
         if not interface.visuals.logging:get() then return end
@@ -4955,7 +4964,7 @@ logging = {} do
 
     logging.handleAimMiss = function(self, e)
         if not e then return end
-        
+
         local playerName = entity.get_player_name(e.target)
         local health = entity.get_prop(e.target, "m_iHealth") or 0
         local reason = e.reason
@@ -4970,7 +4979,7 @@ logging = {} do
             [6] = "left leg",  [7] = "right leg", [10] = "gear"
         }
         local hitgroup = hitgroupMapping[e.hitgroup] or "unknown"
-    
+
         if reason == "?" then reason = "unknown"
         elseif not reason or reason == "" then reason = "unregistered shot" end
 
@@ -4985,24 +4994,28 @@ logging = {} do
         local takeDamage = entity.get_prop(e.target, "m_takedamage")
         local flags = entity.get_prop(e.target, "m_fFlags") or 0
         local renderMode = entity.get_prop(e.target, "m_nRenderMode")
-        
+
         if gunGameImmunity or (takeDamage ~= nil and takeDamage == 0) or bit.band(flags, 64) ~= 0 or (renderMode and renderMode > 0 and renderMode ~= 5) then
             is_rejection = true
-        end
-
-        if not is_rejection and (reason == "unknown" or reason == "correction") and reason ~= "player death" then
-            if hitChance >= 98 then
-                if lagComp <= 16 then
-                    is_rejection = true
-                elseif lagComp > 16 and hitChance >= 98 then
-                    is_rejection = true
-                end
-            end
         end
 
         if is_rejection then reason = "damage rejection" end
 
         if reason ~= "damage rejection" and reason ~= "player death" then
+            if reason == "unknown" or reason == "prediction error" then
+                if cached.teleported then
+                    reason = "lagcomp break"
+                elseif cached.extrapolated then
+                    reason = "extrapolation failure"
+                else
+                    local vx, vy, vz = entity.get_prop(e.target, "m_vecVelocity")
+                    local cur_speed = math.sqrt(vx*vx + vy*vy)
+                    if math.abs(cur_speed - (cached.start_speed or 0)) > 45 then
+                        reason = "acceleration error"
+                    end
+                end
+            end
+
             if reason == "unknown" then
                 if lagComp > 14 then
                     reason = "backtrack failure"
@@ -5025,20 +5038,20 @@ logging = {} do
         end
 
         local showYaw = true
-        if reason == "damage rejection" or reason == "backtrack failure" or reason == "player death" or reason == "spread" or reason == "high inaccuracy" then
+        if reason == "damage rejection" or reason == "backtrack failure" or reason == "player death" or reason == "spread" or reason == "high inaccuracy" or reason == "lagcomp break" or reason == "acceleration error" then
             showYaw = false
         end
 
         if not interface.visuals.logging:get() then return end
-        
+
         local logOptions = interface.visuals.logging_options:get()
         local consoleOptions = interface.visuals.logging_options_console:get()
         local screenOptions = interface.visuals.logging_options_screen:get()
-        
+
         local doConsole = utils.contains(logOptions, "console") and utils.contains(consoleOptions, "miss")
         local doScreen = utils.contains(logOptions, "screen") and utils.contains(screenOptions, "miss")
         if not doConsole and not doScreen then return end
-    
+
         local yawStr = (type(desiredYaw) == "number") and (desiredYaw.."°") or (tostring(desiredYaw).."°")
 
         if doConsole then
@@ -5048,7 +5061,7 @@ logging = {} do
                 argLog("missed %s's %s / lc: %d - reason: %s", playerName, hitgroup, lagComp, reason)
             end
         end
-        
+
         if doScreen then 
             local msg = ""
             if showYaw then
