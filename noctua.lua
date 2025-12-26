@@ -4999,6 +4999,7 @@ logging = {} do
                 else
                     local vx, vy, vz = entity.get_prop(e.target, "m_vecVelocity")
                     local cur_speed = math.sqrt(vx*vx + vy*vy)
+                    
                     if math.abs(cur_speed - (cached.start_speed or 0)) > 50 then
                         reason = "acceleration error"
                     end
@@ -5015,7 +5016,8 @@ logging = {} do
             ["backtrack failure"] = true, ["death"] = true,
             ["player death"] = true, ["spread"] = true, 
             ["high inaccuracy"] = true, ["lagcomp break"] = true,
-            ["acceleration error"] = true, ["extrapolation failure"] = true
+            ["acceleration error"] = true, ["extrapolation failure"] = true,
+            ["prediction error"] = true
         }
 
         if noYawReasons[reason] then showYaw = false end
@@ -5045,6 +5047,11 @@ logging = {} do
                 string.format("missed %s's %s / lc: %d - yaw: %s - reason: %s", playerName, hitgroup, lagComp, yawStr, reason) or
                 string.format("missed %s's %s / lc: %d - reason: %s", playerName, hitgroup, lagComp, reason)
             self:push(msg) 
+        end
+
+        if _G.noctua_session and _G.noctua_session.active then
+            local stats = _G.noctua_session.stats
+            stats.miss_types[reason] = (stats.miss_types[reason] or 0) + 1
         end
     end
 
@@ -9066,6 +9073,7 @@ summary = {} do
                 hits = 0,
                 misses = 0,
                 aa_misses = 0,
+                miss_types = {},
                 resolved = {}, 
                 map_name = ""
             }
@@ -9118,6 +9126,11 @@ summary = {} do
         end
     end
 
+    local function is_bot(idx)
+        local info = utils.get_player_info and utils.get_player_info(idx)
+        return info and info.__fakeplayer == true
+    end
+
     summary.start_session = function()
         _G.noctua_session.active = true
         _G.noctua_session.stats = {
@@ -9127,8 +9140,9 @@ summary = {} do
             hits = 0,
             misses = 0,
             aa_misses = 0,
+            miss_types = {},
             resolved = {},
-            map_name = globals.mapname() or "server"
+            map_name = globals.mapname()
         }
         update_enemy_list()
     end
@@ -9155,8 +9169,8 @@ summary = {} do
         log_val(s.map_name)
         log_txt(".\nhere is your summary:\n")
 
-        log_txt("\npersonal\n")
-        log_txt("- you made ")
+        log_val("\npersonal\n")
+        log_txt("  - you made ")
         log_val(string.format("%d ", s.kills))
         log_txt("kills and died ")
         log_val(string.format("%d ", s.deaths))
@@ -9164,8 +9178,8 @@ summary = {} do
         log_val(fmt_ratio(s.kills, s.deaths))
         log_txt(")\n")
         
-        log_txt("\nresolver\n")
-        log_txt("- processed ")
+        log_val("\nresolver\n")
+        log_txt("  - processed ")
         log_val(string.format("%d ", res_count))
         log_txt("enemies total, made ")
         log_val(string.format("%d ", s.hits))
@@ -9175,8 +9189,18 @@ summary = {} do
         log_val(fmt_ratio(s.hits, s.misses))
         log_txt(")\n")
 
-        log_txt("\nanti-aim\n")
-        log_txt("- enemies missed ")
+        if s.misses > 0 then
+            log_txt("  - misses by type:\n")
+            for reason, count in pairs(s.miss_types) do
+                log_txt("   - ")
+                log_txt(reason)
+                log_txt(": ")
+                log_val(tostring(count) .. "\n")
+            end
+        end
+
+        log_val("\nanti-aim\n")
+        log_txt("  - enemies missed ")
         log_val(string.format("%d ", s.aa_misses))
         log_txt("times in your anti-aim\n")
     end
@@ -9228,7 +9252,8 @@ summary = {} do
             if not me or not entity.is_alive(me) then return end
             local shooter = client.userid_to_entindex(e.userid)
             if not shooter or shooter == me or not entity.is_enemy(shooter) then return end
-            
+            if is_bot(shooter) then return end
+
             local lx, ly, lz = entity.hitbox_position(me, 0)
             local dist = math.sqrt((e.x - lx)^2 + (e.y - ly)^2 + (e.z - lz)^2)
             if dist < 60 then
