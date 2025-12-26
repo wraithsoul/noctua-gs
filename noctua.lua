@@ -727,15 +727,16 @@ interface = {} do
         -- extensions.fd_edge = interface.header.fake_lag:checkbox("fakeduck edge")
         extensions.ladder = interface.header.fake_lag:checkbox("fast ladder")
         extensions.anti_bruteforce = interface.header.fake_lag:checkbox("anti-bruteforce")
-        extensions.anti_bruteforce_type = interface.header.fake_lag:combobox("anti bruteforce type","increase","decrease")
-        extensions.defensive = interface.header.fake_lag:multiselect("defensive",{"on shot","flashed","damage received","reloading","weapon switch"})
-        extensions.safe_head = interface.header.fake_lag:multiselect("safe head",{ "height distance", "high distance", "knife", "zeus" })
-        extensions.warmup_aa = interface.header.fake_lag:multiselect("warmup aa",{"warmup","round end"})
+        extensions.anti_bruteforce_type = interface.header.fake_lag:combobox("anti bruteforce type", "increase", "decrease")
+        extensions.defensive = interface.header.fake_lag:multiselect("defensive", {"on shot", "flashed", "damage received", "reloading", "weapon switch"})
+        extensions.safe_head = interface.header.fake_lag:multiselect("safe head", {"height distance", "high distance", "knife", "zeus"})
+        extensions.warmup_aa = interface.header.fake_lag:multiselect("warmup aa", {"warmup", "round end"})
         extensions.automatic_osaa = interface.header.fake_lag:checkbox("automatic osaa")
+        extensions.automatic_osaa_disablers = interface.header.fake_lag:multiselect("automatic osaa disablers", {"autosnipers"})
         
         extensions.edge_yaw = interface.header.other:hotkey("edge yaw")
         extensions.freestanding = interface.header.other:hotkey("freestanding")
-        extensions.dis_fs = interface.header.other:multiselect("allow freestand on",{"idle","run","air","airc","duck","duck move","slow"})
+        extensions.dis_fs = interface.header.other:multiselect("allow freestand on", {"idle", "run", "air", "airc", "duck", "duck move", "slow"})
         extensions.manual_aa = interface.header.other:checkbox("manual antiaim")
         
         for key, v in pairs(extensions) do
@@ -749,6 +750,7 @@ interface = {} do
         extensions.manual_aa:depend({ interface.search, 'antiaim' })
         extensions.anti_bruteforce_type:depend({ interface.search, 'antiaim' }, { extensions.anti_bruteforce, true })
         extensions.dis_fs:depend({ interface.search, 'antiaim' }, { extensions.freestanding, true })
+        extensions.automatic_osaa_disablers:depend({ interface.search, 'antiaim' }, { extensions.automatic_osaa, true })
         
         extensions.manual_aa_hotkey = extensions.manual_aa_hotkey or {}
         extensions.manual_aa_hotkey.manual_left = interface.header.other:hotkey("manual left")
@@ -2656,6 +2658,14 @@ automatic_osaa = {} do
     automatic_osaa.last = false
     automatic_osaa.dt_original = false
 
+    local function is_holding_sniper(lp)
+        local weapon = entity.get_player_weapon(lp)
+        if not weapon then return false end
+
+        local weap_class = entity.get_classname(weapon)
+        return weap_class == "CWeaponSCAR20" or weap_class == "CWeaponG3SG1"
+    end
+
     automatic_osaa.setup = function(self, cmd)
         if not interface.builder.extensions.automatic_osaa:get() then
             if self.state then
@@ -2676,8 +2686,11 @@ automatic_osaa = {} do
         local dt_active = (self.state and self.dt_original or ui.get(ui_references.double_tap[1])) and ui.get(ui_references.double_tap[2])
         local state = utils.get_state()
         local is_idle_or_duck = state == 'duck' or state == 'duck move'
+        local disabler_selected = interface.builder.extensions.automatic_osaa_disablers:get("autosnipers")
+        local holding_sniper = is_holding_sniper(local_player)
 
-        local should_activate = dt_active and is_idle_or_duck
+        local is_disabled_by_weapon = disabler_selected and holding_sniper
+        local should_activate = dt_active and is_idle_or_duck and not is_disabled_by_weapon
 
         if should_activate ~= self.last then
             self.last = should_activate
@@ -9638,7 +9651,7 @@ menu_info = {} do
                 "buybot fallback option",
                 "enemy ping warning",
                 "dump resolver data",
-                "automatic osaa",
+                "automatic osaa & disablers",
                 "winter mode ❄️"
             }
             for i, line in ipairs(update_list) do
