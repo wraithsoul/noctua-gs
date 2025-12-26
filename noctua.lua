@@ -580,6 +580,7 @@ interface = {} do
         enemy_ping_warn = interface.header.other:checkbox('enemy ping warning'),
         enemy_ping_minimum = interface.header.other:slider('minimum latency to show', 10, 100, 80, true, 'ms'),
         window = interface.header.general:checkbox('debug window'),
+        window_style = interface.header.general:combobox('style', 'old', 'modern'),
         watermark = interface.header.general:checkbox('watermark'),
         watermark_show = interface.header.general:multiselect('show', 'script', 'player', 'time', 'ping'),
         -- shared = interface.header.general:checkbox('shared identity (wip)'),
@@ -890,6 +891,11 @@ interface = {} do
 
                     if key == 'watermark_show' then
                         element:set_visible(interface.visuals.watermark:get())
+                        return
+                    end
+
+                    if key == 'window_style' then
+                        element:set_visible(interface.visuals.window:get())
                         return
                     end
 
@@ -3315,83 +3321,127 @@ end
 
 --@region: visuals
 visuals = {} do 
-visuals.window = function(self, base_x, base_y, align)
+    visuals.window = function(self, base_x, base_y, align)
         self.windowAlpha = self.windowAlpha or 0
 
         local frameTime = globals.frametime()
-        local fadeSpeedBase = 10
-        local fadeSpeedSetting = fadeSpeedBase * frameTime
+        local fadeSpeedSetting = 10 * frameTime
         local local_player = entity.get_local_player()
         local health = local_player and entity.get_prop(local_player, "m_iHealth") or 0
-
-        local is_scoreboard = client.key_state(0x09) -- TAB
-        local game_rules = entity.get_all("CCSGameRulesProxy")[1]
         local menuOpen = ui.is_menu_open()
         
-        local is_game_over = game_rules and entity.get_prop(game_rules, "m_gamePhase") >= 5
-        local is_halftime = game_rules and entity.get_prop(game_rules, "m_gamePhase") == 4
-        local is_timeout = game_rules and (
-            entity.get_prop(game_rules, "m_bTerroristTimeOutActive") == 1 or 
-            entity.get_prop(game_rules, "m_bCTTimeOutActive") == 1
-        )
-        local is_waiting = game_rules and entity.get_prop(game_rules, "m_bMatchWaitingForResume") == 1
-        local is_restarting = game_rules and entity.get_prop(game_rules, "m_bGameRestart") == 1
-        local is_freeze_period = game_rules and entity.get_prop(game_rules, "m_bFreezePeriod") == 1
-
-        local is_scoped = local_player and entity.get_prop(local_player, "m_bIsScoped") == 1
-        
+        local is_game_over = entity.get_all("CCSGameRulesProxy")[1] and entity.get_prop(entity.get_all("CCSGameRulesProxy")[1], "m_gamePhase") >= 5
         local windowEnabled = interface.visuals.enabled_visuals:get() 
                             and interface.visuals.window:get()
                             and not is_game_over
-                            and not is_timeout
-                            and not is_halftime
-                            and not is_waiting
-                            and not is_restarting
-                            and ((local_player and (health > 0)) or menuOpen)
+                            and ((local_player and health > 0) or menuOpen)
 
         local targetAlpha = windowEnabled and 255 or 0
         self.windowAlpha = mathematic.lerp(self.windowAlpha, targetAlpha, fadeSpeedSetting)
 
-        if self.windowAlpha < 1 then
-            return
-        end
+        if self.windowAlpha < 1 then return end
 
+        local style = interface.visuals.window_style:get()
         local target = client.current_threat()
-        local target_text = "target: none"
-        local target_yaw_text = "target yaw: none"
-        local enemy_state = "target state: none"
+        local t_name = "none"
+        local t_state = "none"
+        local t_yaw = "none"
+        local resolver_enabled = interface.aimbot.enabled_aimbot:get() and interface.aimbot.enabled_resolver_tweaks:get()
 
         if target then
             local player_info = utils.get_player_info(target)
             if player_info then
-                target_text = "target: " .. ffi.string(player_info.__name)
-                if interface.aimbot.enabled_aimbot:get() and interface.aimbot.enabled_resolver_tweaks:get() then
-                    if player_info.__fakeplayer then
-                        target_yaw_text = "target yaw: none (bot)"
+                t_name = ffi.string(player_info.__name)
+                t_state = utils.get_enemy_state(target) or "none"
+                if resolver_enabled then
+                    if player_info.__fakeplayer or player_info.bot then
+                        t_yaw = "none (bot)"
                     else
-                        target_yaw_text = "target yaw: " .. (resolver.cache[target] or 0)
+                        t_yaw = tostring(resolver.cache[target] or 0)
                     end
                 else
-                    target_yaw_text = "target yaw: off"
+                    t_yaw = "off"
                 end
-                enemy_state = "target state: " .. utils.get_enemy_state(target)
             end
         end
 
-        local lines = {
-            _name .. " " .. _version,
-            target_text,
-            enemy_state,
-            target_yaw_text
-        }
+        if style == 'modern' then
+            local line_spacing = 13
+            local y = base_y
+            local indent = (align == 'l') and "   " or "" 
+            local r, g, b = unpack(interface.visuals.accent.color.value)
+            local align_flags = align .. "b"
+            renderer.text(base_x, y, r, g, b, self.windowAlpha, align_flags, 0, _name)
+            
+            local name_width = select(1, renderer.measure_text(align_flags, _name))
+            local ver_x = (align == 'l') and (base_x + name_width + 4) or 
+                        (align == 'c' and (base_x + name_width/2 + 4) or base_x)
 
-        local line_spacing = 12
-        local total_height = #lines * line_spacing
+            if align ~= 'r' then
+            renderer.text(ver_x, y, 255, 255, 255, self.windowAlpha, align, 0, _version)
+            end
+            y = y + line_spacing + 5
 
-        local a = align or "c"
-        for i, line in ipairs(lines) do
-            local y = base_y + (i - 1) * line_spacing
-            renderer.text(base_x, y, 255, 255, 255, self.windowAlpha, a, 1000, line)
+            if t_yaw ~= "off" then
+                renderer.text(base_x, y, 255, 255, 255, self.windowAlpha, align, 0, "resolver")
+                y = y + line_spacing
+                renderer.text(base_x, y, 215, 215, 215, self.windowAlpha, align, 0, indent .. "- target: " .. t_name:lower())
+                y = y + line_spacing
+                renderer.text(base_x, y, 215, 215, 215, self.windowAlpha, align, 0, indent .. "- state: " .. t_state)
+                y = y + line_spacing
+                renderer.text(base_x, y, 215, 215, 215, self.windowAlpha, align, 0, indent .. "- yaw: " .. t_yaw)
+                y = y + line_spacing + 6
+            end
+
+            renderer.text(base_x, y, 255, 255, 255, self.windowAlpha, align, 0, "anti-aim")
+            y = y + line_spacing
+            
+            local aa_state = utils.get_state()
+            if _G.noctua_runtime.use_active then aa_state = "use"
+            elseif _G.noctua_runtime.manual_active then aa_state = "manual"
+            elseif _G.noctua_runtime.safe_head_active then aa_state = "safe head" end
+
+            renderer.text(base_x, y, 215, 215, 215, self.windowAlpha, align, 0, indent .. "- state: " .. aa_state)
+            y = y + line_spacing + 6 
+
+            local isDT = ui.get(ui_references.double_tap[1]) and ui.get(ui_references.double_tap[2])
+            local isOS = ui.get(ui_references.on_shot_anti_aim[1]) and ui.get(ui_references.on_shot_anti_aim[2])
+            
+            if isDT or isOS then
+                renderer.text(base_x, y, 255, 255, 255, self.windowAlpha, align, 0, "exploit")
+                y = y + line_spacing
+
+                local exp_type = isDT and "dt" or "osaa"
+                local exp_state = "ready"
+
+                if isDT then
+                local dt_ready = antiaim_funcs.get_double_tap()
+                local tickbase = antiaim_funcs.get_tickbase_shifting()
+                
+                if tickbase >= 4 and dt_ready then
+                    exp_state = "ready"
+                elseif not utils.weapon_ready() then
+                    exp_state = "waiting"
+                else
+                    exp_state = "ready"
+                end
+                end
+
+                renderer.text(base_x, y, 215, 215, 215, self.windowAlpha, align, 0, indent .. "- type: " .. exp_type)
+                y = y + line_spacing
+                renderer.text(base_x, y, 215, 215, 215, self.windowAlpha, align, 0, indent .. "- state: " .. exp_state)
+            end
+        else
+            local lines = {
+                _name .. " " .. _version,
+                "target: " .. t_name,
+                "target state: " .. t_state,
+                "target yaw: " .. t_yaw
+            }
+            local a = align or "c"
+            for i, line in ipairs(lines) do
+                renderer.text(base_x, base_y + (i - 1) * 12, 255, 255, 255, self.windowAlpha, a, 1000, line)
+            end
         end
     end
 
@@ -5103,44 +5153,66 @@ widgets.register({
     z = 5
 })
 
+
 widgets.register({
     id = "debug_window",
     title = "Debug Window",
-    defaults = { anchor_x = "center", anchor_y = "center", offset_x = 0, offset_y = -80 },
+    defaults = {
+        anchor_x = "center",
+        anchor_y = "center",
+        offset_x = 0,
+        offset_y = -80
+    },
     get_size = function(st)
-        local lineh = 12
-        local lines = 4
-        local maxw = 0
-        local samples = { _name .. " " .. _version, "target: none", "target state: none", "target yaw: none" }
-        for i = 1, #samples do
-            local w = select(1, renderer.measure_text("c", samples[i])) or 0
-            if w > maxw then maxw = w end
+        local style = interface.visuals.window_style:get()
+        
+        if style == 'modern' then
+            local lineh = 13
+            local padding = 6 
+            local total_lines = 1
+            local total_pixels = 5
+            
+            local resolver_enabled = interface.aimbot.enabled_aimbot:get() and interface.aimbot.enabled_resolver_tweaks:get()
+            if resolver_enabled then
+                total_lines = total_lines + 4
+                total_pixels = total_pixels + 6
+            end
+            
+            total_lines = total_lines + 2
+            total_pixels = total_pixels + 6
+            
+            local isDT = ui.get(ui_references.double_tap[1]) and ui.get(ui_references.double_tap[2])
+            local isOS = ui.get(ui_references.on_shot_anti_aim[1]) and ui.get(ui_references.on_shot_anti_aim[2])
+            if isDT or isOS then
+                total_lines = total_lines + 3
+            end
+            
+            local width = 150 
+            local height = (total_lines * lineh) + total_pixels + 2
+            return width, height
+        else
+            return 130, 60
         end
-        return math.max(maxw, 120), lineh * lines + 12
     end,
     draw = function(ctx)
         local sw, _ = client.screen_size()
         local third = sw / 3
         local align, x
-        if ctx.cx < third then
-            align = "l"; x = ctx.x
-        elseif ctx.cx > (sw - third) then
-            align = "r"; x = ctx.x + ctx.w
-        else
-            align = "c"; x = ctx.x + ctx.w / 2
-        end
+        if ctx.cx < third then align = "l"; x = ctx.x
+        elseif ctx.cx > (sw - third) then align = "r"; x = ctx.x + ctx.w
+        else align = "c"; x = ctx.x + ctx.w / 2 end
+        
         visuals:window(x, ctx.y + 6, align)
     end,
     z = 6
 })
-
 widgets.register({
     id = "watermark",
     title = "Watermark",
     defaults = { anchor_x = "center", anchor_y = "center", offset_x = 0, offset_y = -100 },
     get_size = function(st)
         local lineh = math.max(select(2, renderer.measure_text('b', 'A')) or 12, select(2, renderer.measure_text('', 'A')) or 12)
-        local username = _nickname or 'player'
+        local username = _nickname or 'user'
         local hours, minutes, seconds, milliseconds = client.system_time()
         local time_str = string.format('%02d:%02d', hours, minutes)
         local weekdays = {'Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'}
@@ -5184,7 +5256,7 @@ widgets.register({
         return math.max(total_w, 60), lineh + 8
     end,
     draw = function(ctx)
-        local username = _nickname or 'player'
+        local username = _nickname or 'user'
         local hours, minutes, seconds, milliseconds = client.system_time()
         local time_str = string.format('%02d:%02d', hours, minutes)
         local weekdays = {'Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'}
