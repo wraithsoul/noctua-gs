@@ -5014,9 +5014,8 @@ logging = {} do
         local noYawReasons = {
             ["backtrack failure"] = true, ["death"] = true,
             ["player death"] = true, ["spread"] = true, 
-            ["high inaccuracy"] = true, ["occlusion"] = true, 
-            ["lagcomp break"] = true, ["acceleration error"] = true,
-            ["extrapolation failure"] = true
+            ["high inaccuracy"] = true, ["lagcomp break"] = true,
+            ["acceleration error"] = true, ["extrapolation failure"] = true
         }
 
         if noYawReasons[reason] then showYaw = false end
