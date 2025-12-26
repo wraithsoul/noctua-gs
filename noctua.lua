@@ -9689,7 +9689,7 @@ summary = {} do
                 hits = 0,
                 misses = 0,
                 aa_misses = 0,
-                resolved = {},
+                resolved = {}, 
                 map_name = ""
             }
         }
@@ -9717,6 +9717,30 @@ summary = {} do
         client.color_log(r, g, b, text .. "\0")
     end
 
+    local function update_enemy_list()
+        if not _G.noctua_session.active then return end
+        
+        local enemies = entity.get_players(true)
+        for i=1, #enemies do
+            local ent = enemies[i]
+            local steam_id = entity.get_steam64(ent)
+            local key = nil
+
+            if steam_id and steam_id ~= 0 then
+                key = tostring(steam_id)
+            else
+                local name = entity.get_player_name(ent)
+                if name then
+                    key = "BOT_" .. name
+                end
+            end
+
+            if key then
+                _G.noctua_session.stats.resolved[key] = true
+            end
+        end
+    end
+
     summary.start_session = function()
         _G.noctua_session.active = true
         _G.noctua_session.stats = {
@@ -9729,6 +9753,7 @@ summary = {} do
             resolved = {},
             map_name = globals.mapname() or "server"
         }
+        update_enemy_list()
     end
 
     summary.print_report = function()
@@ -9761,7 +9786,7 @@ summary = {} do
         log_txt(")\n")
         
         log_txt("\nresolver\n")
-        log_txt("- resolved ")
+        log_txt("- processed ")
         log_val(string.format("%d ", res_count))
         log_txt("enemies total, made ")
         log_val(string.format("%d ", s.hits))
@@ -9786,6 +9811,8 @@ summary = {} do
             if in_game then
                 if not _G.noctua_session.active then
                     summary.start_session()
+                else
+                    update_enemy_list()
                 end
             else
                 if _G.noctua_session.active then
@@ -9811,7 +9838,6 @@ summary = {} do
         client.set_event_callback('aim_hit', function(e)
             if not _G.noctua_session.active then return end
             _G.noctua_session.stats.hits = _G.noctua_session.stats.hits + 1
-            if e.target then _G.noctua_session.stats.resolved[e.target] = true end
         end)
 
         client.set_event_callback('aim_miss', function()
