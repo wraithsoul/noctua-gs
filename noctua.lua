@@ -9596,20 +9596,24 @@ menu_info = {} do
             cmd.in_attack2 = 0
         end
     end
+
+    menu_info.setup = function()
+        client.set_event_callback('paint_ui', menu_info.paint)
+        client.set_event_callback('setup_command', menu_info.setup_command)
+
+        client.set_event_callback('paint_ui', function()
+            local shimmer_text = table.concat(colors.shimmer(
+                globals.realtime() * 2,
+                "winter mode",
+                157, 230, 254, 255,
+                255, 255, 255, 255
+            ))
+            interface.home.winter_label:set(shimmer_text)
+        end)
+    end
+
+    menu_info.setup()
 end
-
-client.set_event_callback('paint_ui', menu_info.paint)
-client.set_event_callback('setup_command', menu_info.setup_command)
-
-client.set_event_callback('paint_ui', function()
-    local shimmer_text = table.concat(colors.shimmer(
-        globals.realtime() * 2,
-        "winter mode",
-        157, 230, 254, 255,
-        255, 255, 255, 255
-    ))
-    interface.home.winter_label:set(shimmer_text)
-end)
 --@endregion
 
 --@region: on load
