@@ -9669,7 +9669,7 @@ art = {} do
     end
 
     art.setup = function()
-        client.exec('clear')
+        -- client.exec('clear')
         art.display()
     end
 
