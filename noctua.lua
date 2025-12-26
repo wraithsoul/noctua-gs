@@ -4991,7 +4991,7 @@ logging = {} do
         end
 
         if not is_rejection and (reason == "unknown" or reason == "correction") and reason ~= "player death" then
-            if hitChance >= 92 then
+            if hitChance >= 98 then
                 if lagComp <= 16 then
                     is_rejection = true
                 elseif lagComp > 16 and hitChance >= 98 then
@@ -9490,191 +9490,6 @@ client.set_event_callback('paint', function()
 end)
 --@endregion
 
---@region: menu info
-menu_info = {} do
-    menu_info.alpha = 0
-    menu_info.expanded = true
-    menu_info.mouse_pressed = false
-    menu_info.is_interacting = false 
-
-    local function point_in_rect(px, py, rx, ry, rw, rh)
-        return px >= rx and px <= rx + rw and py >= ry and py <= ry + rh
-    end
-
-    local function get_menu_rect()
-        local mx, my = ui.menu_position()
-        local mw, mh = ui.menu_size()
-        return mx or 0, my or 0, mw or 0, mh or 0
-    end
-
-    menu_info.paint = function()
-        local is_open = ui.is_menu_open()
-        local target_alpha = is_open and 255 or 0
-        
-        menu_info.alpha = mathematic.lerp(menu_info.alpha, target_alpha, globals.frametime() * 20)
-
-        if menu_info.alpha < 1 then 
-            menu_info.is_interacting = false
-            return 
-        end
-
-        local x, y = ui.menu_position()
-        local w, h = ui.menu_size()
-        local r, g, b = unpack(interface.visuals.accent.color.value)
-        local up = 18
-        
-        local realtime = globals.realtime()
-        local pulse = (math.sin(realtime * 1.8) + 1) / 2 
-        local star_alpha = menu_info.alpha * (0.4 + 0.6 * pulse)
-        
-        renderer.text(x, y - up, r, g, b, star_alpha, 'l', 0, "✦ ")
-        renderer.text(x + renderer.measure_text(0, "✦ "), y - up, r, g, b, menu_info.alpha, 'lb', 0, "noctua")
-        renderer.text(x + w, y - up, 255, 255, 255, menu_info.alpha, 'r', 0, _nickname or "user")
-
-        local list_x = x - 7
-        local list_y = y + 10
-        local line_height = 13
-        
-        local status_text = menu_info.expanded and "(close)" or "(open)"
-        local update_header = string.format("what's new %s", status_text)
-        local tw, th = renderer.measure_text(0, update_header)
-
-        local mx, my = ui.mouse_position()
-        local m1 = client.key_state(0x01)
-
-        if is_open then
-            local menu_x, menu_y, menu_w, menu_h = get_menu_rect()
-            local is_hovering = point_in_rect(mx, my, list_x - tw, list_y, tw, th) and not point_in_rect(mx, my, menu_x, menu_y, menu_w, menu_h)
-
-            if m1 then
-                if is_hovering or menu_info.is_interacting then
-                    menu_info.is_interacting = true 
-                    if not menu_info.mouse_pressed and is_hovering then
-                        menu_info.expanded = not menu_info.expanded
-                        menu_info.mouse_pressed = true
-                    end
-                end
-            else
-                menu_info.is_interacting = false
-                menu_info.mouse_pressed = false
-            end
-        else
-            menu_info.is_interacting = false
-        end
-
-        renderer.text(list_x, list_y, r, g, b, menu_info.alpha, 'rb', 0, update_header)
-        
-        if menu_info.expanded then
-            local update_list = {
-                "streamer mode",
-                "animation breakers",
-                "buybot fallback option",
-                "enemy ping warning",
-                "dump resolver data",
-                "automatic osaa & disablers",
-                "damage rejection reason",
-                "winter mode ❄️",
-            }
-            for i, line in ipairs(update_list) do
-                renderer.text(list_x, list_y + (i * line_height), 255, 255, 255, menu_info.alpha, 'r', 0, line)
-            end
-        end
-    end
-
-    menu_info.setup_command = function(cmd)
-        if menu_info.is_interacting then
-            cmd.in_attack = 0
-            cmd.in_attack2 = 0
-        end
-    end
-
-    menu_info.setup = function()
-        client.set_event_callback('paint_ui', menu_info.paint)
-        client.set_event_callback('setup_command', menu_info.setup_command)
-
-        client.set_event_callback('paint_ui', function()
-            local shimmer_text = table.concat(colors.shimmer(
-                globals.realtime() * 2,
-                "winter mode",
-                157, 230, 254, 255,
-                255, 255, 255, 255
-            ))
-            interface.home.winter_label:set(shimmer_text)
-        end)
-    end
-
-    menu_info.setup()
-end
---@endregion
-
---@region: on load
-logging:push("happy new year! ❄️")
-logging:push("nice to see you at " .. _name .. " " .. _version .. " (" .. (_nickname or "user") .. ")")
-client.exec("play items/flashlight1.wav")
-confetti:push(0, true)
---@endregion
-
---@region: art
-art = {} do
-    local star = [[
-       .-.                         .-.                    |     '      .        
-      (   )    '        +         (   )                  -o-               o    
-       `-'     .-.                 `-'             '      |        +          + 
-              ( (    ~~+                      .               o               + 
-        .      `-'.              +    .         o     * .            .          
-              '                                                                 
-     '       .-.    *                      /                               .  ' 
-              ) )       '    noctua.sbs   /                           | o      
-  '.         '-´       '                 *  version: {ver}            -+-       
- +                  *   ' .                    .-.       '            |        
-         ' o                    |     . .       ) )                   +       
-       .         '             -o- .         o '-´   / +        .               
-       *                        |       .           /      +                    
-                                                   *       '                    
-                '                              .-.           .                  
-               '           *                .   ) )                             
-          o '     *                            '-´                      .       
-   '       +      .           '               +                      +        ''
-           .                                                  +'      .       . 
- +          +                         ' o           '               *     *     
-]]
-
-    local function log_val(text)
-        client.color_log(255, 255, 255, text .. "\0")
-    end
-
-    local function log_accent(text)
-        local r, g, b = unpack(interface.visuals.accent.color.value)
-        client.color_log(r, g, b, text .. "\0")
-    end
-
-    art.display = function()
-        local target1 = "noctua.sbs"
-        local placeholder = "{ver}"
-        local s1, e1 = star:find(target1, 1, true)
-        local s2, e2 = star:find(placeholder, (e1 or 0) + 1, true)
-
-        if not s1 or not s2 then
-            log_val(star .. "\n")
-            return
-        end
-
-        log_val(star:sub(1, s1 - 1))
-        log_accent(star:sub(s1, e1))
-        log_val(star:sub(e1 + 1, s2 - 1))
-        log_accent(tostring(_version or "1.0.0"))
-        log_val(star:sub(e2 + 1) .. "\n")
-    end
-
-    art.setup = function()
-        -- client.exec('clear')
-        art.display()
-    end
-
-    art.setup()
-end
---@endregion
-
 --@region: summary
 summary = {} do
     if not _G.noctua_session then
@@ -9860,6 +9675,192 @@ summary = {} do
 
     summary.setup()
 end
+--@endregion
+
+--@region: art
+art = {} do
+    local star = [[
+       .-.                         .-.                    |     '      .        
+      (   )    '        +         (   )                  -o-               o    
+       `-'     .-.                 `-'             '      |        +          + 
+              ( (    ~~+                      .               o               + 
+        .      `-'.              +    .         o     * .            .          
+              '                                                                 
+     '       .-.    *                      /                               .  ' 
+              ) )       '    noctua.sbs   /                           | o      
+  '.         '-´       '                 *  version: {ver}            -+-       
+ +                  *   ' .                    .-.       '            |        
+         ' o                    |     . .       ) )                   +       
+       .         '             -o- .         o '-´   / +        .               
+       *                        |       .           /      +                    
+                                                   *       '                    
+                '                              .-.           .                  
+               '           *                .   ) )                             
+          o '     *                            '-´                      .       
+   '       +      .           '               +                      +        ''
+           .                                                  +'      .       . 
+ +          +                         ' o           '               *     *     
+]]
+
+    local function log_val(text)
+        client.color_log(255, 255, 255, text .. "\0")
+    end
+
+    local function log_accent(text)
+        local r, g, b = unpack(interface.visuals.accent.color.value)
+        client.color_log(r, g, b, text .. "\0")
+    end
+
+    art.display = function()
+        local target1 = "noctua.sbs"
+        local placeholder = "{ver}"
+        local s1, e1 = star:find(target1, 1, true)
+        local s2, e2 = star:find(placeholder, (e1 or 0) + 1, true)
+
+        if not s1 or not s2 then
+            log_val(star .. "\n")
+            return
+        end
+
+        log_val(star:sub(1, s1 - 1))
+        log_accent(star:sub(s1, e1))
+        log_val(star:sub(e1 + 1, s2 - 1))
+        log_accent(tostring(_version or "1.0.0"))
+        log_val(star:sub(e2 + 1) .. "\n")
+    end
+
+    art.setup = function()
+        -- client.exec('clear')
+        art.display()
+    end
+
+    art.setup()
+end
+--@endregion
+
+--@region: menu info
+menu_info = {} do
+    menu_info.alpha = 0
+    menu_info.expanded = true
+    menu_info.mouse_pressed = false
+    menu_info.is_interacting = false 
+
+    local function point_in_rect(px, py, rx, ry, rw, rh)
+        return px >= rx and px <= rx + rw and py >= ry and py <= ry + rh
+    end
+
+    local function get_menu_rect()
+        local mx, my = ui.menu_position()
+        local mw, mh = ui.menu_size()
+        return mx or 0, my or 0, mw or 0, mh or 0
+    end
+
+    menu_info.paint = function()
+        local is_open = ui.is_menu_open()
+        local target_alpha = is_open and 255 or 0
+        
+        menu_info.alpha = mathematic.lerp(menu_info.alpha, target_alpha, globals.frametime() * 20)
+
+        if menu_info.alpha < 1 then 
+            menu_info.is_interacting = false
+            return 
+        end
+
+        local x, y = ui.menu_position()
+        local w, h = ui.menu_size()
+        local r, g, b = unpack(interface.visuals.accent.color.value)
+        local up = 18
+        
+        local realtime = globals.realtime()
+        local pulse = (math.sin(realtime * 1.8) + 1) / 2 
+        local star_alpha = menu_info.alpha * (0.4 + 0.6 * pulse)
+        
+        renderer.text(x, y - up, r, g, b, star_alpha, 'l', 0, "✦ ")
+        renderer.text(x + renderer.measure_text(0, "✦ "), y - up, r, g, b, menu_info.alpha, 'lb', 0, "noctua")
+        renderer.text(x + w, y - up, 255, 255, 255, menu_info.alpha, 'r', 0, _nickname or "user")
+
+        local list_x = x - 7
+        local list_y = y + 10
+        local line_height = 13
+        
+        local status_text = menu_info.expanded and "(close)" or "(open)"
+        local update_header = string.format("what's new %s", status_text)
+        local tw, th = renderer.measure_text(0, update_header)
+
+        local mx, my = ui.mouse_position()
+        local m1 = client.key_state(0x01)
+
+        if is_open then
+            local menu_x, menu_y, menu_w, menu_h = get_menu_rect()
+            local is_hovering = point_in_rect(mx, my, list_x - tw, list_y, tw, th) and not point_in_rect(mx, my, menu_x, menu_y, menu_w, menu_h)
+
+            if m1 then
+                if is_hovering or menu_info.is_interacting then
+                    menu_info.is_interacting = true 
+                    if not menu_info.mouse_pressed and is_hovering then
+                        menu_info.expanded = not menu_info.expanded
+                        menu_info.mouse_pressed = true
+                    end
+                end
+            else
+                menu_info.is_interacting = false
+                menu_info.mouse_pressed = false
+            end
+        else
+            menu_info.is_interacting = false
+        end
+
+        renderer.text(list_x, list_y, r, g, b, menu_info.alpha, 'rb', 0, update_header)
+        
+        if menu_info.expanded then
+            local update_list = {
+                "streamer mode",
+                "animation breakers",
+                "buybot fallback option",
+                "enemy ping warning",
+                "dump resolver data",
+                "automatic osaa & disablers",
+                "damage rejection reason",
+                "modern debug window",
+                "winter mode ❄️",
+            }
+            for i, line in ipairs(update_list) do
+                renderer.text(list_x, list_y + (i * line_height), 255, 255, 255, menu_info.alpha, 'r', 0, line)
+            end
+        end
+    end
+
+    menu_info.setup_command = function(cmd)
+        if menu_info.is_interacting then
+            cmd.in_attack = 0
+            cmd.in_attack2 = 0
+        end
+    end
+
+    menu_info.setup = function()
+        client.set_event_callback('paint_ui', menu_info.paint)
+        client.set_event_callback('setup_command', menu_info.setup_command)
+
+        client.set_event_callback('paint_ui', function()
+            local shimmer_text = table.concat(colors.shimmer(
+                globals.realtime() * 2,
+                "winter mode",
+                157, 230, 254, 255,
+                255, 255, 255, 255
+            ))
+            interface.home.winter_label:set(shimmer_text)
+        end)
+    end
+
+    menu_info.setup()
+end
+--@endregion
+
+--@region: on load
+logging:push("happy new year! ❄️")
+logging:push("nice to see you at " .. _name .. " " .. _version .. " (" .. (_nickname or "user") .. ")")
+client.exec("play items/flashlight1.wav")
+confetti:push(0, true)
 --@endregion
 
 -- ^~^!
