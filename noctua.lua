@@ -4954,67 +4954,74 @@ logging = {} do
         local reason = e.reason
         local cached = self.cache[e.target] or {}
         local lagComp = cached.lagComp or 0
+        local hitChance = e.hit_chance or 0
         local resolverEnabled = (interface.aimbot.enabled_aimbot:get() and interface.aimbot.enabled_resolver_tweaks:get())
         local desiredYaw = resolverEnabled and (resolver.cache[e.target] or 0) or "?"
-        
-        local expectedDamage = cached.damage or 0
-           
         local hitgroupMapping = {
-            [0] = "generic",   -- HITGROUP_GENERIC
-            [1] = "head",      -- HITGROUP_HEAD
-            [2] = "chest",     -- HITGROUP_CHEST
-            [3] = "stomach",   -- HITGROUP_STOMACH
-            [4] = "left arm",  -- HITGROUP_LEFTARM
-            [5] = "right arm", -- HITGROUP_RIGHTARM
-            [6] = "left leg",  -- HITGROUP_LEFTLEG
-            [7] = "right leg", -- HITGROUP_RIGHTLEG
-            [10] = "gear"      -- HITGROUP_GEAR
+            [0] = "generic",   [1] = "head",      [2] = "chest",
+            [3] = "stomach",   [4] = "left arm",  [5] = "right arm",
+            [6] = "left leg",  [7] = "right leg", [10] = "gear"
         }
         local hitgroup = hitgroupMapping[e.hitgroup] or "unknown"
     
-        if reason == "?" then
-            reason = "unknown"
-        elseif not reason or reason == "" then
-            reason = "unregistered shot"
+        if reason == "?" then reason = "unknown"
+        elseif not reason or reason == "" then reason = "unregistered shot" end
+
+        if health <= 0 then reason = "player death" end
+        if reason == "death" then
+            local lp = entity.get_local_player()
+            if lp and entity.is_alive(lp) and health <= 0 then reason = "player death" end
         end
-    
-        if reason == "spread" or reason == "prediction error" then
-            -- keep reason
-        elseif health <= 0 then
-            reason = "player death"
-        elseif reason == "death" then
-            local local_player = entity.get_local_player()
-            if local_player and entity.is_alive(local_player) then
-                if health <= 0 then
-                    reason = "player death"
-                end
-            else
-                -- keep reason
-            end
-        elseif reason == "unknown" then
-            if cached.got_hit ~= nil and cached.got_hurt ~= nil then
-                if cached.got_hit and not cached.got_hurt then
-                    reason = "correction"
-                elseif not cached.got_hit and cached.had_impact then
-                    reason = "misprediction"
+
+        local is_rejection = false
+        local gunGameImmunity = entity.get_prop(e.target, "m_bGunGameImmunity") == 1
+        local takeDamage = entity.get_prop(e.target, "m_takedamage")
+        local flags = entity.get_prop(e.target, "m_fFlags") or 0
+        local renderMode = entity.get_prop(e.target, "m_nRenderMode")
+        
+        if gunGameImmunity or (takeDamage ~= nil and takeDamage == 0) or bit.band(flags, 64) ~= 0 or (renderMode and renderMode > 0 and renderMode ~= 5) then
+            is_rejection = true
+        end
+
+        if not is_rejection and (reason == "unknown" or reason == "correction") and reason ~= "player death" then
+            if hitChance >= 92 then
+                if lagComp <= 16 then
+                    is_rejection = true
+                elseif lagComp > 16 and hitChance >= 98 then
+                    is_rejection = true
                 end
             end
         end
 
-        if lagComp > 14 and reason == "unknown" then
-            reason = "backtrack failure"
-        end
+        if is_rejection then reason = "damage rejection" end
 
-        if reason == "spread" then
-            local weapon = entity.get_player_weapon(entity.get_local_player())
-            if weapon then
-                local inaccuracy = entity.get_prop(weapon, "m_fAccuracyPenalty") or 0
-                if inaccuracy > 0.02 then
-                    reason = "high inaccuracy"
+        if reason ~= "damage rejection" and reason ~= "player death" then
+            if reason == "unknown" then
+                if lagComp > 14 then
+                    reason = "backtrack failure"
+                elseif cached.got_hit ~= nil and cached.got_hurt ~= nil then
+                    if cached.got_hit and not cached.got_hurt then
+                        reason = "correction"
+                    elseif not cached.got_hit and cached.had_impact then
+                        reason = "misprediction"
+                    end
+                end
+            end
+
+            if reason == "spread" then
+                local weapon = entity.get_player_weapon(entity.get_local_player())
+                if weapon then
+                    local inaccuracy = entity.get_prop(weapon, "m_fAccuracyPenalty") or 0
+                    if inaccuracy > 0.02 then reason = "high inaccuracy" end
                 end
             end
         end
-            
+
+        local showYaw = true
+        if reason == "damage rejection" or reason == "backtrack failure" or reason == "player death" or reason == "spread" or reason == "high inaccuracy" then
+            showYaw = false
+        end
+
         if not interface.visuals.logging:get() then return end
         
         local logOptions = interface.visuals.logging_options:get()
@@ -5025,40 +5032,25 @@ logging = {} do
         local doScreen = utils.contains(logOptions, "screen") and utils.contains(screenOptions, "miss")
         if not doConsole and not doScreen then return end
     
-        local msg = ""
-    
-        if health <= 0 then
-            msg = string.format(
-                "missed %s's %s / lc: %d - reason: player death",
-                playerName, hitgroup, lagComp
-            )
-        else
-            if reason == "unknown" or reason == "correction" or reason == "misprediction" then
-                msg = string.format(
-                    "missed %s's %s / lc: %d - yaw: %s - reason: %s",
-                    playerName, hitgroup, lagComp, type(desiredYaw) == "number" and desiredYaw.."°" or desiredYaw.."°", reason
-                )
-            else
-                msg = string.format(
-                    "missed %s's %s / lc: %d - reason: %s",
-                    playerName, hitgroup, lagComp, reason
-                )
-            end
-        end
-    
+        local yawStr = (type(desiredYaw) == "number") and (desiredYaw.."°") or (tostring(desiredYaw).."°")
+
         if doConsole then
-            if health <= 0 then
-                argLog("missed %s's %s / lc: %d - reason: player death", playerName, hitgroup, lagComp)
+            if showYaw then
+                argLog("missed %s's %s / lc: %d - yaw: %s - reason: %s", playerName, hitgroup, lagComp, yawStr, reason)
             else
-                if reason == "unknown" or reason == "correction" or reason == "misprediction" then
-                    argLog("missed %s's %s / lc: %d - yaw: %s - reason: %s", playerName, hitgroup, lagComp, type(desiredYaw) == "number" and desiredYaw.."°" or desiredYaw.."°", reason)
-                else
-                    argLog("missed %s's %s / lc: %d - reason: %s", playerName, hitgroup, lagComp, reason)
-                end
+                argLog("missed %s's %s / lc: %d - reason: %s", playerName, hitgroup, lagComp, reason)
             end
         end
         
-        if doScreen then self:push(msg) end
+        if doScreen then 
+            local msg = ""
+            if showYaw then
+                msg = string.format("missed %s's %s / lc: %d - yaw: %s - reason: %s", playerName, hitgroup, lagComp, yawStr, reason)
+            else
+                msg = string.format("missed %s's %s / lc: %d - reason: %s", playerName, hitgroup, lagComp, reason)
+            end
+            self:push(msg) 
+        end
     end
 
     logging.setup_logweapon = function()
@@ -5236,7 +5228,7 @@ widgets.register({
         local username = _nickname or 'user'
         local hours, minutes, seconds, milliseconds = client.system_time()
         local time_str = string.format('%02d:%02d', hours, minutes)
-        local weekdays = {'Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'}
+        local weekdays = {'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'}
         local unix_time = client.unix_time()
         local day_of_week = math.floor(unix_time / 86400 + 4) % 7 + 1
         local day_str = weekdays[day_of_week]
@@ -5363,7 +5355,7 @@ widgets.register({
     defaults = { anchor_x = "center", anchor_y = "center", offset_x = 0, offset_y = 30 },
     get_size = function(st)
         local lineh = select(2, renderer.measure_text("c", "A")) or 12
-        local samples = { "+100", "120", "99" }
+        local samples = {"1", "120", "50"}
         local maxw = 0
         for i = 1, #samples do
             local w = select(1, renderer.measure_text("c", samples[i])) or 0
