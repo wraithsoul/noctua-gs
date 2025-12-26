@@ -9692,7 +9692,7 @@ summary = {} do
         a = tonumber(a) or 0
         b = tonumber(b) or 0
         if b == 0 then
-            return (a > 0) and 'inf' or '0.00'
+            return string.format('%.2f', a)
         end
         return string.format('%.2f', a / b)
     end
