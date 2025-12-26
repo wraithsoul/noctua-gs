@@ -9620,7 +9620,8 @@ confetti:push(0, true)
 --@endregion
 
 --@region: art
-local star = [[
+art = {} do
+    local star = [[
        .-.                         .-.                    |     '      .        
       (   )    '        +         (   )                  -o-               o    
        `-'     .-.                 `-'             '      |        +          + 
@@ -9629,7 +9630,7 @@ local star = [[
               '                                                                 
      '       .-.    *                      /                               .  ' 
               ) )       '    noctua.sbs   /                           | o      
-  '.         '-´       '    o            *   version: {ver}          -+-       
+  '.         '-´       '                 *  version: {ver}            -+-       
  +                  *   ' .                    .-.       '            |        
          ' o                    |     . .       ) )                   +       
        .         '             -o- .         o '-´   / +        .               
@@ -9643,29 +9644,201 @@ local star = [[
  +          +                         ' o           '               *     *     
 ]]
 
-local function artHighlight()
-    local r, g, b = unpack(interface.visuals.accent.color.value)
-    local white_r, white_g, white_b = 255, 255, 255
-    
-    local target1 = "noctua.sbs"
-    local placeholder = "{ver}"
-    local s1, e1 = star:find(target1, 1, true)
-    local s2, e2 = star:find(placeholder, (e1 or 0) + 1, true)
-
-    if not s1 or not s2 then
-        client.color_log(white_r, white_g, white_b, star .. "\n\0")
-        return
+    local function log_val(text)
+        client.color_log(255, 255, 255, text .. "\0")
     end
 
-    client.color_log(white_r, white_g, white_b, star:sub(1, s1 - 1) .. "\0")
-    client.color_log(r, g, b, star:sub(s1, e1) .. "\0")
-    client.color_log(white_r, white_g, white_b, star:sub(e1 + 1, s2 - 1) .. "\0")
-    client.color_log(r, g, b, tostring(_version) .. "\0")
-    client.color_log(white_r, white_g, white_b, star:sub(e2 + 1) .. "\n\0")
-end
+    local function log_accent(text)
+        local r, g, b = unpack(interface.visuals.accent.color.value)
+        client.color_log(r, g, b, text .. "\0")
+    end
 
-client.exec('clear')
-artHighlight()
+    art.display = function()
+        local target1 = "noctua.sbs"
+        local placeholder = "{ver}"
+        local s1, e1 = star:find(target1, 1, true)
+        local s2, e2 = star:find(placeholder, (e1 or 0) + 1, true)
+
+        if not s1 or not s2 then
+            log_val(star .. "\n")
+            return
+        end
+
+        log_val(star:sub(1, s1 - 1))
+        log_accent(star:sub(s1, e1))
+        log_val(star:sub(e1 + 1, s2 - 1))
+        log_accent(tostring(_version or "1.0.0"))
+        log_val(star:sub(e2 + 1) .. "\n")
+    end
+
+    art.setup = function()
+        client.exec('clear')
+        art.display()
+    end
+
+    art.setup()
+end
+--@endregion
+
+--@region: summary
+summary = {} do
+    if not _G.noctua_session then
+        _G.noctua_session = {
+            active = false,
+            stats = {
+                start_time = 0,
+                kills = 0,
+                deaths = 0,
+                hits = 0,
+                misses = 0,
+                aa_misses = 0,
+                resolved = {},
+                map_name = ""
+            }
+        }
+    end
+
+    local function fmt_ratio(a, b)
+        a = tonumber(a) or 0
+        b = tonumber(b) or 0
+        if b == 0 then
+            return (a > 0) and 'inf' or '0.00'
+        end
+        return string.format('%.2f', a / b)
+    end
+
+    local function log_txt(text)
+        client.color_log(212, 212, 212, text .. "\0")
+    end
+
+    local function log_val(text)
+        client.color_log(255, 255, 255, text .. "\0")
+    end
+
+    local function log_accent(text)
+        local r, g, b = unpack(interface.visuals.accent.color.value)
+        client.color_log(r, g, b, text .. "\0")
+    end
+
+    summary.start_session = function()
+        _G.noctua_session.active = true
+        _G.noctua_session.stats = {
+            start_time = globals.realtime(),
+            kills = 0,
+            deaths = 0,
+            hits = 0,
+            misses = 0,
+            aa_misses = 0,
+            resolved = {},
+            map_name = globals.mapname() or "server"
+        }
+    end
+
+    summary.print_report = function()
+        _G.noctua_session.active = false
+        local s = _G.noctua_session.stats
+        
+        local duration = math.max(0, globals.realtime() - s.start_time)
+        if duration < 1 then return end
+
+        local m = math.floor(duration / 60)
+        local sec = math.floor(duration % 60)
+        
+        local res_count = 0
+        for _ in pairs(s.resolved) do res_count = res_count + 1 end
+        
+        log_accent("noctua · ")
+        log_txt("you've played ")
+        log_val(string.format("%dm %ds ", m, sec))
+        log_txt("on ")
+        log_val(s.map_name)
+        log_txt(".\nhere is your summary:\n")
+
+        log_txt("\npersonal\n")
+        log_txt("- you made ")
+        log_val(string.format("%d ", s.kills))
+        log_txt("kills and died ")
+        log_val(string.format("%d ", s.deaths))
+        log_txt("times (k/d: ")
+        log_val(fmt_ratio(s.kills, s.deaths))
+        log_txt(")\n")
+        
+        log_txt("\nresolver\n")
+        log_txt("- resolved ")
+        log_val(string.format("%d ", res_count))
+        log_txt("enemies total, made ")
+        log_val(string.format("%d ", s.hits))
+        log_txt("hits and ")
+        log_val(string.format("%d ", s.misses))
+        log_txt("misses (ratio: ")
+        log_val(fmt_ratio(s.hits, s.misses))
+        log_txt(")\n")
+
+        log_txt("\nanti-aim\n")
+        log_txt("- enemies missed ")
+        log_val(string.format("%d ", s.aa_misses))
+        log_txt("times in your anti-aim\n")
+        
+        client.color_log(255, 255, 255, "\n")
+    end
+
+    summary.setup = function()
+        client.set_event_callback('paint_ui', function()
+            local in_game = globals.mapname() ~= nil
+
+            if in_game then
+                if not _G.noctua_session.active then
+                    summary.start_session()
+                end
+            else
+                if _G.noctua_session.active then
+                    summary.print_report()
+                end
+            end
+        end)
+
+        client.set_event_callback('player_death', function(e)
+            if not _G.noctua_session.active then return end
+            
+            local me = entity.get_local_player()
+            local attacker = client.userid_to_entindex(e.attacker)
+            local victim = client.userid_to_entindex(e.userid)
+
+            if attacker == me and victim ~= me then
+                _G.noctua_session.stats.kills = _G.noctua_session.stats.kills + 1
+            elseif victim == me then
+                _G.noctua_session.stats.deaths = _G.noctua_session.stats.deaths + 1
+            end
+        end)
+
+        client.set_event_callback('aim_hit', function(e)
+            if not _G.noctua_session.active then return end
+            _G.noctua_session.stats.hits = _G.noctua_session.stats.hits + 1
+            if e.target then _G.noctua_session.stats.resolved[e.target] = true end
+        end)
+
+        client.set_event_callback('aim_miss', function()
+            if not _G.noctua_session.active then return end
+            _G.noctua_session.stats.misses = _G.noctua_session.stats.misses + 1
+        end)
+
+        client.set_event_callback('bullet_impact', function(e)
+            if not _G.noctua_session.active then return end
+            local me = entity.get_local_player()
+            if not me or not entity.is_alive(me) then return end
+            local shooter = client.userid_to_entindex(e.userid)
+            if not shooter or shooter == me or not entity.is_enemy(shooter) then return end
+            
+            local lx, ly, lz = entity.hitbox_position(me, 0)
+            local dist = math.sqrt((e.x - lx)^2 + (e.y - ly)^2 + (e.z - lz)^2)
+            if dist < 60 then
+                _G.noctua_session.stats.aa_misses = _G.noctua_session.stats.aa_misses + 1
+            end
+        end)
+    end
+
+    summary.setup()
+end
 --@endregion
 
 -- ^~^!
