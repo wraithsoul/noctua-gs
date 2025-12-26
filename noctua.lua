@@ -4812,14 +4812,13 @@ logging = {} do
             hitbox = hitbox, 
             damage = damage, 
             lagComp = lagComp,
-            had_impact = false,
-            got_hurt = false,
             aim_x = e.x,
             aim_y = e.y,
             aim_z = e.z,
             teleported = e.teleported,
             extrapolated = e.extrapolated,
-            start_speed = speed
+            start_speed = speed,
+            hitChance = hitChance
         }
 
         if not interface.visuals.logging:get() then return end
@@ -4833,15 +4832,9 @@ logging = {} do
         if not doConsole and not doScreen then return end
 
         local yawDisplay = (type(desiredYaw) == "number") and (desiredYaw.."°") or (tostring(desiredYaw).."°")
-        local msg = string.format(
-            "fired at %s's %s for %d / lc: %d - yaw: %s",
-            playerName, hitbox, hitChance, lagComp, yawDisplay
-        )
+        local msg = string.format("fired at %s's %s for %d / lc: %d - yaw: %s", playerName, hitbox, hitChance, lagComp, yawDisplay)
 
-        if doConsole then 
-            argLog("fired at %s's %s for %d / lc: %d - yaw: %s", playerName, hitbox, hitChance, lagComp, yawDisplay)
-        end
-
+        if doConsole then argLog(msg) end
         if doScreen then self:push(msg) end
     end
 
@@ -4954,7 +4947,7 @@ logging = {} do
 
     logging.handleAimMiss = function(self, e)
         if not e then return end
-
+        
         local playerName = entity.get_player_name(e.target)
         local health = entity.get_prop(e.target, "m_iHealth") or 0
         local reason = e.reason
@@ -4963,36 +4956,37 @@ logging = {} do
         local hitChance = e.hit_chance or 0
         local resolverEnabled = (interface.aimbot.enabled_aimbot:get() and interface.aimbot.enabled_resolver_tweaks:get())
         local desiredYaw = resolverEnabled and (resolver.cache[e.target] or 0) or "?"
+        
         local hitgroupMapping = {
-            [0] = "generic",   [1] = "head",      [2] = "chest",
-            [3] = "stomach",   [4] = "left arm",  [5] = "right arm",
-            [6] = "left leg",  [7] = "right leg", [10] = "gear"
+            [0] = "generic", [1] = "head", [2] = "chest",
+            [3] = "stomach", [4] = "left arm", [5] = "right arm",
+            [6] = "left leg", [7] = "right leg", [10] = "gear"
         }
         local hitgroup = hitgroupMapping[e.hitgroup] or "unknown"
+    
+        local lp = entity.get_local_player()
+        local lp_alive = lp and entity.is_alive(lp)
 
-        if reason == "?" then reason = "unknown"
-        elseif not reason or reason == "" then reason = "unregistered shot" end
-
-        if health <= 0 then reason = "player death" end
-        if reason == "death" then
-            local lp = entity.get_local_player()
-            if lp and entity.is_alive(lp) and health <= 0 then reason = "player death" end
+        if health <= 0 then
+            reason = "player death"
+        elseif reason == "death" then
+            if lp_alive then
+                reason = "player death"
+            else
+                reason = "death"
+            end
+        elseif not reason or reason == "" or reason == "?" then 
+            reason = "resolver" 
         end
 
-        local is_rejection = false
-        local gunGameImmunity = entity.get_prop(e.target, "m_bGunGameImmunity") == 1
-        local takeDamage = entity.get_prop(e.target, "m_takedamage")
-        local flags = entity.get_prop(e.target, "m_fFlags") or 0
-        local renderMode = entity.get_prop(e.target, "m_nRenderMode")
-
-        if gunGameImmunity or (takeDamage ~= nil and takeDamage == 0) or bit.band(flags, 64) ~= 0 or (renderMode and renderMode > 0 and renderMode ~= 5) then
-            is_rejection = true
-        end
-
-        if is_rejection then reason = "damage rejection" end
-
-        if reason ~= "damage rejection" and reason ~= "player death" then
-            if reason == "unknown" or reason == "prediction error" then
+        if reason ~= "player death" and reason ~= "death" then
+            if reason == "spread" then
+                local weapon = entity.get_player_weapon(lp)
+                if weapon then
+                    local inacc = entity.get_prop(weapon, "m_fAccuracyPenalty") or 0
+                    if inacc > 0.02 then reason = "high inaccuracy" end
+                end
+            elseif reason == "resolver" or reason == "prediction error" then
                 if cached.teleported then
                     reason = "lagcomp break"
                 elseif cached.extrapolated then
@@ -5000,44 +4994,38 @@ logging = {} do
                 else
                     local vx, vy, vz = entity.get_prop(e.target, "m_vecVelocity")
                     local cur_speed = math.sqrt(vx*vx + vy*vy)
-                    if math.abs(cur_speed - (cached.start_speed or 0)) > 45 then
+                    if math.abs(cur_speed - (cached.start_speed or 0)) > 50 then
                         reason = "acceleration error"
                     end
                 end
             end
 
-            if reason == "unknown" then
-                if lagComp > 14 then
-                    reason = "backtrack failure"
-                elseif not cached.got_hit and cached.had_impact then
-                    reason = "misprediction"
-                end
-            end
-
-            if reason == "spread" then
-                local weapon = entity.get_player_weapon(entity.get_local_player())
-                if weapon then
-                    local inaccuracy = entity.get_prop(weapon, "m_fAccuracyPenalty") or 0
-                    if inaccuracy > 0.02 then reason = "high inaccuracy" end
-                end
+            if reason == "resolver" and lagComp > 14 then
+                reason = "backtrack failure"
             end
         end
 
         local showYaw = true
-        if reason == "damage rejection" or reason == "backtrack failure" or reason == "player death" or reason == "spread" or reason == "high inaccuracy" or reason == "lagcomp break" or reason == "acceleration error" then
-            showYaw = false
-        end
+        local noYawReasons = {
+            ["backtrack failure"] = true, ["death"] = true,
+            ["player death"] = true, ["spread"] = true, 
+            ["high inaccuracy"] = true, ["occlusion"] = true, 
+            ["lagcomp break"] = true, ["acceleration error"] = true,
+            ["extrapolation failure"] = true
+        }
+
+        if noYawReasons[reason] then showYaw = false end
 
         if not interface.visuals.logging:get() then return end
-
+        
         local logOptions = interface.visuals.logging_options:get()
         local consoleOptions = interface.visuals.logging_options_console:get()
         local screenOptions = interface.visuals.logging_options_screen:get()
-
+        
         local doConsole = utils.contains(logOptions, "console") and utils.contains(consoleOptions, "miss")
         local doScreen = utils.contains(logOptions, "screen") and utils.contains(screenOptions, "miss")
         if not doConsole and not doScreen then return end
-
+    
         local yawStr = (type(desiredYaw) == "number") and (desiredYaw.."°") or (tostring(desiredYaw).."°")
 
         if doConsole then
@@ -5047,14 +5035,11 @@ logging = {} do
                 argLog("missed %s's %s / lc: %d - reason: %s", playerName, hitgroup, lagComp, reason)
             end
         end
-
+        
         if doScreen then 
-            local msg = ""
-            if showYaw then
-                msg = string.format("missed %s's %s / lc: %d - yaw: %s - reason: %s", playerName, hitgroup, lagComp, yawStr, reason)
-            else
-                msg = string.format("missed %s's %s / lc: %d - reason: %s", playerName, hitgroup, lagComp, reason)
-            end
+            local msg = showYaw and 
+                string.format("missed %s's %s / lc: %d - yaw: %s - reason: %s", playerName, hitgroup, lagComp, yawStr, reason) or
+                string.format("missed %s's %s / lc: %d - reason: %s", playerName, hitgroup, lagComp, reason)
             self:push(msg) 
         end
     end
@@ -9156,6 +9141,8 @@ summary = {} do
         
         local res_count = 0
         for _ in pairs(s.resolved) do res_count = res_count + 1 end
+
+        client.color_log(255, 255, 255, "\n")
         
         log_accent("noctua · ")
         log_txt("you've played ")
@@ -9188,8 +9175,6 @@ summary = {} do
         log_txt("- enemies missed ")
         log_val(string.format("%d ", s.aa_misses))
         log_txt("times in your anti-aim\n")
-        
-        client.color_log(255, 255, 255, "\n")
     end
 
     summary.setup = function()
