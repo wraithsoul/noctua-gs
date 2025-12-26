@@ -1609,6 +1609,27 @@ player = {} do
     player.distance3d = function(x1, y1, z1, x2, y2, z2)
         return math.sqrt((x2 - x1)^2 + (y2 - y1)^2 + (z2 - z1)^2)
     end
+
+    player.get_kd = function(player)
+        if player == nil then
+            return nil
+        end
+
+        local player_resource = entity.get_player_resource()
+
+        if player_resource == nil then
+            return nil
+        end
+
+        local kills = entity.get_prop(player_resource, 'm_iKills', player)
+        local deaths = entity.get_prop(player_resource, 'm_iDeaths', player)
+
+        if deaths > 0 then
+            return kills / deaths
+        end
+
+        return kills
+    end
 end
 --@endregion
 
@@ -1683,27 +1704,6 @@ utils = {} do
         end
 
         return true
-    end
-
-    utils.get_player_kd = function(player)
-        if player == nil then
-            return nil
-        end
-
-        local player_resource = entity.get_player_resource()
-
-        if player_resource == nil then
-            return nil
-        end
-
-        local kills = entity.get_prop(player_resource, 'm_iKills', player)
-        local deaths = entity.get_prop(player_resource, 'm_iDeaths', player)
-
-        if deaths > 0 then
-            return kills / deaths
-        end
-
-        return kills
     end
 
     utils.get_state = (function()
@@ -7995,7 +7995,7 @@ killsay = {} do
         
         if attacker == local_player and victim ~= local_player then
             if utils.contains(modes, "on kill") then
-                local kd = utils.get_player_kd(local_player)
+                local kd = player.get_kd(local_player)
                 if kd ~= nil and kd <= 1.0 then return end
                 killsay.last_say_time = now
                 killsay.send_phrases("kill")
@@ -8017,7 +8017,6 @@ killsay = {} do
     end
     
     client.set_event_callback("paint", killsay.setup)
-
     killsay.load_all_phrases()
 end
 --@endregion
