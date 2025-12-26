@@ -4009,6 +4009,7 @@ visuals = {} do
     end
 end
 
+--@region: stickman
 stickman = {} do
     stickman.setup = function(self)
         local local_player = entity.get_local_player()
@@ -4205,6 +4206,7 @@ stickman = {} do
         stickman:reset_materials()
     end)
 end
+--@endregion
 
 --@region: confetti
 confetti = {} do
@@ -8041,8 +8043,7 @@ party_mode = {} do
 end
 --@endregion
 
--- @region: anti-aim
-
+--@region: anti-aim
 antiaim = {} do
     local reference = {} do
         reference.ragebot = {} do
@@ -8341,7 +8342,7 @@ antiaim = {} do
 
         animation_breakers.setup()
     end
-    -- @endregion: animation breakers
+    --@endregion
 
     local math_utils = {} do
         math_utils.normalize_yaw = function(a)
@@ -9036,9 +9037,8 @@ antiaim = {} do
         end)
     end
 end
---@endregion: antiaim
+--@endregion
 
---@region: streamer mode
 --@region: streamer mode
 streamer_mode = {} do
     local DB_KEY = 'noctua.streamer_mode_images'
