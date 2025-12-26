@@ -7,99 +7,111 @@
 --]]
 
 --@region: information
-local _name = 'noctua'
-local _version = '1.4c'
-local _nickname = nil
-_G.noctua_runtime = _G.noctua_runtime or {}
+information = {} do
+    _G.noctua_runtime = _G.noctua_runtime or {}
+    _G._name = 'noctua'
+    _G._version = '1.4c'
+    _G._nickname = nil
 
-local function update_nickname()
-    local local_player = entity.get_local_player()
-    if local_player then
-        local name = entity.get_player_name(local_player)
-        if name and name ~= "" then
-            _nickname = name
+    information.update_nickname = function()
+        local local_player = entity.get_local_player()
+        if local_player then
+            local name = entity.get_player_name(local_player)
+            if name and name ~= "" then
+                _G._nickname = name
+            end
         end
     end
-end
 
-update_nickname()
+    information.setup = function()
+        information.update_nickname()
 
-client.set_event_callback('player_spawn', function(e)
-    local me = entity.get_local_player()
-    if me and client.userid_to_entindex(e.userid) == me then
-        update_nickname()
+        client.set_event_callback('player_spawn', function(e)
+            local me = entity.get_local_player()
+            if me and client.userid_to_entindex(e.userid) == me then
+                information.update_nickname()
+            end
+        end)
     end
-end)
+
+    information.setup()
+end
 --@endregion
 
 --@region: news
-local news_container = panorama.loadstring([[
-    var panel = null;
-    var js_news = null;
-    var original_transform = null;
-    var original_visibility = null;
+news = {} do
+    local container = panorama.loadstring([[
+        var panel = null;
+        var js_news = null;
+        var original_transform = null;
+        var original_visibility = null;
 
-    var _Create = function(layout) {
-        js_news = $.GetContextPanel().FindChildTraverse("JsNewsContainer");
-        if (!js_news) {
-            return;
-        }
-
-        original_transform = js_news.style.transform || 'none';
-        original_visibility = js_news.style.visibility || 'visible';
-
-        js_news.style.transform = 'translate3d(-9999px, -9999px, 0)';
-        js_news.style.visibility = 'collapse';
-
-        var parent = js_news.GetParent();
-        if (!parent) {
-            return;
-        }
-
-        panel = $.CreatePanel("Panel", parent, "CustomPanel");
-        if(!panel) {
-            return;
-        }
-
-        if(!panel.BLoadLayoutFromString(layout, false, false)) {
-            panel.DeleteAsync(0);
-            panel = null;
-            return;
-        }
-
-        parent.MoveChildBefore(panel, js_news);
-    };
-
-    var _Destroy = function() {
-        if (js_news) {
-            if (panel) {
-                panel.DeleteAsync(0.0);
-                panel = null;
+        var _Create = function(layout) {
+            js_news = $.GetContextPanel().FindChildTraverse("JsNewsContainer");
+            if (!js_news) {
+                return;
             }
 
-            js_news.style.transform = original_transform;
-            js_news.style.visibility = original_visibility;
-        }
-    };
+            original_transform = js_news.style.transform || 'none';
+            original_visibility = js_news.style.visibility || 'visible';
 
-    return {
-        create: _Create,
-        destroy: _Destroy,
-    };
-]], "CSGOMainMenu")()
+            js_news.style.transform = 'translate3d(-9999px, -9999px, 0)';
+            js_news.style.visibility = 'collapse';
 
-local layout = [[
-<root>
-    <Panel style="width: 100%; height: 100%; flow-children: down;">
-    </Panel>
-</root>
-]]
+            var parent = js_news.GetParent();
+            if (!parent) {
+                return;
+            }
 
-news_container.create(layout)
+            panel = $.CreatePanel("Panel", parent, "CustomPanel");
+            if(!panel) {
+                return;
+            }
 
-client.set_event_callback('shutdown', function()
-    news_container.destroy()
-end)
+            if(!panel.BLoadLayoutFromString(layout, false, false)) {
+                panel.DeleteAsync(0);
+                panel = null;
+                return;
+            }
+
+            parent.MoveChildBefore(panel, js_news);
+        };
+
+        var _Destroy = function() {
+            if (js_news) {
+                if (panel) {
+                    panel.DeleteAsync(0.0);
+                    panel = null;
+                }
+
+                js_news.style.transform = original_transform;
+                js_news.style.visibility = original_visibility;
+            }
+        };
+
+        return {
+            create: _Create,
+            destroy: _Destroy,
+        };
+    ]], "CSGOMainMenu")()
+
+    local layout = [[
+    <root>
+        <Panel style="width: 100%; height: 100%; flow-children: down;">
+        </Panel>
+    </root>
+    ]]
+
+    news.setup = function()
+        container.create(layout)
+
+        client.set_event_callback('shutdown', function()
+            container.destroy()
+        end)
+    end
+
+    news.setup()
+end
 --@endregion
 
 --@region: luraph
@@ -168,45 +180,37 @@ end
 --@endregion
 
 --@region: dependencies
-local function try_require(moduleName, errMsg)
-    local ok, mod = pcall(require, moduleName)
-    if not ok then
-        error(errMsg, 2)
+dependencies = {} do
+    local function try_require(module_name, err_msg)
+        local ok, mod = pcall(require, module_name)
+        if not ok then
+            error(err_msg, 2)
+        end
+        return mod
     end
-    return mod
+
+    dependencies.setup = function()
+        local dependency_list = {
+            { name = "pui",           path = "gamesense/pui",            msg = "Failed to require pui" },
+            { name = "ffi",           path = "ffi",                      msg = "Failed to require ffi" },
+            { name = "bit",           path = "bit",                      msg = "Failed to require bit" },
+            { name = "vector",        path = "vector",                   msg = "Failed to require vector" },
+            { name = "color",         path = "gamesense/color",          msg = "Failed to require color" },
+            { name = "http",          path = "gamesense/http",           msg = "Failed to require http" },
+            { name = "antiaim_funcs", path = "gamesense/antiaim_funcs",  msg = "Failed to require antiaim_funcs" },
+            { name = "clipboard",     path = "gamesense/clipboard",      msg = "Failed to require clipboard" },
+            { name = "images",        path = "gamesense/images",         msg = "Failed to require images" },
+            { name = "csgo_weapons",  path = "gamesense/csgo_weapons",   msg = "Failed to require csgo_weapons" },
+            { name = "base64",        path = "gamesense/base64",         msg = "Failed to require base64" },
+        }
+
+        for _, dep in ipairs(dependency_list) do
+            _G[dep.name] = try_require(dep.path, dep.msg)
+        end
+    end
+
+    dependencies.setup()
 end
-
-local dependencies = {
-    { name = "pui",            path = "gamesense/pui",            msg = "Failed to require pui" },
-    { name = "ffi",            path = "ffi",                      msg = "Failed to require ffi" },
-    { name = "bit",            path = "bit",                      msg = "Failed to require bit" },
-    { name = "vector",         path = "vector",                   msg = "Failed to require vector" },
-    { name = "color",          path = "gamesense/color",          msg = "Failed to require color" },
-    { name = "http",           path = "gamesense/http",           msg = "Failed to require http" },
-    { name = "antiaim_funcs",  path = "gamesense/antiaim_funcs",  msg = "Failed to require antiaim_funcs" },
-    { name = "clipboard",      path = "gamesense/clipboard",      msg = "Failed to require clipboard" },
-    { name = "images",         path = "gamesense/images",      msg = "Failed to require images" },
-}
-
-local modules = {}
-
-for _, dep in ipairs(dependencies) do
-    modules[dep.name] = try_require(dep.path, dep.msg)
-end
-
-local pui = modules.pui
-local ffi = modules.ffi
-local bit = modules.bit
-local vector = modules.vector
-local color = modules.color
-local http = modules.http
-local antiaim_funcs = modules.antiaim_funcs
-local clipboard = modules.clipboard
-local images = modules.images
-
--- optional dependencies
-local ok_weapons, weapons = pcall(require, 'gamesense/csgo_weapons')
-local ok_base64, base64 = pcall(require, 'gamesense/base64')
 --@endregion
 
 --@region: mathematic
@@ -8045,7 +8049,6 @@ party_mode = {} do
     client.set_event_callback("paint", party_mode.setup)
 end
 --@endregion
-
 
 do
     local u_reference = {} do
