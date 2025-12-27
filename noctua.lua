@@ -2221,6 +2221,7 @@ resolver = {} do
 
         player_list.SetForceBodyYawCheckbox(player_list, idx, true)
         player_list.SetBodyYaw(player_list, idx, yaw)
+        player_list.SetCorrection(player_list, idx, false) -- skeet resolver sucks, turn it off
 
         local confidence = precision * (1 - (stage - 1) * 0.2)
         confidence = mathematic.clamp(confidence, 0.1, 1)
