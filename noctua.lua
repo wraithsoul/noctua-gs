@@ -586,6 +586,7 @@ interface = {} do
         watermark = interface.header.general:checkbox('watermark'),
         watermark_show = interface.header.general:multiselect('show', 'script', 'player', 'time', 'ping'),
         -- shared = interface.header.general:checkbox('shared identity (wip)'),
+        bomb_timer = interface.header.general:checkbox('bomb timer'),
         logging = interface.header.general:checkbox('logging'),
         logging_options = interface.header.general:multiselect('options', 'console', 'screen'),
         logging_options_console = interface.header.general:multiselect('console', 'fire', 'hit', 'miss', 'buy', 'aimbot', 'anti aim'),
@@ -816,7 +817,6 @@ interface = {} do
             aimbot = interface.aimbot,
             visuals = interface.visuals,
             builder = interface.builder,
-       
             utility = interface.utility,
             config = interface.config
         }
@@ -3050,6 +3050,8 @@ widgets = {} do
                 if not interface.visuals.logging:get() then return false end
                 local opts = interface.visuals.logging_options:get() or {}
                 return utils.contains(opts, "screen")
+            elseif id == "bomb_timer" then
+                return interface.visuals.bomb_timer:get()
             end
             return true
         end
@@ -3102,6 +3104,8 @@ widgets = {} do
                 if not interface.visuals.logging:get() then return false end
                 local opts = interface.visuals.logging_options:get() or {}
                 return utils.contains(opts, "screen")
+            elseif id == "bomb_timer" then
+                return interface.visuals.bomb_timer:get()
             end
             return true
         end
@@ -9204,6 +9208,8 @@ summary = {} do
         log_txt("  - enemies missed ")
         log_val(string.format("%d ", s.aa_misses))
         log_txt("times in your anti-aim\n")
+        
+        client.color_log(255, 255, 255, "\n")
     end
 
     summary.setup = function()
@@ -9264,6 +9270,210 @@ summary = {} do
     end
 
     summary.setup()
+end
+--@endregion
+
+--@region: bomb timer
+bomb_timer = {} do
+    bomb_timer.state = {
+        alpha = 0,
+        cached_text = "",
+        cached_progress = 0,
+        cached_color = {255, 255, 255},
+        plant = { active = false, start_time = 0, site = "" },
+        defused = false,
+        defuse_time = 0
+    }
+
+    local bomb_original = ui.reference('visuals', 'other esp', 'bomb')
+
+    local function dist_3d(x1, y1, z1, x2, y2, z2)
+        return math.sqrt((x2 - x1) ^ 2 + (y2 - y1) ^ 2 + (z2 - z1) ^ 2)
+    end
+
+    local function reset_state()
+        local s = bomb_timer.state
+        s.plant.active = false
+        s.defused = false
+        s.defuse_time = 0
+        s.alpha = 0
+        s.cached_progress = 0
+    end
+
+    bomb_timer.handle_ui = function()
+        if not interface.visuals.bomb_timer then return end
+        local enabled = interface.visuals.bomb_timer:get()
+        if enabled then
+            ui.set(bomb_original, false)
+            ui.set_enabled(bomb_original, false)
+        else
+            ui.set_enabled(bomb_original, true)
+        end
+    end
+
+    bomb_timer.paint_world = function()
+        if not (interface.visuals.enabled_visuals:get() and interface.visuals.bomb_timer:get()) then
+            return
+        end
+
+        local c4_ent = entity.get_all("CPlantedC4")[1]
+        if not c4_ent then return end
+
+        local x, y, z = entity.get_prop(c4_ent, "m_vecOrigin")
+        if x then
+            local sx, sy = renderer.world_to_screen(x, y, z + 20)
+            if sx and sy then
+                renderer.text(sx, sy, 255, 255, 255, 255, "c", 0, "bomb")
+            end
+        end
+    end
+
+    bomb_timer.paint = function(x, y, edit_mode)
+        local s = bomb_timer.state
+        if not (interface.visuals.enabled_visuals:get() and interface.visuals.bomb_timer:get()) then
+            s.alpha = 0
+            return
+        end
+
+        local curtime = globals.curtime()
+        local active = false
+        local text_str = ""
+        local bar_val = 0
+        local bar_col = { unpack(interface.visuals.accent.color.value) }
+
+        local c4_ent = entity.get_all("CPlantedC4")[1]
+        local is_planted = c4_ent ~= nil
+
+        if s.defused then
+            if (curtime - s.defuse_time) < 3.0 then
+                active = true
+                text_str = "bomb defused!"
+                bar_col = {124, 195, 23}
+                bar_val = 1
+            end
+        elseif is_planted then
+            local blow = entity.get_prop(c4_ent, "m_flC4Blow") or 0
+            local len = entity.get_prop(c4_ent, "m_flTimerLength") or 40
+            local defused = entity.get_prop(c4_ent, "m_bBombDefused") == 1
+            
+            if defused then
+                if not s.defused then
+                    s.defused = true
+                    s.defuse_time = curtime
+                end
+            else
+                local left = blow - curtime
+                if left > 0 then
+                    active = true
+                    local defuser = entity.get_prop(c4_ent, "m_hBombDefuser")
+                    if defuser and defuser > 0 then
+                        local def_end = entity.get_prop(c4_ent, "m_flDefuseCountDown") or 0
+                        local def_len = entity.get_prop(c4_ent, "m_flDefuseLength") or 10
+                        local def_left = def_end - curtime
+                        
+                        if def_end < blow then
+                            bar_col = {124, 195, 23}
+                            text_str = string.format("defusing in %.1fs", math.max(0, def_left))
+                            bar_val = math.max(0, def_left / def_len)
+                        else
+                            bar_col = {255, 60, 60}
+                            text_str = string.format("bomb explodes in %.1fs", left)
+                            bar_val = math.max(0, left / len)
+                        end
+                    else
+                        text_str = string.format("bomb explodes in %.1fs", left)
+                        bar_val = math.max(0, left / len)
+                    end
+                end
+            end
+        elseif s.plant.active then
+            active = true
+            local progress = (curtime - s.plant.start_time) / 3.125
+            text_str = "planting" .. s.plant.site .. "..."
+            bar_val = math.max(0, math.min(1, progress))
+        end
+
+        if not active and edit_mode then
+            active = true
+            text_str = "bomb explodes in 20.0s"
+            bar_val = 0.5
+            s.alpha = 1
+        end
+
+        s.alpha = mathematic.lerp(s.alpha, active and 1 or 0, globals.frametime() * 6)
+
+        if s.alpha < 0.01 then 
+            s.cached_progress = 0
+            return 
+        end
+
+        if active then
+            s.cached_text = text_str
+            s.cached_progress = mathematic.lerp(s.cached_progress, bar_val, globals.frametime() * 12)
+            s.cached_color = bar_col
+        end
+
+        local w = 180
+        local start_y = math.floor(y - 9)
+        local rect_x, rect_y = math.floor(x - w / 2), start_y + 16
+        local fill_w = math.floor(w * s.cached_progress)
+        local r, g, b = unpack(s.cached_color)
+
+        renderer.rectangle(rect_x, rect_y, w, 2, 50, 50, 50, math.floor(70 * s.alpha))
+        renderer.rectangle(rect_x, rect_y, fill_w, 2, r, g, b, math.floor(255 * s.alpha))
+        renderer.text(x, start_y, 255, 255, 255, math.floor(255 * s.alpha), "c", 0, s.cached_text)
+    end
+
+    bomb_timer.setup = function()
+        client.set_event_callback("round_start", reset_state)
+        client.set_event_callback("client_disconnect", reset_state)
+        client.set_event_callback("shutdown", function() ui.set_enabled(bomb_original, true) end)
+        client.set_event_callback("paint", bomb_timer.paint_world)
+
+        client.set_event_callback("bomb_beginplant", function(e)
+            local s = bomb_timer.state
+            s.plant.active = true
+            s.plant.start_time = globals.curtime()
+            local player_resource = entity.get_all("CCSPlayerResource")[1]
+            if e.site and player_resource then
+                local o_x, o_y, o_z = entity.get_prop(e.site, "m_vecOrigin")
+                local min_x, min_y, min_z = entity.get_prop(e.site, "m_vecMins")
+                local max_x, max_y, max_z = entity.get_prop(e.site, "m_vecMaxs")
+                local cx, cy, cz = o_x + (min_x + max_x) / 2, o_y + (min_y + max_y) / 2, o_z + (min_z + max_z) / 2
+                local ax, ay, az = entity.get_prop(player_resource, "m_bombsiteCenterA")
+                local bx, by, bz = entity.get_prop(player_resource, "m_bombsiteCenterB")
+                s.plant.site = (dist_3d(cx, cy, cz, ax, ay, az) < dist_3d(cx, cy, cz, bx, by, bz)) and " A" or " B"
+            else
+                s.plant.site = ""
+            end
+        end)
+
+        client.set_event_callback("bomb_abortplant", function() bomb_timer.state.plant.active = false end)
+        client.set_event_callback("bomb_planted", function() bomb_timer.state.plant.active = false end)
+        client.set_event_callback("bomb_defused", function() 
+            bomb_timer.state.defused = true
+            bomb_timer.state.defuse_time = globals.curtime()
+        end)
+
+        if interface.visuals.bomb_timer then
+            bomb_timer.handle_ui()
+            local timer_id = interface.visuals.bomb_timer.ref or interface.visuals.bomb_timer.id
+            if timer_id then
+                ui.set_callback(timer_id, bomb_timer.handle_ui)
+            end
+        end
+
+        widgets.register({
+            id = "bomb_timer",
+            title = "Bomb Timer",
+            defaults = { anchor_x = "center", anchor_y = "center", offset_x = 0, offset_y = -400 },
+            get_size = function() return 180, 26 end,
+            draw = function(ctx) bomb_timer.paint(ctx.cx, ctx.cy, ctx.edit_mode) end,
+            z = 5
+        })
+    end
+
+    bomb_timer.setup()
 end
 --@endregion
 
@@ -9410,9 +9620,10 @@ menu_info = {} do
                 "enemy ping warning",
                 "dump resolver data",
                 "automatic osaa & disablers",
-                "damage rejection reason",
+                "new miss reasons",
                 "modern debug window",
                 "winter mode ❄️",
+                "custom bomb timer"
             }
             for i, line in ipairs(update_list) do
                 renderer.text(list_x, list_y + (i * line_height), 255, 255, 255, menu_info.alpha, 'r', 0, line)
