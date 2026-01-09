@@ -559,7 +559,6 @@ interface = {} do
         enabled_aimbot = interface.header.general:checkbox('enable aimbot'),
         enabled_resolver_tweaks = interface.header.general:checkbox('\aa5ab55ffresolver tweaks'),
         resolver_mode = interface.header.general:combobox('mode', 'autopilot', 'experimental'),
-        smart_safety = interface.header.general:checkbox('smart safety'),
         silent_shot = interface.header.general:checkbox('silent shot'),
         force_recharge = interface.header.general:checkbox('allow force recharge'),
         noscope_distance = interface.header.general:checkbox('noscope distance'),
@@ -835,8 +834,6 @@ interface = {} do
                     if key == 'enabled_aimbot' then
                         element:set_visible(true)
                     elseif key == 'resolver_mode' then
-                        element:set_visible(enabled and interface.aimbot.enabled_resolver_tweaks:get())
-                    elseif key == 'smart_safety' then
                         element:set_visible(enabled and interface.aimbot.enabled_resolver_tweaks:get())
                     elseif key == 'noscope_distance' then
                         element:set_visible(enabled)
@@ -4837,11 +4834,11 @@ logging = {} do
 
         local yawDisplay = (type(desiredYaw) == "number") and (desiredYaw.."°") or (tostring(desiredYaw).."°")
 
-        if doConsole then 
+        if doConsole then
             argLog("fired at %s's %s for %d / lc: %d - yaw: %d°", playerName, hitbox, damage, lagComp, desiredYaw) 
         end
 
-        if doScreen then 
+        if doScreen then
             local msg = string.format("fired at %s's %s for %d / lc: %d - yaw: %s°", playerName, hitbox, damage, lagComp, tostring(desiredYaw))
             self:push(msg) 
         end
@@ -4877,19 +4874,20 @@ logging = {} do
             if weapon then
                 inaccuracy = entity.get_prop(weapon, "m_fAccuracyPenalty")
             end
-
+    
             local vx, vy, vz = entity.get_prop(e.target, "m_vecVelocity")
             local current_speed = math.sqrt(vx*vx + vy*vy)
             local cached_speed = cached.start_speed or 0
+            local speed_delta = math.abs(current_speed - cached_speed)
             
             if inaccuracy > 0.02 then
-                mismatchReason = "spread"
-            elseif math.abs(current_speed - cached_speed) > 40 then
-                mismatchReason = "acceleration error"
+                mismatchReason = "high inaccuracy"
+            elseif speed_delta > 40 then
+                mismatchReason = "prediction / accel. error"
             else
                 mismatchReason = "unknown"
             end
-
+    
             if doScreen then
                 msg = string.format(
                     "hit %s's %s (expected: %s) for %d (expected: %d) / lc: %d - yaw: %s - reason: %s",
@@ -4897,7 +4895,7 @@ logging = {} do
                 )
                 self:push(msg)
             end
-
+    
             if doConsole then
                 argLog("hit %s's %s (expected: %s) for %d (expected: %d) / lc: %d - yaw: %s - reason: %s", playerName, hitbox, cached.hitbox, damage, cached.damage, lagComp, type(desiredYaw) == "number" and desiredYaw.."°" or desiredYaw.."°", mismatchReason)
             end
@@ -4998,17 +4996,17 @@ logging = {} do
     
         local lp = entity.get_local_player()
         local lp_alive = lp and entity.is_alive(lp)
-
+    
         local lx, ly, lz = client.eye_position()
         local tx, ty, tz = e.x, e.y, e.z
-
+    
         if lx and tx then
             local fraction, entindex = client.trace_line(lp, lx, ly, lz, tx, ty, tz)
             if fraction < 1 and entindex ~= e.target then
                 reason = "occlusion"
             end
         end
-
+    
         if health <= 0 then
             reason = "player death"
         elseif reason == "death" then
@@ -5020,7 +5018,7 @@ logging = {} do
         elseif not reason or reason == "" or reason == "?" then 
             reason = "resolver" 
         end
-
+    
         if reason ~= "player death" and reason ~= "death" and reason ~= "occlusion" then
             if reason == "spread" then
                 local weapon = entity.get_player_weapon(lp)
@@ -5042,12 +5040,12 @@ logging = {} do
                     end
                 end
             end
-
+    
             if reason == "resolver" and lagComp > 14 then
                 reason = "backtrack failure"
             end
         end
-
+    
         local showYaw = true
         local noYawReasons = {
             ["backtrack failure"] = true, ["death"] = true,
@@ -5056,9 +5054,9 @@ logging = {} do
             ["acceleration error"] = true, ["extrapolation failure"] = true,
             ["prediction error"] = true, ["occlusion"] = true
         }
-
+    
         if noYawReasons[reason] then showYaw = false end
-
+    
         if not interface.visuals.logging:get() then return end
         
         local logOptions = interface.visuals.logging_options:get()
@@ -5070,22 +5068,23 @@ logging = {} do
         if not doConsole and not doScreen then return end
     
         local yawStr = (type(desiredYaw) == "number") and (desiredYaw.."°") or (tostring(desiredYaw).."°")
-
+        local hcStr = math.floor(hitChance + 0.5) .. "%"
+    
         if doConsole then
             if showYaw then
-                argLog("missed %s's %s / lc: %d - yaw: %s - reason: %s", playerName, hitgroup, lagComp, yawStr, reason)
+                argLog("missed %s's %s / lc: %d - yaw: %s - hc: %s - reason: %s", playerName, hitgroup, lagComp, yawStr, hcStr, reason)
             else
-                argLog("missed %s's %s / lc: %d - reason: %s", playerName, hitgroup, lagComp, reason)
+                argLog("missed %s's %s / lc: %d - hc: %s - reason: %s", playerName, hitgroup, lagComp, hcStr, reason)
             end
         end
         
         if doScreen then 
             local msg = showYaw and 
-                string.format("missed %s's %s / lc: %d - yaw: %s - reason: %s", playerName, hitgroup, lagComp, yawStr, reason) or
-                string.format("missed %s's %s / lc: %d - reason: %s", playerName, hitgroup, lagComp, reason)
+                string.format("missed %s's %s / lc: %d - yaw: %s - hc: %s - reason: %s", playerName, hitgroup, lagComp, yawStr, hcStr, reason) or
+                string.format("missed %s's %s / lc: %d - hc: %s - reason: %s", playerName, hitgroup, lagComp, hcStr, reason)
             self:push(msg) 
         end
-
+    
         if _G.noctua_session and _G.noctua_session.active then
             local stats = _G.noctua_session.stats
             stats.miss_types[reason] = (stats.miss_types[reason] or 0) + 1
@@ -5711,7 +5710,7 @@ buybot = {} do
         ["molotov"] = "molotov",
         ["smoke"] = "smokegrenade"
     }
-    
+
     buybot.has_primary_weapon = function()
         local local_player = entity.get_local_player()
         if not local_player then return false end
@@ -6901,551 +6900,6 @@ end
 
 stats.init()
 client.set_event_callback('shutdown', function() pcall(function() stats.save_db() end) end)
---@endregion
-
---@region: lethal_shot_handler
-lethal_shot_handler = {} do
-    lethal_shot_handler.cache = {}
-    lethal_shot_handler.lethal_threshold = 75
-    lethal_shot_handler.settings_persist_time = 2.0
-    lethal_shot_handler.min_misses_for_safety = 2
-    
-    lethal_shot_handler.is_lethal = function(self, idx)
-        if not idx or not entity.is_alive(idx) then
-            return false
-        end
-        
-        local health = entity.get_prop(idx, "m_iHealth")
-        if not health or health >= 100 then
-            return false
-        end
-        
-        local local_player = entity.get_local_player()
-        if not local_player or not entity.is_alive(local_player) then
-            return health <= self.lethal_threshold
-        end
-        
-        local local_eye_pos = {client.eye_position()}
-        if not local_eye_pos[1] then
-            return health <= self.lethal_threshold
-        end
-        
-        local hitboxes = {0, 3, 4, 5, 6}
-        local max_damage = 0
-        
-        for _, hitbox in ipairs(hitboxes) do
-            local target_pos = {entity.hitbox_position(idx, hitbox)}
-            if target_pos[1] then
-                local _, damage = client.trace_bullet(
-                    local_player,
-                    local_eye_pos[1], local_eye_pos[2], local_eye_pos[3],
-                    target_pos[1], target_pos[2], target_pos[3],
-                    false
-                )
-                
-                if damage and damage > max_damage then
-                    max_damage = damage
-                end
-            end
-        end
-        
-        if max_damage <= 0 then
-            local weapon_damage = self:get_weapon_damage(local_player)
-            local has_armor = entity.get_prop(idx, "m_ArmorValue") > 0
-            max_damage = has_armor and weapon_damage * 0.8 or weapon_damage
-        end
-        
-        return health <= max_damage and health <= self.lethal_threshold and max_damage >= health * 0.9
-    end
-    
-    lethal_shot_handler.get_weapon_damage = function(self, local_player)
-        local weapon = entity.get_player_weapon(local_player)
-        if not weapon then return 0 end
-        
-        local weapon_idx = entity.get_prop(weapon, "m_iItemDefinitionIndex")
-        if not weapon_idx then return 0 end
-        
-        local damage_table = {
-            [1] = 29,   -- deagle
-            [2] = 38,   -- dual berettas
-            [3] = 27,   -- fiveseven
-            [4] = 30,   -- glock
-            [7] = 30,   -- ak47
-            [8] = 25,   -- aug
-            [9] = 115,  -- awp
-            [10] = 26,  -- famas
-            [11] = 30,  -- g3sg1
-            [13] = 30,  -- galil
-            [14] = 30,  -- m249
-            [16] = 33,  -- m4a1
-            [17] = 29,  -- mac10
-            [19] = 32,  -- p90
-            [23] = 92,  -- ssg08
-            [24] = 25,  -- ump45
-            [25] = 30,  -- xm1014
-            [26] = 86,  -- pp-bizon
-            [27] = 30,  -- mag7
-            [28] = 23,  -- negev
-            [29] = 35,  -- sawed off
-            [30] = 88,  -- tec9
-            [31] = 30,  -- zeus
-            [32] = 35,  -- p2000
-            [33] = 27,  -- mp7
-            [34] = 29,  -- mp9
-            [35] = 115, -- nova
-            [36] = 37,  -- p250
-            [38] = 115, -- scar-20
-            [39] = 26,  -- sg553
-            [40] = 33,  -- ssg08
-            [41] = 35,  -- knife
-            [42] = 35,  -- knife
-            [59] = 33,  -- m4a1-s
-            [60] = 29,  -- usp-s
-            [61] = 35,  -- cz75a
-            [63] = 115, -- revolver
-            [64] = 35,  -- knife
-        }
-        
-        return damage_table[weapon_idx] or 30
-    end
-    
-    lethal_shot_handler.should_force_safe_point = function(self, idx)
-        local health = entity.get_prop(idx, "m_iHealth")
-        if health and health >= 100 then
-            return false, 0.0
-        end
-
-        local cache = self:update_cache(idx)
-        local curtime = globals.curtime()
-
-        local should_persist = cache.was_lethal and (curtime - cache.last_visible_time < self.settings_persist_time)
-        
-        if cache.is_lethal or should_persist then
-            return true, 1.0
-        end
-        
-        if cache.misses > 2 then
-            return true, 0.8
-        end
-        
-        return false, 0.0
-    end
-    
-    lethal_shot_handler.on_miss = function(self, idx)
-        if not self.cache[idx] then
-            self.cache[idx] = {
-                last_check = 0,
-                is_lethal = false,
-                misses = 0,
-                hits = 0,
-                safe_point_misses = 0,
-                last_visible_time = 0,
-                was_lethal = false,
-                logged_safe_point = false,
-                logged_body_aim = false
-            }
-        end
-        
-        self.cache[idx].misses = self.cache[idx].misses + 1
-        
-        local safe_point_status = plist.get(idx, 'Override safe point')
-        local body_aim_status = plist.get(idx, 'Override prefer body aim')
-        
-        if safe_point_status == "On" then
-            self.cache[idx].safe_point_misses = self.cache[idx].safe_point_misses + 1
-            
-            if body_aim_status == "-" or body_aim_status == "" then
-                plist.set(idx, 'Override prefer body aim', "On")
-            elseif body_aim_status == "On" then
-                plist.set(idx, 'Override prefer body aim', "Force")
-            end
-        end
-    end
-    
-    lethal_shot_handler.on_hit = function(self, idx)
-        if not self.cache[idx] then
-            self.cache[idx] = {
-                last_check = 0,
-                is_lethal = false,
-                misses = 0,
-                hits = 0,
-                safe_point_misses = 0,
-                last_visible_time = 0,
-                was_lethal = false,
-                logged_safe_point = false,
-                logged_body_aim = false
-            }
-        end
-        
-        self.cache[idx].hits = self.cache[idx].hits + 1
-        self.cache[idx].misses = math.max(0, self.cache[idx].misses - 1)
-        self.cache[idx].safe_point_misses = 0
-
-        local health = entity.get_prop(idx, "m_iHealth")
-        if health and health > self.lethal_threshold then
-            self.cache[idx].was_lethal = false
-        end
-    end
-    
-    lethal_shot_handler.reset = function(self, idx)
-        if self.cache[idx] then
-            self.cache[idx].misses = 0
-            self.cache[idx].hits = 0
-            self.cache[idx].safe_point_misses = 0
-            self.cache[idx].last_visible_time = 0
-            self.cache[idx].was_lethal = false
-            self.cache[idx].logged_safe_point = false
-            self.cache[idx].logged_body_aim = false
-
-            if idx and type(idx) == "number" and entity.is_enemy(idx) then
-                plist.set(idx, 'Override safe point', "-")
-                plist.set(idx, 'Override prefer body aim', "-")
-            end
-        end
-    end
-
-    lethal_shot_handler.setup = function(self)
-        if not (interface.aimbot.enabled_aimbot:get() and interface.aimbot.enabled_resolver_tweaks:get() and interface.aimbot.smart_safety:get()) then 
-            return 
-        end
-
-        local local_player = entity.get_local_player()
-        if not local_player or not entity.is_alive(local_player) then
-            return
-        end
-
-        local target = client.current_threat()
-        if not target or not entity.is_alive(target) or not entity.is_enemy(target) then
-            return
-        end
-
-        self:check_respawn(target)
-
-        local should_force, confidence = self:should_force_safe_point(target)
-        local cache = self.cache[target]
-        
-        if should_force then
-            if target and type(target) == "number" then
-                local current_safe_point = plist.get(target, 'Override safe point')
-                
-                plist.set(target, 'Override safe point', "On")
-                
-                if current_safe_point ~= "On" and interface.visuals.logging:get() then
-                    local playerName = entity.get_player_name(target)
-                    local health = entity.get_prop(target, "m_iHealth") or 0
-                    local reason = ""
-                    
-                        local curtime = globals.curtime()
-                        local should_persist = cache.was_lethal and (curtime - cache.last_visible_time < self.settings_persist_time)
-                        
-                        if cache.is_lethal or should_persist then
-                            reason = "lethal target"
-                        elseif cache.misses > 2 then
-                            reason = "aim struggle"
-                        else
-                            reason = "unknown"
-                        end
-                    
-                    local msg = string.format("forced safe point for %s / hp: %d - reason: %s", playerName, health, reason)
-                    
-                    local logOptions = interface.visuals.logging_options:get()
-                    local consoleOptions = interface.visuals.logging_options_console:get()
-                    local screenOptions = interface.visuals.logging_options_screen:get()
-                    
-                    local doConsole = utils.contains(logOptions, "console") and utils.contains(consoleOptions, "aimbot")
-                    local doScreen = utils.contains(logOptions, "screen") and utils.contains(screenOptions, "aimbot")
-                    
-                    if doConsole then
-                        argLog("forced safe point for %s / hp: %d - reason: %s", playerName, health, reason)
-                    end
-                    
-                    if doScreen then
-                        logging:push(msg)
-                    end
-                    
-                    self.cache[target].logged_safe_point = true
-                end
-            end
-        else
-            local curtime = globals.curtime()
-            local time_since_visible = curtime - cache.last_visible_time
-            
-            if time_since_visible > self.settings_persist_time or not cache.was_lethal then
-                if target and type(target) == "number" then
-                    plist.set(target, 'Override safe point', "-")
-                    plist.set(target, 'Override prefer body aim', "-")
-                    self.cache[target].logged_safe_point = false
-                end
-            end
-        end
-    end
-    
-    lethal_shot_handler.process_all_players = function(self)
-        if not (interface.aimbot.enabled_aimbot:get() and interface.aimbot.enabled_resolver_tweaks:get() and interface.aimbot.smart_safety:get()) then 
-            return 
-        end
-        
-        local local_player = entity.get_local_player()
-        if not local_player or not entity.is_alive(local_player) then
-            return
-        end
-
-        local enemies = entity.get_players(true)
-        if not enemies then return end
-
-        local smart_safety_enabled = interface.aimbot.smart_safety:get()
-
-        if not smart_safety_enabled then
-        for _, idx in ipairs(enemies) do
-                if idx and type(idx) == "number" and entity.is_alive(idx) and entity.is_enemy(idx) then
-                    plist.set(idx, 'Override safe point', "-")
-                    plist.set(idx, 'Override prefer body aim', "-")
-                end
-            end
-            return
-        end
-        
-        for _, idx in ipairs(enemies) do
-            if idx and type(idx) == "number" and entity.is_alive(idx) and entity.is_enemy(idx) then
-                self:check_respawn(idx)
-                
-                local should_force, confidence = self:should_force_safe_point(idx)
-                
-                if not self.cache[idx] then
-                    self.cache[idx] = {
-                        last_check = 0,
-                        is_lethal = false,
-                        misses = 0,
-                        hits = 0,
-                        safe_point_misses = 0,
-                        last_visible_time = 0,
-                        was_lethal = false,
-                        logged_safe_point = false,
-                        logged_body_aim = false
-                    }
-                end
-                
-                if self:is_visible(idx) then
-                    self.cache[idx].last_visible_time = globals.curtime()
-                end
-                
-                if should_force then
-                    local current_safe_point = plist.get(idx, 'Override safe point')
-                    
-                    plist.set(idx, 'Override safe point', "On")
-                    
-                    if not self.cache[idx].logged_safe_point and interface.visuals.logging:get() then
-                        local playerName = entity.get_player_name(idx)
-                        local health = entity.get_prop(idx, "m_iHealth") or 0
-                        local reason = ""
-                        
-                        local curtime = globals.curtime()
-                        local should_persist = self.cache[idx].was_lethal and (curtime - self.cache[idx].last_visible_time < self.settings_persist_time)
-                        
-                        if self.cache[idx].is_lethal or should_persist then
-                            reason = "lethal target"
-                        elseif self.cache[idx].misses > 2 then
-                            reason = "aim struggle"
-                        else
-                            reason = "unknown"
-                        end
-                        
-                        local msg = string.format("forced safe point for %s / hp: %d - reason: %s", playerName, health, reason)
-                        
-                        local logOptions = interface.visuals.logging_options:get()
-                        local consoleOptions = interface.visuals.logging_options_console:get()
-                        local screenOptions = interface.visuals.logging_options_screen:get()
-                        
-                        local doConsole = utils.contains(logOptions, "console") and utils.contains(consoleOptions, "aimbot")
-                        local doScreen = utils.contains(logOptions, "screen") and utils.contains(screenOptions, "aimbot")
-                        
-                        if doConsole then
-                            argLog("forced safe point for %s / hp: %d - reason: %s", playerName, health, reason)
-                        end
-                        
-                        if doScreen then
-                            logging:push(msg)
-                        end
-                        
-                        self.cache[idx].logged_safe_point = true
-                    end
-                else
-                    local curtime = globals.curtime()
-                    local time_since_visible = curtime - self.cache[idx].last_visible_time
-                    
-                    if time_since_visible > self.settings_persist_time or not self.cache[idx].was_lethal then
-                        plist.set(idx, 'Override safe point', "-")
-                        plist.set(idx, 'Override prefer body aim', "-")
-                        
-                        self.cache[idx].logged_safe_point = false
-                        self.cache[idx].logged_body_aim = false
-                    end
-                end
-            end
-        end
-    end
-
-    lethal_shot_handler.is_visible = function(self, idx)
-        if not idx or not entity.is_alive(idx) then
-            return false
-        end
-        
-        local local_player = entity.get_local_player()
-        if not local_player or not entity.is_alive(local_player) then
-            return false
-        end
-        
-        local hitboxes = {0, 3, 4, 5, 6}
-        
-        for _, hitbox in ipairs(hitboxes) do
-            local target_pos = {entity.hitbox_position(idx, hitbox)}
-            if target_pos[1] then
-                if client.visible(target_pos[1], target_pos[2], target_pos[3]) then
-                    return true
-                end
-            end
-        end
-        
-        return false
-    end
-
-    lethal_shot_handler.update_cache = function(self, idx)
-        if not self.cache[idx] then
-            self.cache[idx] = {
-                last_check = 0,
-                is_lethal = false,
-                misses = 0,
-                hits = 0,
-                safe_point_misses = 0,
-                last_visible_time = 0,
-                was_lethal = false,
-                logged_safe_point = false,
-                logged_body_aim = false
-            }
-        end
-        
-        local health = entity.get_prop(idx, "m_iHealth")
-        if health and health >= 100 then
-            self.cache[idx].is_lethal = false
-            self.cache[idx].was_lethal = false
-            self.cache[idx].logged_safe_point = false
-            self.cache[idx].logged_body_aim = false
-            
-            return self.cache[idx]
-        end
-        
-        if self:is_visible(idx) then
-            self.cache[idx].last_visible_time = globals.curtime()
-            
-            local curtime = globals.curtime()
-            if curtime - self.cache[idx].last_check > 1.0 then
-                self.cache[idx].last_check = curtime
-                self.cache[idx].is_lethal = self:is_lethal(idx)
-                
-                if self.cache[idx].is_lethal then
-                    self.cache[idx].was_lethal = true
-                end
-            end
-        end
-        
-        return self.cache[idx]
-    end
-
-    lethal_shot_handler.check_respawn = function(self, idx)
-        if not idx or not entity.is_alive(idx) then
-            return
-        end
-        
-        local health = entity.get_prop(idx, "m_iHealth")
-        if not health then
-            return
-        end
-
-        if health >= 100 then
-            self:reset(idx)
-            
-            if self.cache[idx] then
-                self.cache[idx].is_lethal = false
-                self.cache[idx].was_lethal = false
-                self.cache[idx].logged_safe_point = false
-                self.cache[idx].logged_body_aim = false
-            end
-            
-            if idx and type(idx) == "number" and entity.is_enemy(idx) then
-                plist.set(idx, 'Override safe point', "-")
-                plist.set(idx, 'Override prefer body aim', "-")
-            end
-            
-            self:update_cache(idx)
-        end
-    end
-end
-
-client.set_event_callback('aim_fire', function(e)
-    local target = e.target
-    if target and entity.is_enemy(target) then
-        lethal_shot_handler:setup()
-    end
-end)
-
-client.set_event_callback('aim_miss', function(e)
-    if e.reason ~= "spread" then
-        lethal_shot_handler:on_miss(e.target)
-    end
-end)
-
-client.set_event_callback('player_hurt', function(e)
-    local attacker = client.userid_to_entindex(e.attacker)
-    local victim = client.userid_to_entindex(e.userid)
-    
-    if attacker == entity.get_local_player() and victim ~= attacker and entity.is_enemy(victim) then
-        lethal_shot_handler:on_hit(victim)
-    end
-end)
-
-client.set_event_callback('run_command', function()
-    lethal_shot_handler:process_all_players()
-end)
-
-client.set_event_callback('player_spawn', function(e)
-    local player_idx = client.userid_to_entindex(e.userid)
-    if player_idx and entity.is_enemy(player_idx) then
-        lethal_shot_handler:reset(player_idx)
-        plist.set(player_idx, 'Override safe point', "-")
-        plist.set(player_idx, 'Override prefer body aim', "-")
-    end
-end)
-
-client.set_event_callback('round_start', function()
-    local enemies = entity.get_players(true)
-    if enemies then
-        for _, idx in ipairs(enemies) do
-            if idx and entity.is_enemy(idx) then
-                lethal_shot_handler:reset(idx)
-                plist.set(idx, 'Override safe point', "-")
-                plist.set(idx, 'Override prefer body aim', "-")
-            end
-        end
-    end
-end)
-
-client.set_event_callback('player_death', function(e)
-    local player_idx = client.userid_to_entindex(e.userid)
-    if player_idx and entity.is_enemy(player_idx) then
-        lethal_shot_handler:reset(player_idx)
-        plist.set(player_idx, 'Override safe point', "-")
-        plist.set(player_idx, 'Override prefer body aim', "-")
-    end
-end)
-
-client.set_event_callback('player_spawned', function(e)
-    local player_idx = client.userid_to_entindex(e.userid)
-    if player_idx and entity.is_enemy(player_idx) then
-        lethal_shot_handler:reset(player_idx)
-        plist.set(player_idx, 'Override safe point', "-")
-        plist.set(player_idx, 'Override prefer body aim', "-")
-    end
-end)
 --@endregion
 
 --@region: clantag
