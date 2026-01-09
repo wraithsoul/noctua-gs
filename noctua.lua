@@ -9234,7 +9234,7 @@ summary = {} do
             end)
 
             for i = 1, #sorted do
-                local item = sorted_misses[i]
+                local item = sorted[i]
                 log_txt("   - ")
                 log_txt(item.reason)
                 log_txt(": ")
