@@ -4870,26 +4870,49 @@ logging = {} do
         local msg = ""
 
         if cached and cached.hitbox and (cached.hitbox ~= "?" and cached.hitbox ~= hitbox) then
-            msg = string.format(
-                "hit %s's %s (expected: %s) for %d (expected: %d) / lc: %d - yaw: %s",
-                playerName, hitbox, cached.hitbox, damage, cached.damage, lagComp, type(desiredYaw) == "number" and desiredYaw.."°" or desiredYaw.."°"
-            )
-        else
-            msg = string.format(
-                "hit %s's %s for %d / lc: %d - yaw: %s",
-                playerName, hitbox, damage, lagComp, type(desiredYaw) == "number" and desiredYaw.."°" or desiredYaw.."°"
-            )
-        end
+            local mismatchReason = "?"
+            local weapon = entity.get_player_weapon(entity.get_local_player())
+            local inaccuracy = 0
+            if weapon then
+                inaccuracy = entity.get_prop(weapon, "m_fAccuracyPenalty")
+            end
 
-        if doConsole then
-            if cached and cached.hitbox and (cached.hitbox ~= "?" and cached.hitbox ~= hitbox) then
-                argLog("hit %s's %s (expected: %s) for %d (expected: %d) / lc: %d - yaw: %s", playerName, hitbox, cached.hitbox, damage, cached.damage, lagComp, type(desiredYaw) == "number" and desiredYaw.."°" or desiredYaw.."°")
+            local vx, vy, vz = entity.get_prop(e.target, "m_vecVelocity")
+            local current_speed = math.sqrt(vx*vx + vy*vy)
+            local cached_speed = cached.start_speed or 0
+            
+            if inaccuracy > 0.02 then
+                mismatchReason = "spread"
+            elseif math.abs(current_speed - cached_speed) > 40 then
+                mismatchReason = "acceleration error"
             else
+                mismatchReason = "resolver"
+            end
+
+            if doScreen then
+                msg = string.format(
+                    "hit %s's %s (expected: %s) for %d (expected: %d) / lc: %d - yaw: %s - reason: %s",
+                    playerName, hitbox, cached.hitbox, damage, cached.damage, lagComp, type(desiredYaw) == "number" and desiredYaw.."°" or desiredYaw.."°", mismatchReason
+                )
+                self:push(msg)
+            end
+
+            if doConsole then
+                argLog("hit %s's %s (expected: %s) for %d (expected: %d) / lc: %d - yaw: %s - reason: %s", playerName, hitbox, cached.hitbox, damage, cached.damage, lagComp, type(desiredYaw) == "number" and desiredYaw.."°" or desiredYaw.."°", mismatchReason)
+            end
+        else
+            if doScreen then
+                msg = string.format(
+                    "hit %s's %s for %d / lc: %d - yaw: %s",
+                    playerName, hitbox, damage, lagComp, type(desiredYaw) == "number" and desiredYaw.."°" or desiredYaw.."°"
+                )
+                self:push(msg)
+            end
+
+            if doConsole then
                 argLog("hit %s's %s for %d / lc: %d - yaw: %s", playerName, hitbox, damage, lagComp, type(desiredYaw) == "number" and desiredYaw.."°" or desiredYaw.."°")
             end
         end
-        
-        if doScreen then self:push(msg) end
     end
 
     logging.handleNaded = function(self, e)
@@ -4975,6 +4998,16 @@ logging = {} do
         local lp = entity.get_local_player()
         local lp_alive = lp and entity.is_alive(lp)
 
+        local lx, ly, lz = client.eye_position()
+        local tx, ty, tz = e.x, e.y, e.z
+
+        if lx and tx then
+            local fraction, entindex = client.trace_line(lp, lx, ly, lz, tx, ty, tz)
+            if fraction < 1 and entindex ~= e.target then
+                reason = "occlusion"
+            end
+        end
+
         if health <= 0 then
             reason = "player death"
         elseif reason == "death" then
@@ -4987,11 +5020,11 @@ logging = {} do
             reason = "resolver" 
         end
 
-        if reason ~= "player death" and reason ~= "death" then
+        if reason ~= "player death" and reason ~= "death" and reason ~= "occlusion" then
             if reason == "spread" then
                 local weapon = entity.get_player_weapon(lp)
                 if weapon then
-                    local inacc = entity.get_prop(weapon, "m_fAccuracyPenalty") or 0
+                    local inacc = entity.get_prop(weapon, "m_fAccuracyPenalty")
                     if inacc > 0.02 then reason = "high inaccuracy" end
                 end
             elseif reason == "resolver" or reason == "prediction error" then
@@ -5020,7 +5053,7 @@ logging = {} do
             ["player death"] = true, ["spread"] = true, 
             ["high inaccuracy"] = true, ["lagcomp break"] = true,
             ["acceleration error"] = true, ["extrapolation failure"] = true,
-            ["prediction error"] = true
+            ["prediction error"] = true, ["occlusion"] = true
         }
 
         if noYawReasons[reason] then showYaw = false end
@@ -9190,11 +9223,22 @@ summary = {} do
 
         if s.misses > 0 then
             log_txt("  - misses by type:\n")
+            
+            local sorted = {}
             for reason, count in pairs(s.miss_types) do
+                table.insert(sorted, { reason = reason, count = count })
+            end
+
+            table.sort(sorted, function(a, b) 
+                return a.count > b.count 
+            end)
+
+            for i = 1, #sorted do
+                local item = sorted_misses[i]
                 log_txt("   - ")
-                log_txt(reason)
+                log_txt(item.reason)
                 log_txt(": ")
-                log_val(tostring(count) .. "\n")
+                log_val(tostring(item.count) .. "\n")
             end
         end
 
@@ -9747,7 +9791,7 @@ end
 logging:push("happy new year! ❄️")
 logging:push("nice to see you at " .. _name .. " " .. _version .. " (" .. (_nickname or "user") .. ")")
 client.exec("play items/flashlight1.wav")
-confetti:push(0, true)
+confetti:push(0, false)
 --@endregion
 
 -- ^~^!
