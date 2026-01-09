@@ -620,6 +620,7 @@ interface = {} do
         load_aa_button = interface.header.general:button('load aa'),
         save_button = interface.header.general:button('save'),
         import_button = interface.header.other:button('import'),
+        import_aa_button = interface.header.other:button('import aa'),
         export_button = interface.header.other:button('export'),
         delete_button = interface.header.other:button('\aff4444ffdelete'),
     }
@@ -6231,6 +6232,44 @@ configs = {} do
         client.exec("play ui/beepclear.wav")
     end
 
+    function configs.import_aa_from_clipboard()
+        local clip = clipboard.get() or ''
+        clip = clip:gsub('^%s+', ''):gsub('%s+$', '')
+        if clip:find('^noctua:') then clip = clip:sub(8) end
+        clip = clip:gsub('^%s+', ''):gsub('%s+$', '')
+        
+        if clip == '' then
+            logMessage('noctua · config', '', 'clipboard is empty!')
+            client.exec("play ui/menu_invalid.wav")
+            return
+        end
+        
+        local decoded = b64_decode(clip)
+        if not decoded or decoded == '' then
+            logMessage('noctua · config', '', 'failed to decode base64!')
+            client.exec("play ui/menu_invalid.wav")
+            return
+        end
+        
+        local ok_json, data = pcall(json.decode, decoded)
+        if not ok_json then
+            logMessage('noctua · config', '', 'json decode error: ' .. tostring(data))
+            client.exec("play ui/menu_invalid.wav")
+            return
+        end
+        
+        if type(data) ~= 'table' or not data.values then
+            logMessage('noctua · config', '', 'failed to parse config! (invalid structure)')
+            client.exec("play ui/menu_invalid.wav")
+            return
+        end
+        
+        configs.apply_aa_only(data)
+        
+        logMessage('noctua · config', '', 'anti-aim imported from clipboard!')
+        client.exec("play ui/beepclear.wav")
+    end
+
     function configs.load_default()
         if not default_config or default_config == '' then
             logMessage('noctua · config', '', 'default config is empty!')
@@ -6479,6 +6518,10 @@ configs = {} do
             interface.config.import_button:set_visible(not is_new)
         end
 
+        if interface.config.import_aa_button then
+            interface.config.import_aa_button:set_visible(not is_new)
+        end
+
         if interface.config.export_button then
             interface.config.export_button:set_visible(not is_new)
         end
@@ -6544,6 +6587,8 @@ configs = {} do
         interface.config.export_button:set_callback(configs.export_to_clipboard)
 
         interface.config.import_button:set_callback(configs.import_from_clipboard)
+
+        interface.config.import_aa_button:set_callback(configs.import_aa_from_clipboard)
 
         interface.config.list:set_callback(function()
             -- replaced later
