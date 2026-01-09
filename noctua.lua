@@ -4887,7 +4887,7 @@ logging = {} do
             elseif math.abs(current_speed - cached_speed) > 40 then
                 mismatchReason = "acceleration error"
             else
-                mismatchReason = "resolver"
+                mismatchReason = "unknown"
             end
 
             if doScreen then
@@ -5716,14 +5716,22 @@ buybot = {} do
         local local_player = entity.get_local_player()
         if not local_player then return false end
 
-        local weapon = entity.get_player_weapon(local_player)
-        if not weapon then return false end
+        for i = 0, 63 do
+            local weapon = entity.get_prop(local_player, "m_hMyWeapons", i)
+            
+            if weapon then
+                local weap_class = entity.get_classname(weapon)
+                
+                if weap_class == "CWeaponSSG08" or
+                   weap_class == "CWeaponAWP" or
+                   weap_class == "CWeaponSCAR20" or
+                   weap_class == "CWeaponG3SG1" then
+                    return true
+                end
+            end
+        end
 
-        local weap_class = entity.get_classname(weapon)
-        return weap_class == "CWeaponSSG08" or
-               weap_class == "CWeaponAWP" or
-               weap_class == "CWeaponSCAR20" or
-               weap_class == "CWeaponG3SG1"
+        return false
     end
 
     buybot.on_player_spawn = function(e)
@@ -7569,6 +7577,7 @@ killsay = {} do
         math.randomseed(current_time * 9182)
         
         local phrases_table = phrase_type == "death" and killsay.multi_phrases_death or killsay.multi_phrases_kill
+        if #phrases_table == 0 then return { "Error: No phrases loaded" } end
         local index = math.random(1, #phrases_table)
         
         return phrases_table[index]
@@ -7576,11 +7585,8 @@ killsay = {} do
     
     killsay.calculate_delay = function(text)
         local base_delay = 0.03
-        
         local char_delay = 0.035
-        
         local human_randomness = 1 + (math.random() * 0.4 - 0.2)
-        
         return base_delay + (string.len(text) * char_delay * human_randomness)
     end
     
@@ -7592,18 +7598,11 @@ killsay = {} do
         end
         
         local phrases = killsay.get_random_phrase(phrase_type)
-        
         local phrase_count = #phrases
-        local total_chars = 0
-        
-        for i = 1, phrase_count do
-            total_chars = total_chars + string.len(phrases[i])
-        end
         
         local cumulative_delay = initial_delay
         for i = 1, phrase_count do
             local phrase_delay = killsay.calculate_delay(phrases[i])
-            
             local min_between_delay = 0.70
             
             if string.len(phrases[i]) < 10 then
@@ -7630,21 +7629,26 @@ killsay = {} do
         if not interface.utility.killsay:get() then return end
 
         local local_player = entity.get_local_player()
+        if not local_player or not entity.is_alive(local_player) and e.userid ~= local_player then return end
+
+        local attacker = client.userid_to_entindex(e.attacker)
+        local victim = client.userid_to_entindex(e.userid)
         
+        if not attacker or not victim then return end
+
+        local modes = interface.utility.killsay_modes:get()
         local now = globals.realtime()
+
         if now - killsay.last_say_time < killsay.cooldown then
             return
         end
-        
-        local attacker = client.userid_to_entindex(e.attacker)
-        local victim = client.userid_to_entindex(e.userid)
-        local modes = interface.utility.killsay_modes:get()
         
         if attacker == local_player and victim ~= local_player then
             if utils.contains(modes, "on kill") then
                 local kd = player.get_kd(local_player)
                 if kd ~= nil and kd <= 1.0 then return end
-                killsay.last_say_time = now
+                
+                killsay.last_say_time = now 
                 killsay.send_phrases("kill")
             end
         elseif victim == local_player and attacker ~= local_player then
@@ -7655,15 +7659,7 @@ killsay = {} do
         end
     end
     
-    killsay.setup = function()
-        if interface.utility.killsay:get() then
-            client.set_event_callback("player_death", killsay.on_player_death)
-        else
-            client.unset_event_callback("player_death", killsay.on_player_death)
-        end
-    end
-    
-    client.set_event_callback("paint", killsay.setup)
+    client.set_event_callback("player_death", killsay.on_player_death)
     killsay.load_all_phrases()
 end
 --@endregion
