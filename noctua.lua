@@ -605,12 +605,11 @@ interface = {} do
         zoom_animation = interface.header.other:checkbox('zoom animation'),
         zoom_animation_speed = interface.header.other:slider('speed', 10, 100, 50, true, '%'),
         zoom_animation_value = interface.header.other:slider('strength', 1, 100, 2, true, '%'),
-        spawn_zoom = interface.header.other:checkbox('spawn zoom'),
+        spawn_zoom = interface.header.other:checkbox('spawn animation'),
+        world_damage = interface.header.other:checkbox('world damage'),
         enemy_ping_warn = interface.header.other:checkbox('enemy ping warning'),
         enemy_ping_minimum = interface.header.other:slider('minimum latency to show', 10, 100, 80, true, 'ms')
     }
-
-
 
     interface.config = {
         list = interface.header.general:listbox('configs', 300),
@@ -2581,7 +2580,6 @@ end
 client.set_event_callback('net_update_end', function()
     resolver:setup()
 end)
-
 --@endregion
 
 --@region: silent shot
@@ -5105,18 +5103,14 @@ logging = {} do
         if not utils.contains(logOptions, "console") then return end
         
         local game_rules = entity.get_all("CCSGameRulesProxy")[1]
-        local is_game_over = game_rules and entity.get_prop(game_rules, "m_gamePhase") >= 5
-        local is_restarting = game_rules and entity.get_prop(game_rules, "m_bGameRestart") == 1
-        local is_warmup = game_rules and entity.get_prop(game_rules, "m_bWarmupPeriod") == 1
-        
-        if is_game_over or is_restarting then
-            logging.round_counter = 0
-        end
+        if not game_rules then return end
+    
+        local is_warmup = entity.get_prop(game_rules, "m_bWarmupPeriod") == 1
         
         if not is_warmup then
-            logging.round_counter = logging.round_counter + 1
+            local rounds_played = entity.get_prop(game_rules, "m_totalRoundsPlayed")
             client.color_log(255, 255, 255, "\n\0")
-            argLog("round %d", logging.round_counter)
+            argLog("round %d", rounds_played + 1)
         end
     end
 end
@@ -9474,6 +9468,98 @@ bomb_timer = {} do
     end
 
     bomb_timer.setup()
+end
+--@endregion
+
+--@region: world damage
+world_damage = {} do
+    world_damage.markers = {}
+
+    world_damage.on_player_hurt = function(e)
+        if not interface.visuals.enabled_visuals:get() or not interface.visuals.world_damage:get() then return end
+
+        local attacker = client.userid_to_entindex(e.attacker)
+        local victim = client.userid_to_entindex(e.userid)
+        local me = entity.get_local_player()
+
+        if attacker ~= me or victim == me then return end
+
+        local hitgroup = e.hitgroup
+        local hitbox_idx = 2
+        
+        if hitgroup == 1 then hitbox_idx = 0
+        elseif hitgroup == 4 or hitgroup == 5 then hitbox_idx = 16
+        elseif hitgroup == 6 or hitgroup == 7 then hitbox_idx = 3
+        end
+
+        local x, y, z = entity.hitbox_position(victim, hitbox_idx)
+        if not x then return end
+
+        local spread = 15
+        local drift = 15
+
+        table.insert(world_damage.markers, {
+            x = x + math.random(-spread, spread),
+            y = y + math.random(-spread, spread),
+            z = z,
+            dest_x = math.random(-drift, drift),
+            dest_y = math.random(-drift, drift),
+            off_x = 0,
+            off_y = 0,
+            off_z = 0,
+            damage = e.dmg_health,
+            start_time = globals.realtime(),
+            alpha = 0
+        })
+    end
+
+    world_damage.on_paint = function()
+        if not interface.visuals.enabled_visuals:get() or not interface.visuals.world_damage:get() then 
+            world_damage.markers = {}
+            return 
+        end
+
+        local curtime = globals.realtime()
+        local frametime = globals.frametime()
+
+        for i = #world_damage.markers, 1, -1 do
+            local marker = world_damage.markers[i]
+            local elapsed = curtime - marker.start_time
+
+            if elapsed > 2.5 then
+                table.remove(world_damage.markers, i)
+            else
+                marker.off_x = mathematic.lerp(marker.off_x, marker.dest_x, frametime * 2)
+                marker.off_y = mathematic.lerp(marker.off_y, marker.dest_y, frametime * 2)
+                
+                marker.off_z = marker.off_z + (frametime * 50)
+                
+                if elapsed < 0.2 then
+                    marker.alpha = mathematic.lerp(marker.alpha, 255, frametime * 15)
+                elseif elapsed > 1.0 then
+                    marker.alpha = mathematic.lerp(marker.alpha, 0, frametime * 5)
+                else
+                    marker.alpha = 255
+                end
+
+                local r_x = marker.x + marker.off_x
+                local r_y = marker.y + marker.off_y
+                local r_z = marker.z + marker.off_z
+
+                local sx, sy = renderer.world_to_screen(r_x, r_y, r_z)
+                if sx and sy then
+                    renderer.text(sx, sy, 255, 255, 255, math.floor(marker.alpha), "c", 0, tostring(marker.damage))
+                end
+            end
+        end
+    end
+
+    world_damage.setup = function()
+        client.set_event_callback("player_hurt", world_damage.on_player_hurt)
+        client.set_event_callback("paint", world_damage.on_paint)
+    end
+
+    world_damage.setup()
 end
 --@endregion
 
