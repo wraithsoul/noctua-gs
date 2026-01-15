@@ -3812,12 +3812,16 @@ visuals = {} do
             return
         end
 
-        local is_override = ui.get(ui_references.minimum_damage_override[1]) 
-                            and ui.get(ui_references.minimum_damage_override[2])
-        
-        local damage_value = is_override 
-                            and ui.get(ui_references.minimum_damage_override[3]) 
-                            or ui.get(ui_references.minimum_damage)
+        local weapon = entity.get_player_weapon(me)
+        local is_knife = false
+        if weapon then
+            if entity.get_classname(weapon) == "CKnife" then
+                is_knife = true
+            end
+        end
+
+        local is_override = ui.get(ui_references.minimum_damage_override[1]) and ui.get(ui_references.minimum_damage_override[2])
+        local damage_value = is_override and ui.get(ui_references.minimum_damage_override[3]) or ui.get(ui_references.minimum_damage)
 
         local frameTime = globals.frametime()
         local fadeSpeed = 10 * frameTime
@@ -3837,6 +3841,11 @@ visuals = {} do
         end
 
         local target_alpha = is_override and 255 or 80
+
+        if is_knife then
+            target_alpha = 0
+        end
+
         dmg_state.alpha = mathematic.lerp(dmg_state.alpha or 0, target_alpha, fadeSpeed)
 
         if dmg_state.alpha < 1 then
