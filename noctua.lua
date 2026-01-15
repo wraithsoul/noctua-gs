@@ -3813,10 +3813,19 @@ visuals = {} do
         end
 
         local weapon = entity.get_player_weapon(me)
+        local weap_name = entity.get_classname(weapon) or ""
+        local lower_name = weap_name:lower()
+
         local is_knife = false
-        if weapon then
+        local is_grenade = false
+
+        local is_knife = false
+        if weapon or weap_name then
             if entity.get_classname(weapon) == "CKnife" then
                 is_knife = true
+            end
+            if string.find(lower_name, "grenade") or string.find(lower_name, "flashbang") then
+                is_grenade = true
             end
         end
 
@@ -3842,7 +3851,7 @@ visuals = {} do
 
         local target_alpha = is_override and 255 or 80
 
-        if is_knife then
+        if is_knife or is_grenade then
             target_alpha = 0
         end
 
@@ -5152,7 +5161,6 @@ widgets.register({
             local total_pixels = 5
             
             local resolver_enabled = interface.aimbot.enabled_aimbot:get() and interface.aimbot.enabled_resolver_tweaks:get()
-            -- Only show resolver group if resolver tweaks are enabled
             if resolver_enabled then
                 total_lines = total_lines + 4
                 total_pixels = total_pixels + 6
