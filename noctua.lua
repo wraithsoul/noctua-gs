@@ -5610,7 +5610,7 @@ hitsound = {} do
                 ui.set_enabled(hitsound_original, false)
             else
                 ui.set_enabled(hitsound_original, true)
-                ui.set(hitsound_original, hitsound.hitsound_original_state)
+                ui.set(hitsound_original, hitsound.hitsound_original_state or false)
             end
             hitsound_enabled_prev = hitsound_enabled
         end
@@ -5651,13 +5651,12 @@ buybot = {} do
     buybot.has_primary_weapon = function()
         local local_player = entity.get_local_player()
         if not local_player then return false end
-
+        local weapon = entity.get_player_weapon(local_player)
+        
         for i = 0, 63 do
-            local weapon = entity.get_prop(local_player, "m_hMyWeapons", i)
-            
-            if weapon then
-                local weap_class = entity.get_classname(weapon)
-                
+            local weapon_ent = entity.get_prop(local_player, "m_hMyWeapons", i)
+            if weapon_ent then
+                local weap_class = entity.get_classname(weapon_ent)
                 if weap_class == "CWeaponSSG08" or
                    weap_class == "CWeaponAWP" or
                    weap_class == "CWeaponSCAR20" or
@@ -5666,7 +5665,6 @@ buybot = {} do
                 end
             end
         end
-
         return false
     end
 
@@ -5674,44 +5672,49 @@ buybot = {} do
         if client.userid_to_entindex(e.userid) ~= entity.get_local_player() then
             return
         end
+        
+        local money = entity.get_prop(entity.get_local_player(), "m_iAccount")
 
-        client.delay_call(0.5, function()
-            local money = entity.get_prop(entity.get_local_player(), "m_iAccount")
+        if not interface.utility.buybot:get() or (money >= 800 and money <= 1000) then
+            return
+        end
 
-            if not interface.utility.buybot:get() or (money >= 800 and money <= 1000) then
-                return
-            end
+        local primary_item = buybot.primary_console[interface.utility.buybot_primary:get()]
+        local primary_fallback_item = buybot.primary_console[interface.utility.buybot_primary_fallback:get()]
+        local secondary_item = buybot.secondary_console[interface.utility.buybot_secondary:get()]
+        local selected_utilities = interface.utility.buybot_utility:get()
+        local command_queue = ""
 
-            local primary_item = buybot.primary_console[interface.utility.buybot_primary:get()]
-            local primary_fallback_item = buybot.primary_console[interface.utility.buybot_primary_fallback:get()]
-            local secondary_item = buybot.secondary_console[interface.utility.buybot_secondary:get()]
-            local selected_utilities = interface.utility.buybot_utility:get()
+        if secondary_item and secondary_item ~= "" then
+            command_queue = command_queue .. "buy " .. secondary_item .. ";"
+        end
 
-            if primary_item and primary_item ~= "" then
-                client.exec("buy " .. primary_item .. ";")
-
-                client.delay_call(0.3, function()
-                    if primary_fallback_item and primary_fallback_item ~= "" and not buybot.has_primary_weapon() then
-                        client.exec("buy " .. primary_fallback_item .. ";")
-                    end
-                end)
-            elseif primary_fallback_item and primary_fallback_item ~= "" then
-                client.exec("buy " .. primary_fallback_item .. ";")
-            end
-
-            if secondary_item and secondary_item ~= "" then
-                client.exec("buy " .. secondary_item .. ";")
-            end
-
-            if selected_utilities then
-                for _, utility in ipairs(selected_utilities) do
-                    local utility_item = buybot.utility_console[utility]
-                    if utility_item and utility_item ~= "" then
-                        client.exec("buy " .. utility_item .. ";")
-                    end
+        if selected_utilities then
+            for _, utility in ipairs(selected_utilities) do
+                local utility_item = buybot.utility_console[utility]
+                if utility_item and utility_item ~= "" then
+                    command_queue = command_queue .. "buy " .. utility_item .. ";"
                 end
             end
-        end)
+        end
+
+        if primary_item and primary_item ~= "" then
+            command_queue = command_queue .. "buy " .. primary_item .. ";"
+            
+            if primary_fallback_item and primary_fallback_item ~= "" then
+                client.delay_call(0.4, function() 
+                    if not buybot.has_primary_weapon() then
+                        client.exec("buy " .. primary_fallback_item)
+                    end
+                end)
+            end
+        elseif primary_fallback_item and primary_fallback_item ~= "" then
+            command_queue = command_queue .. "buy " .. primary_fallback_item .. ";"
+        end
+
+        if command_queue ~= "" then
+            client.exec(command_queue)
+        end
     end
     
     client.set_event_callback("player_spawn", buybot.on_player_spawn)
@@ -9420,6 +9423,7 @@ art = {} do
     - Added mismatch reasons
     - Reworked miss reasons
     - Reworked config export/import
+    - Reworked buybot
     - Fixed buybot fallback purchasing after primary items
     - Fixed shutdown restoration
     - Fixed config synchronization
