@@ -10,7 +10,7 @@
 information = {} do
     _G.noctua_runtime = _G.noctua_runtime or {}
     _G._name = 'noctua'
-    _G._version = '1.4c'
+    _G._version = '1.4d'
     _G._nickname = nil
 
     information.update_nickname = function()
@@ -545,14 +545,13 @@ interface = {} do
         ratio = interface.header.fake_lag:label(' · ratio: 0'),
         reset = interface.header.fake_lag:button('reset'),
         confetti = interface.header.general:button('confetti'),
-        show_updates = interface.header.general:checkbox("show what's new"),
         winter_label = interface.header.other:label('\a89cff0ff❄ winter'),
         menu_snow = interface.header.other:checkbox('menu snow'),
         world_snow = interface.header.other:checkbox('world snow')
     }
 
-    interface.home.show_updates:override(true)
-    interface.home.show_updates:set_enabled(false)
+    -- interface.home.show_updates:override(true)
+    -- interface.home.show_updates:set_enabled(false)
     interface.home.menu_snow:override(true)
 
     interface.aimbot = {
@@ -566,8 +565,7 @@ interface = {} do
         noscope_distance_autosnipers = interface.header.general:slider('autosnipers distance', 1, 800, 450, true, ''),
         noscope_distance_scout = interface.header.general:slider('scout distance', 1, 800, 450, true, ''),
         noscope_distance_awp = interface.header.general:slider('awp distance', 1, 800, 450, true, ''),
-        quick_stop = interface.header.general:checkbox('air stop', 0x00),
-        dump_resolver_data = interface.header.other:button('dump resolver data')
+        quick_stop = interface.header.general:checkbox('air stop', 0x00)
     }
 
     interface.visuals = {
@@ -606,8 +604,12 @@ interface = {} do
         zoom_animation_value = interface.header.other:slider('strength', 1, 100, 2, true, '%'),
         spawn_zoom = interface.header.other:checkbox('spawn animation'),
         world_damage = interface.header.other:checkbox('world damage'),
+        world_damage_type = interface.header.other:combobox('type', {'static', 'dynamic'}),
         enemy_ping_warn = interface.header.other:checkbox('enemy ping warning'),
-        enemy_ping_minimum = interface.header.other:slider('minimum latency to show', 10, 100, 80, true, 'ms')
+        enemy_ping_minimum = interface.header.other:slider('minimum latency to show', 10, 100, 80, true, 'ms'),
+        grenade_radius = interface.header.other:multiselect('grenade radius (beta)', 'smoke', 'molotov'),
+        grenade_radius_smoke_color = interface.header.other:label('smoke color', {173, 216, 230, 255}),
+        grenade_radius_molotov_color = interface.header.other:label('molotov color', {255, 204, 203, 255})
     }
 
     interface.config = {
@@ -851,8 +853,6 @@ interface = {} do
                         local v = (interface.aimbot.noscope_weapons:get() or {})
                         local has_awp = (type(v) == 'table') and utils.contains(v, 'awp')
                         element:set_visible(enabled and interface.aimbot.noscope_distance:get() and has_awp)
-                    elseif key == 'dump_resolver_data' then
-                        element:set_visible(enabled and interface.aimbot.enabled_resolver_tweaks:get())
                     else
                         element:set_visible(enabled)
                     end
@@ -900,6 +900,23 @@ interface = {} do
 
                     if key == 'enemy_ping_minimum' then
                         element:set_visible(interface.visuals.enemy_ping_warn:get())
+                        return
+                    end
+
+                    if key == 'grenade_radius_molotov_color' then
+                        local grenades = interface.visuals.grenade_radius:get() or {}
+                        element:set_visible(utils.contains(grenades, 'molotov'))
+                        return
+                    end
+
+                    if key == 'grenade_radius_smoke_color' then
+                        local grenades = interface.visuals.grenade_radius:get() or {}
+                        element:set_visible(utils.contains(grenades, 'smoke'))
+                        return
+                    end
+
+                    if key == 'world_damage_type' then
+                        element:set_visible(interface.visuals.world_damage:get())
                         return
                     end
 
@@ -2444,97 +2461,6 @@ resolver = {} do
         end
     end
 
-    resolver.dump_data = function(self)
-        local r, g, b = unpack(interface.visuals.accent.color.value)
-        local white = {255, 255, 255}
-        local gray = {150, 150, 150}
-        local dark = {80, 80, 80}
-        local green = {100, 255, 100}
-        local any_data = false
-
-        for idx = 1, 64 do
-            local player_info = utils.get_player_info(idx)
-            local has_data = self.bruteforce[idx] or self.cache[idx] or self.precision[idx]
-            local is_enemy = entity.is_enemy(idx)
-    
-            if player_info and not player_info.__fakeplayer and (is_enemy or has_data) then
-                any_data = true
-                local name = ffi.string(player_info.__name)
-    
-                local status = ""
-                if not entity.is_alive(idx) then status = " (DEAD)"
-                elseif entity.is_dormant(idx) then status = " (DORMANT)" end
-    
-                client.color_log(r, g, b, " ▌ \0")
-                client.color_log(white[1], white[2], white[3], name .. status)
-                client.color_log(r, g, b, "    ├─ \0")
-                client.color_log(r, g, b, "bruteforce data:")
-    
-                if self.bruteforce[idx] then
-                    local bf = self.bruteforce[idx]
-
-                    client.color_log(r, g, b, "    │   ├─ \0")
-                    client.color_log(gray[1], gray[2], gray[3], "stats: \0")
-                    client.color_log(white[1], white[2], white[3], string.format("hits: %d | misses: %d | stage: %d", bf.hits or 0, bf.misses or 0, bf.stage or 0))
-    
-                    client.color_log(r, g, b, "    │   └─ \0")
-                    if bf.locked_yaw then
-                        local time_left = math.max(0, (bf.lock_expire or 0) - globals.curtime())
-                        client.color_log(gray[1], gray[2], gray[3], "status: \0")
-                        client.color_log(green[1], green[2], green[3], string.format("LOCKED (%.1f°) for %.1fs", bf.locked_yaw, time_left))
-                    else
-                        client.color_log(gray[1], gray[2], gray[3], "status: \0")
-                        client.color_log(dark[1], dark[2], dark[3], "searching...")
-                    end
-                else
-                    client.color_log(r, g, b, "    │   └─ \0")
-                    client.color_log(dark[1], dark[2], dark[3], "none")
-                end
-
-                client.color_log(r, g, b, "    └─ \0")
-                client.color_log(r, g, b, "angle information:")
-
-                local yaw = self.cache[idx]
-                client.color_log(r, g, b, "        ├─ \0")
-                client.color_log(gray[1], gray[2], gray[3], "calculated yaw: \0")
-                if yaw then
-                    client.color_log(white[1], white[2], white[3], string.format("%.2f°", yaw))
-                else
-                    client.color_log(dark[1], dark[2], dark[3], "none")
-                end
-
-                local prec = self.precision[idx]
-                client.color_log(r, g, b, "        ├─ \0")
-                client.color_log(gray[1], gray[2], gray[3], "precision: \0")
-                if prec then
-                    local prec_val = math.floor(prec * 100)
-                    client.color_log(white[1], white[2], white[3], string.format("%d%%", prec_val))
-                else
-                    client.color_log(dark[1], dark[2], dark[3], "N/A")
-                end
-
-                client.color_log(r, g, b, "        └─ \0")
-                client.color_log(gray[1], gray[2], gray[3], "yaw history: \0")
-                
-                if self.history[idx] and #self.history[idx] > 0 then
-                    local h_str = ""
-                    local hist = self.history[idx]
-                    local start = math.max(1, #hist - 4)
-                    for i = start, #hist do
-                        h_str = h_str .. string.format("[%.0f] ", hist[i])
-                    end
-                    client.color_log(white[1], white[2], white[3], h_str)
-                else
-                    client.color_log(dark[1], dark[2], dark[3], "none")
-                end
-            end
-        end
-    
-        if not any_data then
-            argLog("waiting for data...")
-        end
-    end
-
     resolver.setup = function(self)
         if not (interface.aimbot.enabled_aimbot:get() and interface.aimbot.enabled_resolver_tweaks:get()) then return end
 
@@ -3342,7 +3268,7 @@ visuals = {} do
         local t_state = "none"
         local resolver_enabled = interface.aimbot.enabled_aimbot:get() and interface.aimbot.enabled_resolver_tweaks:get()
         self._yaw_cache = self._yaw_cache or { val = "none", for_target = nil, time = 0 }
-        local t_yaw = "none"
+        local t_yaw = resolver_enabled and "none" or "off"
         local cur_time = globals.realtime()
 
         if target then
@@ -4882,8 +4808,6 @@ logging = {} do
             
             if inaccuracy > 0.02 then
                 mismatchReason = "high inaccuracy"
-            elseif speed_delta > 40 then
-                mismatchReason = "prediction / accel. error"
             else
                 mismatchReason = "unknown"
             end
@@ -5036,7 +4960,7 @@ logging = {} do
                     local cur_speed = math.sqrt(vx*vx + vy*vy)
                     
                     if math.abs(cur_speed - (cached.start_speed or 0)) > 50 then
-                        reason = "acceleration error"
+                        reason = "unknown"
                     end
                 end
             end
@@ -5051,7 +4975,7 @@ logging = {} do
             ["backtrack failure"] = true, ["death"] = true,
             ["player death"] = true, ["spread"] = true, 
             ["high inaccuracy"] = true, ["lagcomp break"] = true,
-            ["acceleration error"] = true, ["extrapolation failure"] = true,
+            ["unknown"] = true, ["extrapolation failure"] = true,
             ["prediction error"] = true, ["occlusion"] = true
         }
     
@@ -5219,6 +5143,7 @@ widgets.register({
             local total_pixels = 5
             
             local resolver_enabled = interface.aimbot.enabled_aimbot:get() and interface.aimbot.enabled_resolver_tweaks:get()
+            -- Only show resolver group if resolver tweaks are enabled
             if resolver_enabled then
                 total_lines = total_lines + 4
                 total_pixels = total_pixels + 6
@@ -5430,7 +5355,10 @@ widgets.load_from_db()
 client.set_event_callback("paint_ui", function()
     widgets.paint_ui()
 end)
-client.set_event_callback('pre_config_save', function() widgets.save_all() end)
+client.set_event_callback('pre_config_save', function()
+    widgets.save_all()
+    configs.save_loaded()
+end)
 client.set_event_callback('post_config_load', function() 
     widgets.load_from_db() 
     streamer_mode.load_db()
@@ -5658,6 +5586,8 @@ end)
 --@region: hitsound
 hitsound = {} do
     local hitsound_original = ui.reference("Visuals", "Player ESP", "Hit marker sound")
+    hitsound.hitsound_original_state = nil
+    local hitsound_enabled_prev = nil
     
     hitsound.on_player_hurt = function(e)
         if not interface.utility.hitsound:get() then return end
@@ -5671,11 +5601,18 @@ hitsound = {} do
     end
     
     hitsound.setup = function()
-        if interface.utility.hitsound:get() then
-            ui.set(hitsound_original, false)
-            ui.set_enabled(hitsound_original, false)
-        else
-            ui.set_enabled(hitsound_original, true)
+        local hitsound_enabled = interface.utility.hitsound:get()
+        
+        if hitsound_enabled ~= hitsound_enabled_prev then
+            if hitsound_enabled then
+                hitsound.hitsound_original_state = ui.get(hitsound_original)
+                ui.set(hitsound_original, false)
+                ui.set_enabled(hitsound_original, false)
+            else
+                ui.set_enabled(hitsound_original, true)
+                ui.set(hitsound_original, hitsound.hitsound_original_state)
+            end
+            hitsound_enabled_prev = hitsound_enabled
         end
     end
     
@@ -5999,7 +5936,7 @@ end
 --@region: configs
 configs = {} do
     local DB_KEY = 'noctua.configs'
-    local default_config = "noctua:eyJ3aWRnZXRzIjogeyJ3YXRlcm1hcmsiOiB7Im9mZnNldF95IjogMTA1NywiYW5jaG9yX3giOiAiY2VudGVyIiwib2Zmc2V0X3giOiAwfSwibGNfc3RhdHVzIjogeyJvZmZzZXRfeSI6IDEwNiwiYW5jaG9yX3giOiAiY2VudGVyIiwib2Zmc2V0X3giOiAwfSwiZGVidWdfd2luZG93IjogeyJhbmNob3JfeSI6ICJjZW50ZXIiLCJvZmZzZXRfeSI6IDAsIm9mZnNldF94IjogODJ9LCJkYW1hZ2VfaW5kaWNhdG9yIjogeyJvZmZzZXRfeSI6IDUzMCwib2Zmc2V0X3giOiA5ODB9LCJzY3JlZW5fbG9nZ2luZyI6IHsib2Zmc2V0X3kiOiA3MDEsImFuY2hvcl94IjogImNlbnRlciIsIm9mZnNldF94IjogMH0sImNyb3NzaGFpcl9pbmRpY2F0b3JzIjogeyJvZmZzZXRfeSI6IDU3MiwiYW5jaG9yX3giOiAiY2VudGVyIiwib2Zmc2V0X3giOiAwfX0sInZlcnNpb24iOiAxLCJ2YWx1ZXMiOiB7ImJ1aWxkZXIuZnJlZXN0YW5kLmRlbGF5IjogMSwidmlzdWFscy5zZWNvbmRhcnkiOiAic2Vjb25kYXJ5IGNvbG9yIiwiYnVpbGRlci5haXIuZGVmX3lhdyI6ICJkZWxheWVkIiwidmlzdWFscy52aWV3bW9kZWwiOiB0cnVlLCJidWlsZGVyLmZyZWVzdGFuZC5kZWZfc3BlZWQiOiAxLCJidWlsZGVyLmRlZmF1bHQuMiI6IDAsImJ1aWxkZXIuYWlyLmJ5X251bSI6IC0yOCwiYnVpbGRlci5zYWZlIGhlYWQuZW5hYmxlIjogdHJ1ZSwiYnVpbGRlci5vbiBzaG90LmRlZmVuc2l2ZSI6IHRydWUsImJ1aWxkZXIuZHVjayBtb3ZlLmVwZF9yaWdodCI6IC0yOCwiYnVpbGRlci5haXJjLmFkZCI6IDEzLCJidWlsZGVyLmZyZWVzdGFuZC5leHBhbmQiOiAibGVmdC9yaWdodCIsImJ1aWxkZXIuaWRsZS40IjogMCwidXRpbGl0eS5zdHJlYW1lcl9tb2RlIjogZmFsc2UsInV0aWxpdHkuYnV5Ym90X3V0aWxpdHkiOiBbImtldmxhciIsImhlbG1ldCIsImRlZnVzZXIiLCJ0YXNlciIsImhlIiwibW9sb3RvdiIsInNtb2tlIl0sImJ1aWxkZXIuaWRsZS5kZWZlbnNpdmUiOiBmYWxzZSwiYnVpbGRlci5zbG93LmRlZl9sZWZ0IjogLTM0LCJidWlsZGVyLnNhZmUgaGVhZC4yIjogMCwiYnVpbGRlci5vbiBzaG90LmJhc2UiOiAiYXQgdGFyZ2V0cyIsImJ1aWxkZXIuZmFrZWxhZy53YXlzX21hbnVhbCI6IGZhbHNlLCJ1dGlsaXR5LnN0cmVhbWVyX21vZGVfaGVscCI6ICJ0eXBlIGluIGNvbnNvbGU6IC5hZGQgbmFtZSB1cmwiLCJ2aXN1YWxzLndhdGVybWFyayI6IHRydWUsImJ1aWxkZXIudXNlLmRlZmVuc2l2ZSI6IGZhbHNlLCJidWlsZGVyLm1hbnVhbC5lbmFibGUiOiB0cnVlLCJidWlsZGVyLmZha2VsYWcuYWRkIjogMCwiYnVpbGRlci5zbG93Lnhfd2F5bGFiZWwiOiAid2F5IDMiLCJidWlsZGVyLmlkbGUuZGVmX3lhdyI6ICJkZWxheWVkIiwiYWltYm90Lm5vc2NvcGVfd2VhcG9ucyI6IFsiYXV0b3NuaXBlcnMiXSwiYnVpbGRlci5kdWNrLjIiOiAwLCJidWlsZGVyLmZyZWVzdGFuZC5kZWZfeWF3IjogImRlbGF5ZWQiLCJidWlsZGVyLmFpci43IjogMCwiYnVpbGRlci5mcmVlc3RhbmQueF93YXlsYWJlbCI6ICJ3YXkgMyIsImJ1aWxkZXIuZnJlZXN0YW5kLmJ5X251bSI6IDEyLCJidWlsZGVyLnVzZS5lcGRfbGVmdCI6IDEsImJ1aWxkZXIudXNlLndheXNfbWFudWFsIjogZmFsc2UsImJ1aWxkZXIub24gc2hvdC4zIjogMCwiYnVpbGRlci5tYW51YWwuaml0dGVyX2FkZCI6IC0xLCJidWlsZGVyLmR1Y2sgbW92ZS5kZWZfeWF3IjogInNpZGV3YXlzIiwiYnVpbGRlci5haXJjLjEiOiAwLCJidWlsZGVyLnNhZmUgaGVhZC5qaXR0ZXJfYWRkIjogMCwiYnVpbGRlci5kdWNrIG1vdmUuZGVsYXkiOiAyLCJidWlsZGVyLnVzZS5qaXR0ZXIiOiAib2ZmIiwiYnVpbGRlci5mcmVlc3RhbmQud2F5c19tYW51YWwiOiBmYWxzZSwiYnVpbGRlci5leHRlbnNpb25zLm1hbnVhbF9hYV9ob3RrZXkubWFudWFsX2ZvcndhcmQiOiBmYWxzZSwiYnVpbGRlci5mcmVlc3RhbmQuZGVmX3JpZ2h0IjogMjYsImJ1aWxkZXIuZnJlZXN0YW5kLmRlZl95YXdfbnVtIjogLTI4LCJidWlsZGVyLmFpcmMuZGVmX2JvZHkiOiAiaml0dGVyIiwiYnVpbGRlci5mYWtlbGFnLmJ5X21vZGUiOiAiaml0dGVyIiwidmlzdWFscy56b29tX2FuaW1hdGlvbl9zcGVlZCI6IDUwLCJidWlsZGVyLm9uIHNob3QuZGVmX3lhd19udW0iOiAtMjgsImJ1aWxkZXIuYWlyLnhfd2F5bGFiZWwiOiAid2F5IDMiLCJidWlsZGVyLmlkbGUuaml0dGVyIjogIm9mZnNldCIsImJ1aWxkZXIuZnJlZXN0YW5kLjUiOiAwLCJidWlsZGVyLm9uIHNob3Quaml0dGVyIjogIm9mZnNldCIsImJ1aWxkZXIuaWRsZS5qaXR0ZXJfYWRkIjogLTI4LCJidWlsZGVyLnJ1bi54X3dheWxhYmVsIjogIndheSAzIiwiYnVpbGRlci5ydW4ud2F5c19tYW51YWwiOiBmYWxzZSwiYnVpbGRlci5haXIuc3BlZWQiOiAxLCJidWlsZGVyLmZha2VsYWcueF93YXlsYWJlbCI6ICJ3YXkgMyIsImJ1aWxkZXIuc2FmZSBoZWFkLmRlZl9ib2R5IjogImppdHRlciIsImJ1aWxkZXIub24gc2hvdC5kZWZfcGl0Y2giOiAiZGVmYXVsdCIsImJ1aWxkZXIubWFudWFsLmRlZl9zcGVlZCI6IDEsImJ1aWxkZXIuZmFrZWxhZy4zIjogMCwiYnVpbGRlci5kdWNrLndheXNfbWFudWFsIjogZmFsc2UsImJ1aWxkZXIubWFudWFsLmJ5X21vZGUiOiAic3RhdGljIiwiYnVpbGRlci5pZGxlLnhfd2F5bGFiZWwiOiAid2F5IDMiLCJ2aXN1YWxzLnZpZXdtb2RlbF95IjogMCwiYnVpbGRlci5tYW51YWwud2F5c19tYW51YWwiOiBmYWxzZSwiYnVpbGRlci5ydW4uZGVmX3lhdyI6ICJkZWxheWVkIiwiYnVpbGRlci5zYWZlIGhlYWQuZGVsYXkiOiAxLCJidWlsZGVyLmV4dGVuc2lvbnMubWFudWFsX2FhX2hvdGtleS5tYW51YWxfbGVmdCI6IGZhbHNlLCJidWlsZGVyLmRlZmF1bHQuZGVmX3BpdGNoIjogImRlZmF1bHQiLCJidWlsZGVyLnNsb3cuMSI6IDAsInV0aWxpdHkua2lsbHNheV9tb2RlcyI6IFsib24ga2lsbCJdLCJidWlsZGVyLnVzZS54X3dheWxhYmVsIjogIndheSAzIiwiYnVpbGRlci5kdWNrLmRlZl95YXdfbnVtIjogLTI4LCJidWlsZGVyLmR1Y2sueWF3X3JhbmRvbWl6ZSI6IDE2LCJidWlsZGVyLmFpcmMuc3BlZWQiOiAxLCJ1dGlsaXR5LnN0cmVhbWVyX21vZGVfbGlzdCI6IDMsImFpbWJvdC5lbmFibGVkX3Jlc29sdmVyX3R3ZWFrcyI6IHRydWUsImJ1aWxkZXIudXNlLmRlZl95YXdfbnVtIjogLTI4LCJidWlsZGVyLmR1Y2suaml0dGVyX2FkZCI6IDM4LCJidWlsZGVyLmFpcmMud2F5c19tYW51YWwiOiBmYWxzZSwiYnVpbGRlci5tYW51YWwuMyI6IDAsImJ1aWxkZXIuYWlyLmJhc2UiOiAiYXQgdGFyZ2V0cyIsImJ1aWxkZXIuZHVjay5kZWZfeWF3IjogImN1c3RvbSIsImJ1aWxkZXIucnVuLjYiOiAwLCJidWlsZGVyLmR1Y2sgbW92ZS4xIjogMCwiYnVpbGRlci5mYWtlbGFnLmppdHRlcl9hZGQiOiAtMjgsImJ1aWxkZXIuaWRsZS54X3dheSI6IDMsImJ1aWxkZXIuZHVjay5kZWZlbnNpdmUiOiB0cnVlLCJidWlsZGVyLmV4dGVuc2lvbnMuYW50aV9icnV0ZWZvcmNlIjogZmFsc2UsImJ1aWxkZXIuYWlyLmVwZF9sZWZ0IjogLTMsImJ1aWxkZXIuc2xvdy5kZWxheSI6IDIsImJ1aWxkZXIub24gc2hvdC42IjogMCwiYnVpbGRlci5haXJjLmJyZWFrX2xjIjogdHJ1ZSwiYWltYm90LnF1aWNrX3N0b3AiOiBmYWxzZSwiYnVpbGRlci5leHRlbnNpb25zLmFudGlfYnJ1dGVmb3JjZV90eXBlIjogImRlY3JlYXNlIiwiYnVpbGRlci5kZWZhdWx0LjYiOiAwLCJ2aXN1YWxzLmFjY2VudCI6ICJhY2NlbnQgY29sb3IiLCJhaW1ib3QucXVpY2tfc3RvcC5ob3RrZXlfa2V5Y29kZSI6IDAsImJ1aWxkZXIuZXh0ZW5zaW9ucy5tYW51YWxfYWFfaG90a2V5Lm1hbnVhbF9iYWNrIjogZmFsc2UsImJ1aWxkZXIuaWRsZS5ieV9tb2RlIjogImppdHRlciIsImJ1aWxkZXIub24gc2hvdC5zcGVlZCI6IDEsInZpc3VhbHMubG9nZ2luZ19vcHRpb25zX3NjcmVlbiI6IFsiaGl0IiwibWlzcyIsImFpbWJvdCJdLCJ2aXN1YWxzLmxvZ2dpbmdfb3B0aW9ucyI6IFsiY29uc29sZSIsInNjcmVlbiJdLCJidWlsZGVyLm9uIHNob3Qud2F5c19tYW51YWwiOiBmYWxzZSwiYnVpbGRlci5haXJjLjQiOiAwLCJ2aXN1YWxzLmNyb3NzaGFpcl9pbmRpY2F0b3JzIjogdHJ1ZSwiYnVpbGRlci5kdWNrIG1vdmUuaml0dGVyX2FkZCI6IC0yOCwiYnVpbGRlci5kZWZhdWx0LmVwZF93YXkiOiAwLCJ2aXN1YWxzLmxvZ2dpbmdfc2xpZGVyIjogMjQwLCJidWlsZGVyLmFpci5kZWZfcGl0Y2hfbnVtIjogLTI4LCJidWlsZGVyLnNhZmUgaGVhZC41IjogMCwiYnVpbGRlci5kdWNrLmRlZl9waXRjaF9udW0iOiAtMjgsImJ1aWxkZXIuZnJlZXN0YW5kLmJyZWFrX2xjIjogZmFsc2UsImJ1aWxkZXIuc2xvdy5kZWZfcGl0Y2giOiAiemVybyIsImJ1aWxkZXIuc2xvdy5qaXR0ZXIiOiAib2Zmc2V0IiwiYnVpbGRlci5kdWNrIG1vdmUuYmFzZSI6ICJhdCB0YXJnZXRzIiwiYWltYm90Lm5vc2NvcGVfZGlzdGFuY2Vfc2NvdXQiOiA0NTAsImJ1aWxkZXIuaWRsZS53YXlzX21hbnVhbCI6IGZhbHNlLCJidWlsZGVyLmFpcmMuZGVmZW5zaXZlIjogZmFsc2UsImJ1aWxkZXIuZHVjay43IjogMCwiYnVpbGRlci5vbiBzaG90LjIiOiAwLCJidWlsZGVyLmlkbGUuYmFzZSI6ICJhdCB0YXJnZXRzIiwiYnVpbGRlci5vbiBzaG90LmRlZl95YXciOiAiZGVsYXllZCIsImJ1aWxkZXIuZnJlZXN0YW5kLmRlZl9ib2R5IjogImppdHRlciIsImJ1aWxkZXIuc2FmZSBoZWFkLmppdHRlciI6ICJvZmYiLCJidWlsZGVyLnVzZS5qaXR0ZXJfYWRkIjogLTUsImJ1aWxkZXIuZHVjayBtb3ZlLjQiOiAwLCJidWlsZGVyLmFpcmMuZGVmX2xlZnQiOiAtMzQsImJ1aWxkZXIuc2xvdy42IjogMCwiYnVpbGRlci5mcmVlc3RhbmQuYnlfbW9kZSI6ICJqaXR0ZXIiLCJidWlsZGVyLnVzZS55YXdfcmFuZG9taXplIjogMCwiYnVpbGRlci5kdWNrLjMiOiAwLCJhaW1ib3Qubm9zY29wZV9kaXN0YW5jZV9hd3AiOiA0NTAsImJ1aWxkZXIuaWRsZS41IjogMCwiYnVpbGRlci51c2UuNCI6IDAsImJ1aWxkZXIuYWlyLmRlZl9yaWdodCI6IDI2LCJidWlsZGVyLmRlZmF1bHQuYWRkIjogMCwiYnVpbGRlci5ydW4uMyI6IDAsImJ1aWxkZXIub24gc2hvdC5kZWZfYm9keSI6ICJqaXR0ZXIiLCJidWlsZGVyLmZha2VsYWcuMiI6IDAsImJ1aWxkZXIucnVuLjIiOiAwLCJidWlsZGVyLnVzZS5leHBhbmQiOiAib2ZmIiwiYnVpbGRlci5tYW51YWwuc3BlZWQiOiAxLCJ2aXN1YWxzLnZpZXdtb2RlbF9mb3YiOiA0MywiYnVpbGRlci5kdWNrLmFkZCI6IDAsImJ1aWxkZXIub24gc2hvdC5ieV9udW0iOiAtMjgsImJ1aWxkZXIudXNlLmRlZl9waXRjaF9udW0iOiAtMjgsImJ1aWxkZXIucnVuLmRlZl95YXdfbnVtIjogLTI4LCJidWlsZGVyLmZha2VsYWcuZGVmZW5zaXZlIjogdHJ1ZSwiYnVpbGRlci5kdWNrIG1vdmUuZGVmX3lhd19udW0iOiAtMjgsImJ1aWxkZXIuZnJlZXN0YW5kLnNwZWVkIjogMSwiYnVpbGRlci5zYWZlIGhlYWQuc3BlZWQiOiAxLCJ1dGlsaXR5LmFuaW1hdGlvbl9icmVha2VycyI6IFsiZWFydGhxdWFrZSIsIm9uIGdyb3VuZCIsIm9uIGFpciIsImJvZHkgbGVhbiJdLCJidWlsZGVyLmRlZmF1bHQuZGVmZW5zaXZlIjogdHJ1ZSwiYnVpbGRlci5kZWZhdWx0LndheXNfbWFudWFsIjogZmFsc2UsImJ1aWxkZXIucnVuLjciOiAwLCJidWlsZGVyLmR1Y2sueF93YXkiOiAzLCJidWlsZGVyLm9uIHNob3QuZXhwYW5kIjogImxlZnQvcmlnaHQiLCJidWlsZGVyLmZyZWVzdGFuZC5lcGRfd2F5IjogMCwidmlzdWFscy52Z3VpIjogInZndWkgY29sb3IiLCJidWlsZGVyLmV4dGVuc2lvbnMuZnJlZXN0YW5kaW5nIjogZmFsc2UsImJ1aWxkZXIuZHVjayBtb3ZlLndheXNfbWFudWFsIjogZmFsc2UsInZpc3VhbHMudmlld21vZGVsX3giOiAwLCJidWlsZGVyLmFpcmMuZW5hYmxlIjogdHJ1ZSwiYnVpbGRlci5kdWNrIG1vdmUuZGVmX2xlZnQiOiAtMzQsInZpc3VhbHMuem9vbV9hbmltYXRpb24iOiBmYWxzZSwiYnVpbGRlci5haXIuNCI6IDAsImJ1aWxkZXIuaWRsZS42IjogMCwidmlzdWFscy5lbmFibGVkX3Zpc3VhbHMiOiB0cnVlLCJhaW1ib3Quc2lsZW50X3Nob3QiOiB0cnVlLCJidWlsZGVyLnJ1bi5qaXR0ZXJfYWRkIjogLTMxLCJidWlsZGVyLmFpcmMuaml0dGVyIjogIm9mZiIsImJ1aWxkZXIuZmFrZWxhZy4xIjogMCwiYnVpbGRlci51c2UuZGVmX3BpdGNoIjogImRlZmF1bHQiLCJidWlsZGVyLnJ1bi54X3dheSI6IDMsImJ1aWxkZXIuZHVjayBtb3ZlLmVuYWJsZSI6IHRydWUsImJ1aWxkZXIuYWlyYy5kZWZfeWF3X251bSI6IC0yOCwiYnVpbGRlci5kZWZhdWx0LmVwZF9yaWdodCI6IC0yOCwiYnVpbGRlci5leHRlbnNpb25zLm1hbnVhbF9hYV9ob3RrZXkubWFudWFsX2xlZnQuaG90a2V5X2tleWNvZGUiOiA5MCwiYnVpbGRlci5pZGxlLmVuYWJsZSI6IHRydWUsImJ1aWxkZXIuYWlyYy41IjogMCwiYnVpbGRlci5tYW51YWwuMiI6IDAsImJ1aWxkZXIuZGVmYXVsdC5qaXR0ZXJfYWRkIjogLTI4LCJidWlsZGVyLmlkbGUuYnlfbnVtIjogLTI4LCJidWlsZGVyLmFpci4xIjogMCwiYnVpbGRlci5ydW4uYWRkIjogMCwiYnVpbGRlci5zbG93LndheXNfbWFudWFsIjogZmFsc2UsImJ1aWxkZXIuZGVmYXVsdC41IjogMCwiYnVpbGRlci5pZGxlLmRlZl9sZWZ0IjogLTM0LCJidWlsZGVyLmZha2VsYWcuZGVmX3BpdGNoIjogImRlZmF1bHQiLCJ2aXN1YWxzLmRhbWFnZV9pbmRpY2F0b3IiOiB0cnVlLCJidWlsZGVyLmV4dGVuc2lvbnMubWFudWFsX2FhX2hvdGtleS5tYW51YWxfYmFjay5ob3RrZXlfbW9kZV9pZHgiOiAxLCJidWlsZGVyLm1hbnVhbC5kZWZfeWF3IjogImRlbGF5ZWQiLCJidWlsZGVyLmR1Y2suZGVsYXkiOiAyLCJidWlsZGVyLmR1Y2sgbW92ZS5qaXR0ZXIiOiAib2Zmc2V0IiwiYnVpbGRlci5zYWZlIGhlYWQuZXBkX3JpZ2h0IjogMCwiYnVpbGRlci5haXJjLmRlbGF5IjogMiwiYnVpbGRlci5kZWZhdWx0LjEiOiAwLCJidWlsZGVyLmFpci5kZWZfcGl0Y2giOiAiZGVmYXVsdCIsImJ1aWxkZXIudXNlLmRlZl95YXciOiAiZGVsYXllZCIsImJ1aWxkZXIuc2xvdy5lcGRfd2F5IjogMCwidmlzdWFscy53aW5kb3ciOiB0cnVlLCJ1dGlsaXR5LmJ1eWJvdF9wcmltYXJ5IjogInNjb3V0IiwiYnVpbGRlci5tYW51YWwuYWRkIjogMCwiYnVpbGRlci5tYW51YWwuZXBkX2xlZnQiOiAtMTIsImJ1aWxkZXIuZHVjayBtb3ZlLmRlZl9zcGVlZCI6IDEsImJ1aWxkZXIuYWlyYy5ieV9udW0iOiAzOCwiYnVpbGRlci5ydW4uZGVmX2JvZHkiOiAiYXV0byIsImJ1aWxkZXIuYWlyLnlhd19yYW5kb21pemUiOiAwLCJ1dGlsaXR5LnBhcnR5X21vZGUiOiBmYWxzZSwiYnVpbGRlci5haXJjLmVwZF9yaWdodCI6IDAsImJ1aWxkZXIuZnJlZXN0YW5kLmVuYWJsZSI6IGZhbHNlLCJidWlsZGVyLmR1Y2sgbW92ZS4zIjogMCwiYnVpbGRlci5mYWtlbGFnLmV4cGFuZCI6ICJsZWZ0L3JpZ2h0IiwiYnVpbGRlci5zYWZlIGhlYWQuNCI6IDAsImJ1aWxkZXIub24gc2hvdC5qaXR0ZXJfYWRkIjogLTI4LCJidWlsZGVyLmlkbGUuZXhwYW5kIjogImxlZnQvcmlnaHQiLCJidWlsZGVyLmZyZWVzdGFuZC5iYXNlIjogImF0IHRhcmdldHMiLCJidWlsZGVyLm9uIHNob3QuZGVmX3JpZ2h0IjogMjYsImJ1aWxkZXIuZGVmYXVsdC5kZWZfc3BlZWQiOiAxLCJidWlsZGVyLm9uIHNob3QuNSI6IDAsInZpc3VhbHMubG9nZ2luZyI6IHRydWUsImJ1aWxkZXIuc2xvdy4zIjogMCwiYnVpbGRlci5kdWNrIG1vdmUuNyI6IDAsImJ1aWxkZXIuc2FmZSBoZWFkLmRlZl95YXciOiAiZGVsYXllZCIsImJ1aWxkZXIuc2FmZSBoZWFkLmJyZWFrX2xjIjogZmFsc2UsImJ1aWxkZXIubWFudWFsLmRlZl9ib2R5IjogImppdHRlciIsImJ1aWxkZXIub24gc2hvdC5hZGQiOiAwLCJidWlsZGVyLmZyZWVzdGFuZC5kZWZlbnNpdmUiOiBmYWxzZSwiYnVpbGRlci5haXJjLjMiOiAwLCJidWlsZGVyLm1hbnVhbC54X3dheSI6IDMsImJ1aWxkZXIuaWRsZS5kZWZfcGl0Y2giOiAiZGVmYXVsdCIsImJ1aWxkZXIudXNlLmRlZl9yaWdodCI6IDI2LCJ1dGlsaXR5Lm9uX2dyb3VuZF9vcHRpb25zIjogImppdHRlciIsInZpc3VhbHMuY3Jvc3NoYWlyX2FuaW1hdGVfc2NvcGUiOiB0cnVlLCJidWlsZGVyLmR1Y2sgbW92ZS54X3dheSI6IDMsImJ1aWxkZXIuZmFrZWxhZy5kZWZfc3BlZWQiOiAxLCJ1dGlsaXR5LmJvZHlfbGVhbl9hbW91bnQiOiAxMDAsImJ1aWxkZXIuc2FmZSBoZWFkLnhfd2F5IjogMywiYnVpbGRlci5mYWtlbGFnLjUiOiAwLCJidWlsZGVyLnNsb3cuaml0dGVyX2FkZCI6IC0yOCwiYnVpbGRlci5mcmVlc3RhbmQuNyI6IDAsImJ1aWxkZXIubWFudWFsLmJyZWFrX2xjIjogZmFsc2UsInV0aWxpdHkuYnV5Ym90IjogdHJ1ZSwiYnVpbGRlci5mYWtlbGFnLmJhc2UiOiAiYXQgdGFyZ2V0cyIsImJ1aWxkZXIuZXh0ZW5zaW9ucy5mcmVlc3RhbmRpbmcuaG90a2V5X21vZGVfaWR4IjogMSwidmlzdWFscy53YXRlcm1hcmtfc2hvdyI6IFsic2NyaXB0IiwicGxheWVyIiwidGltZSIsInBpbmciXSwiYnVpbGRlci5haXIuZGVmX3NwZWVkIjogMSwiYnVpbGRlci5vbiBzaG90Lnhfd2F5IjogMywiYWltYm90Lm5vc2NvcGVfZGlzdGFuY2UiOiB0cnVlLCJidWlsZGVyLmlkbGUuZXBkX3dheSI6IDAsImJ1aWxkZXIuYWlyLndheXNfbWFudWFsIjogZmFsc2UsImJ1aWxkZXIuZnJlZXN0YW5kLmppdHRlcl9hZGQiOiAtNSwiYnVpbGRlci5zYWZlIGhlYWQuZGVmX3BpdGNoX251bSI6IC0yOCwiYnVpbGRlci5haXIuaml0dGVyX2FkZCI6IDUsInZpc3VhbHMuYXNwZWN0X3JhdGlvX3NsaWRlciI6IDEyMCwiYnVpbGRlci5pZGxlLnNwZWVkIjogMSwiYnVpbGRlci5vbiBzaG90LmVwZF93YXkiOiAwLCJidWlsZGVyLm1hbnVhbC41IjogMCwiYnVpbGRlci5leHRlbnNpb25zLm1hbnVhbF9hYSI6IHRydWUsImJ1aWxkZXIuZGVmYXVsdC5leHBhbmQiOiAibGVmdC9yaWdodCIsImJ1aWxkZXIuc2xvdy5ieV9udW0iOiAtMjgsImJ1aWxkZXIuc2FmZSBoZWFkLmRlZl9zcGVlZCI6IDEsImJ1aWxkZXIudXNlLmVwZF93YXkiOiAwLCJidWlsZGVyLmZyZWVzdGFuZC55YXdfcmFuZG9taXplIjogMCwiYnVpbGRlci5zYWZlIGhlYWQuYmFzZSI6ICJhdCB0YXJnZXRzIiwiYnVpbGRlci5kdWNrLmJhc2UiOiAiYXQgdGFyZ2V0cyIsImJ1aWxkZXIubWFudWFsLmppdHRlciI6ICJvZmYiLCJidWlsZGVyLmFpcmMuMiI6IDAsImJ1aWxkZXIuZmFrZWxhZy40IjogMCwiYnVpbGRlci5mcmVlc3RhbmQuZGVmX3BpdGNoIjogImRlZmF1bHQiLCJidWlsZGVyLmFpci41IjogMCwiYnVpbGRlci5haXJjLmRlZl9waXRjaF9udW0iOiAtMjgsImJ1aWxkZXIuZGVmYXVsdC5kZWZfeWF3IjogImRlbGF5ZWQiLCJidWlsZGVyLmRlZmF1bHQuNCI6IDAsImJ1aWxkZXIuc2xvdy43IjogMCwiYnVpbGRlci5pZGxlLmRlbGF5IjogMiwidmlzdWFscy52aWV3bW9kZWxfeiI6IDAsInV0aWxpdHkuY2xhbnRhZyI6IGZhbHNlLCJhaW1ib3QuZW5hYmxlZF9haW1ib3QiOiB0cnVlLCJ2aXN1YWxzLnNwYXduX3pvb20iOiB0cnVlLCJidWlsZGVyLmZha2VsYWcuYnJlYWtfbGMiOiB0cnVlLCJidWlsZGVyLmFpcmMuYmFzZSI6ICJhdCB0YXJnZXRzIiwiYnVpbGRlci5kdWNrLmRlZl9ib2R5IjogImppdHRlciIsImJ1aWxkZXIubWFudWFsLnlhd19yYW5kb21pemUiOiAwLCJidWlsZGVyLmZyZWVzdGFuZC5kZWZfbGVmdCI6IC0zNCwiYnVpbGRlci5zbG93LmVuYWJsZSI6IHRydWUsImJ1aWxkZXIucnVuLmRlZl9waXRjaCI6ICJkZWZhdWx0IiwiYWltYm90Lm5vc2NvcGVfZGlzdGFuY2VfYXV0b3NuaXBlcnMiOiA0NTAsImJ1aWxkZXIuaWRsZS5icmVha19sYyI6IHRydWUsImJ1aWxkZXIuZnJlZXN0YW5kLmFkZCI6IDAsImJ1aWxkZXIub24gc2hvdC5ieV9tb2RlIjogImppdHRlciIsImJ1aWxkZXIuZHVjayBtb3ZlLmRlZl9waXRjaCI6ICJkZWZhdWx0IiwiYnVpbGRlci5kdWNrLmppdHRlciI6ICJjZW50ZXIiLCJidWlsZGVyLmFpcmMuZGVmX3NwZWVkIjogMSwiYnVpbGRlci5zYWZlIGhlYWQud2F5c19tYW51YWwiOiBmYWxzZSwiYnVpbGRlci5haXJjLnhfd2F5IjogMywiYnVpbGRlci5mYWtlbGFnLmJ5X251bSI6IC0yOCwiYnVpbGRlci5kZWZhdWx0LmppdHRlciI6ICJvZmZzZXQiLCJidWlsZGVyLnJ1bi5ieV9udW0iOiAtOCwiYnVpbGRlci5kdWNrIG1vdmUuNiI6IDAsImJ1aWxkZXIubWFudWFsLmRlZl9waXRjaF9udW0iOiAtMjgsImJ1aWxkZXIuZGVmYXVsdC5iYXNlIjogImF0IHRhcmdldHMiLCJidWlsZGVyLmRlZmF1bHQueF93YXlsYWJlbCI6ICJ3YXkgMyIsImJ1aWxkZXIuZGVmYXVsdC5kZWZfcGl0Y2hfbnVtIjogLTI4LCJidWlsZGVyLmRlZmF1bHQuYnJlYWtfbGMiOiB0cnVlLCJidWlsZGVyLmRlZmF1bHQuZGVmX3lhd19udW0iOiAtMjgsImJ1aWxkZXIubWFudWFsLjEiOiAwLCJidWlsZGVyLmZha2VsYWcuZGVmX3BpdGNoX251bSI6IC0yOCwiYnVpbGRlci5vbiBzaG90LjEiOiAwLCJidWlsZGVyLmRlZmF1bHQuZGVmX2JvZHkiOiAiaml0dGVyIiwiYnVpbGRlci5kZWZhdWx0LmRlZl9yaWdodCI6IDI2LCJidWlsZGVyLmRlZmF1bHQuYnlfbW9kZSI6ICJqaXR0ZXIiLCJidWlsZGVyLmlkbGUuZGVmX2JvZHkiOiAiaml0dGVyIiwiYnVpbGRlci5kdWNrIG1vdmUuYnJlYWtfbGMiOiB0cnVlLCJidWlsZGVyLmRlZmF1bHQuYnlfbnVtIjogLTI4LCJidWlsZGVyLmRlZmF1bHQuZGVsYXkiOiAyLCJidWlsZGVyLnVzZS4xIjogMCwiYnVpbGRlci5haXJjLjYiOiAwLCJidWlsZGVyLmRlZmF1bHQuZGVmX2xlZnQiOiAtMzQsImJ1aWxkZXIuZGVmYXVsdC5zcGVlZCI6IDEsImJ1aWxkZXIuZHVjay5lbmFibGUiOiB0cnVlLCJidWlsZGVyLmRlZmF1bHQuZXBkX2xlZnQiOiAtMjgsImJ1aWxkZXIuZHVjay5kZWZfc3BlZWQiOiAxLCJidWlsZGVyLnNsb3cuZGVmX3lhd19udW0iOiAtMjgsImJ1aWxkZXIuZmFrZWxhZy5kZWZfeWF3X251bSI6IC0yOCwiYnVpbGRlci5haXIuZGVmZW5zaXZlIjogZmFsc2UsImJ1aWxkZXIuZGVmYXVsdC43IjogMCwiYnVpbGRlci5kZWZhdWx0LjMiOiAwLCJidWlsZGVyLmR1Y2sgbW92ZS55YXdfcmFuZG9taXplIjogMCwiYnVpbGRlci5kdWNrIG1vdmUueF93YXlsYWJlbCI6ICJ3YXkgMyIsImJ1aWxkZXIuc2FmZSBoZWFkLmRlZl95YXdfbnVtIjogLTI4LCJidWlsZGVyLmZha2VsYWcuZXBkX3dheSI6IDAsImJ1aWxkZXIuZHVjayBtb3ZlLmRlZmVuc2l2ZSI6IGZhbHNlLCJidWlsZGVyLmZyZWVzdGFuZC5kZWZfcGl0Y2hfbnVtIjogLTI4LCJidWlsZGVyLnVzZS5kZWZfYm9keSI6ICJqaXR0ZXIiLCJidWlsZGVyLmlkbGUuNyI6IDAsInZpc3VhbHMubGNfc3RhdHVzIjogZmFsc2UsImJ1aWxkZXIuZXh0ZW5zaW9ucy5lZGdlX3lhdyI6IGZhbHNlLCJidWlsZGVyLmR1Y2sgbW92ZS5lcGRfd2F5IjogMCwiYnVpbGRlci51c2UuYWRkIjogMCwiYnVpbGRlci5kdWNrIG1vdmUuZGVmX2JvZHkiOiAiaml0dGVyIiwiYnVpbGRlci5zbG93LnNwZWVkIjogMSwiYnVpbGRlci5kdWNrIG1vdmUuZGVmX3JpZ2h0IjogMjYsImJ1aWxkZXIub24gc2hvdC5kZWxheSI6IDIsImJ1aWxkZXIudXNlLmJ5X21vZGUiOiAiaml0dGVyIiwiYnVpbGRlci5zYWZlIGhlYWQuMyI6IDAsImJ1aWxkZXIuaWRsZS5hZGQiOiAwLCJidWlsZGVyLmR1Y2sgbW92ZS5ieV9tb2RlIjogImppdHRlciIsImJ1aWxkZXIuZHVjayBtb3ZlLmFkZCI6IDAsImJ1aWxkZXIuZHVjay41IjogMCwiYWltYm90LnNtYXJ0X3NhZmV0eSI6IGZhbHNlLCJ2aXN1YWxzLnpvb21fYW5pbWF0aW9uX3ZhbHVlIjogMiwiYnVpbGRlci5kdWNrIG1vdmUuZXBkX2xlZnQiOiAxMiwiYnVpbGRlci5zbG93LmRlZl9waXRjaF9udW0iOiAtMjgsImJ1aWxkZXIudXNlLmRlZl9sZWZ0IjogLTM0LCJidWlsZGVyLmR1Y2suZGVmX2xlZnQiOiAtMzQsImJ1aWxkZXIuYWlyYy5kZWZfeWF3IjogImRlbGF5ZWQiLCJidWlsZGVyLmlkbGUuZXBkX2xlZnQiOiAyNCwiYnVpbGRlci5pZGxlLnlhd19yYW5kb21pemUiOiA3LCJidWlsZGVyLm9uIHNob3QuZXBkX2xlZnQiOiAtMjgsImJ1aWxkZXIudXNlLmVuYWJsZSI6IHRydWUsImJ1aWxkZXIuaWRsZS4yIjogMCwiYnVpbGRlci5tYW51YWwuZGVmX3JpZ2h0IjogMjYsImJ1aWxkZXIub24gc2hvdC43IjogMCwiYnVpbGRlci5vbiBzaG90LmRlZl9waXRjaF9udW0iOiAtMjgsImJ1aWxkZXIudXNlLmJyZWFrX2xjIjogZmFsc2UsImJ1aWxkZXIuc2FmZSBoZWFkLmRlZl9yaWdodCI6IDI2LCJidWlsZGVyLm1hbnVhbC5leHBhbmQiOiAib2ZmIiwiYnVpbGRlci5kdWNrLjYiOiAwLCJ1dGlsaXR5LmtpbGxzYXkiOiB0cnVlLCJidWlsZGVyLmlkbGUuMSI6IDAsImJ1aWxkZXIucnVuLnNwZWVkIjogMSwiYnVpbGRlci5zYWZlIGhlYWQueF93YXlsYWJlbCI6ICJ3YXkgMyIsImJ1aWxkZXIuZHVjay4xIjogMCwiYnVpbGRlci5haXJjLmppdHRlcl9hZGQiOiAyMiwiYnVpbGRlci5pZGxlLjMiOiAwLCJidWlsZGVyLm1hbnVhbC42IjogMCwiYWltYm90LnF1aWNrX3N0b3AuaG90a2V5X21vZGVfaWR4IjogMCwidXRpbGl0eS5idXlib3Rfc2Vjb25kYXJ5IjogInRlYy05IC8gZml2ZS1zIC8gY3otNzUiLCJidWlsZGVyLmR1Y2suYnlfbnVtIjogNSwiYnVpbGRlci5ydW4uZGVmZW5zaXZlIjogdHJ1ZSwiYnVpbGRlci5leHRlbnNpb25zLm1hbnVhbF9hYV9ob3RrZXkubWFudWFsX2xlZnQuaG90a2V5X21vZGVfaWR4IjogMSwiYnVpbGRlci5zYWZlIGhlYWQuZXBkX3dheSI6IDAsImJ1aWxkZXIuc2xvdy5hZGQiOiAwLCJidWlsZGVyLnNhZmUgaGVhZC42IjogMCwiYnVpbGRlci5mYWtlbGFnLmVwZF9yaWdodCI6IC0yOCwiYnVpbGRlci5mYWtlbGFnLnhfd2F5IjogMywiYnVpbGRlci5tYW51YWwuZGVmX2xlZnQiOiAtMzQsImJ1aWxkZXIuYWlyYy5lcGRfbGVmdCI6IDAsImJ1aWxkZXIucnVuLmJyZWFrX2xjIjogdHJ1ZSwidmlzdWFscy5zdGlja21hbiI6IGZhbHNlLCJidWlsZGVyLm9uIHNob3QueWF3X3JhbmRvbWl6ZSI6IDAsImJ1aWxkZXIubWFudWFsLjciOiAwLCJidWlsZGVyLmFpcmMueF93YXlsYWJlbCI6ICJ3YXkgMyIsImJ1aWxkZXIudXNlLjYiOiAwLCJidWlsZGVyLmlkbGUuZGVmX3JpZ2h0IjogMjYsImJ1aWxkZXIubWFudWFsLmJ5X251bSI6IDAsImJ1aWxkZXIuZXh0ZW5zaW9ucy53YXJtdXBfYWEiOiBbIndhcm11cCJdLCJidWlsZGVyLnNhZmUgaGVhZC4xIjogMCwiYnVpbGRlci5haXIuZXBkX3dheSI6IDAsImJ1aWxkZXIuZmFrZWxhZy5qaXR0ZXIiOiAib2Zmc2V0IiwiYnVpbGRlci5haXIuZGVmX2xlZnQiOiAtMzQsImJ1aWxkZXIuYWlyLmJ5X21vZGUiOiAiaml0dGVyIiwiYnVpbGRlci5tYW51YWwuZXBkX3JpZ2h0IjogMTAsImJ1aWxkZXIudXNlLmJ5X251bSI6IDEyLCJidWlsZGVyLnNsb3cuNCI6IDAsImJ1aWxkZXIuc2xvdy55YXdfcmFuZG9taXplIjogMCwiYnVpbGRlci5zbG93LmVwZF9yaWdodCI6IC0yOCwidmlzdWFscy5zdGlja21hbi5jb2xvciI6IFsyNTUsMjU1LDI1NSwxNDBdLCJidWlsZGVyLmZyZWVzdGFuZC42IjogMCwiYnVpbGRlci5tYW51YWwuYmFzZSI6ICJhdCB0YXJnZXRzIiwiYnVpbGRlci5haXJjLmVwZF93YXkiOiAwLCJidWlsZGVyLm9uIHNob3QueF93YXlsYWJlbCI6ICJ3YXkgMyIsImJ1aWxkZXIuc2FmZSBoZWFkLmFkZCI6IDAsImJ1aWxkZXIubWFudWFsLmRlZl95YXdfbnVtIjogLTI4LCJidWlsZGVyLmZha2VsYWcuZGVmX3JpZ2h0IjogMjYsImJ1aWxkZXIuYWlyLmRlZl95YXdfbnVtIjogLTI4LCJidWlsZGVyLnVzZS4yIjogMCwiYnVpbGRlci5vbiBzaG90LmVuYWJsZSI6IGZhbHNlLCJidWlsZGVyLnNsb3cuZGVmX3NwZWVkIjogMSwiYnVpbGRlci5kdWNrIG1vdmUuYnlfbnVtIjogLTI4LCJidWlsZGVyLnNsb3cuZGVmX3JpZ2h0IjogMjYsImJ1aWxkZXIuc2xvdy4yIjogMCwiYnVpbGRlci5kdWNrIG1vdmUuZXhwYW5kIjogImxlZnQvcmlnaHQiLCJidWlsZGVyLnJ1bi5qaXR0ZXIiOiAib2Zmc2V0IiwidmlzdWFscy5zZWNvbmRhcnkuY29sb3IiOiBbMTkzLDE5MywxOTMsMjU1XSwiYnVpbGRlci5kdWNrLmRlZl9yaWdodCI6IDI2LCJ1dGlsaXR5LmhpdHNvdW5kIjogdHJ1ZSwiYnVpbGRlci5ydW4uZGVmX3BpdGNoX251bSI6IC0yOCwiYnVpbGRlci5ydW4uZXBkX3dheSI6IDAsInZpc3VhbHMuYXNwZWN0X3JhdGlvIjogdHJ1ZSwiYnVpbGRlci5zYWZlIGhlYWQuZGVmX2xlZnQiOiAtMzQsImJ1aWxkZXIuc2xvdy5leHBhbmQiOiAibGVmdC9yaWdodCIsImJ1aWxkZXIuZnJlZXN0YW5kLjIiOiAwLCJidWlsZGVyLnNhZmUgaGVhZC55YXdfcmFuZG9taXplIjogMCwiYnVpbGRlci5zbG93LmRlZl95YXciOiAiZGVsYXllZCIsInZpc3VhbHMudGhpcmRwZXJzb24iOiB0cnVlLCJidWlsZGVyLmZha2VsYWcuNiI6IDAsImJ1aWxkZXIuc2FmZSBoZWFkLmJ5X251bSI6IDAsImJ1aWxkZXIucnVuLjUiOiAwLCJidWlsZGVyLmV4dGVuc2lvbnMubWFudWFsX2FhX2hvdGtleS5tYW51YWxfcmlnaHQuaG90a2V5X21vZGVfaWR4IjogMSwiYnVpbGRlci5haXIuNiI6IDAsImJ1aWxkZXIuZmFrZWxhZy55YXdfcmFuZG9taXplIjogMCwiYnVpbGRlci5zbG93LmRlZmVuc2l2ZSI6IHRydWUsImJ1aWxkZXIudXNlLmRlbGF5IjogMSwiYnVpbGRlci51c2UuMyI6IDAsImJ1aWxkZXIuYWlyYy5ieV9tb2RlIjogImppdHRlciIsImJ1aWxkZXIub24gc2hvdC5kZWZfc3BlZWQiOiAxLCJidWlsZGVyLmV4dGVuc2lvbnMubWFudWFsX2FhX2hvdGtleS5tYW51YWxfcmlnaHQuaG90a2V5X2tleWNvZGUiOiA2NywiYnVpbGRlci5vbiBzaG90LmJyZWFrX2xjIjogdHJ1ZSwiYnVpbGRlci5kdWNrLmVwZF9yaWdodCI6IDAsImJ1aWxkZXIuYWlyYy55YXdfcmFuZG9taXplIjogMCwidmlzdWFscy52Z3VpLmNvbG9yIjogWzEzNSwxMzUsMTM1LDI1NV0sImJ1aWxkZXIuZmFrZWxhZy5lcGRfbGVmdCI6IC0yOCwiYnVpbGRlci5vbiBzaG90LmVwZF9yaWdodCI6IC0yOCwiYnVpbGRlci5leHRlbnNpb25zLmFudGlfYmFja3N0YWIiOiB0cnVlLCJidWlsZGVyLnNhZmUgaGVhZC5leHBhbmQiOiAib2ZmIiwiYnVpbGRlci5tYW51YWwuZXBkX3dheSI6IDAsImJ1aWxkZXIuZmFrZWxhZy5lbmFibGUiOiB0cnVlLCJidWlsZGVyLnNsb3cuZGVmX2JvZHkiOiAiaml0dGVyIiwiYnVpbGRlci5mYWtlbGFnLnNwZWVkIjogMSwiYnVpbGRlci5haXIuYnJlYWtfbGMiOiB0cnVlLCJidWlsZGVyLmZha2VsYWcuZGVmX2xlZnQiOiAtMzQsInZpc3VhbHMudGhpcmRwZXJzb25fc2xpZGVyIjogNDUsImJ1aWxkZXIubWFudWFsLnhfd2F5bGFiZWwiOiAid2F5IDMiLCJidWlsZGVyLnNsb3cuYmFzZSI6ICJhdCB0YXJnZXRzIiwiYnVpbGRlci5leHRlbnNpb25zLnNhZmVfaGVhZCI6IFsia25pZmUiLCJ6ZXVzIl0sImJ1aWxkZXIudXNlLmVwZF9yaWdodCI6IC0yOCwiYnVpbGRlci5mYWtlbGFnLmRlZl95YXciOiAiZGVsYXllZCIsImJ1aWxkZXIuaWRsZS5kZWZfc3BlZWQiOiAxLCJidWlsZGVyLmRlZmF1bHQueWF3X3JhbmRvbWl6ZSI6IDAsImJ1aWxkZXIuZHVjay5ieV9tb2RlIjogIm9wcG9zaXRlIiwiYWltYm90LnJlc29sdmVyX21vZGUiOiAiZXhwZXJpbWVudGFsIiwidXRpbGl0eS5vbl9haXJfb3B0aW9ucyI6ICJmcm96ZW4iLCJidWlsZGVyLnNsb3cueF93YXkiOiAzLCJidWlsZGVyLmFpci5lcGRfcmlnaHQiOiAtMywiYnVpbGRlci5kdWNrLmRlZl9waXRjaCI6ICJkZWZhdWx0IiwiYnVpbGRlci5ydW4uZXhwYW5kIjogImxlZnQvcmlnaHQiLCJidWlsZGVyLnJ1bi5lcGRfcmlnaHQiOiAxMiwiYnVpbGRlci5ydW4uZXBkX2xlZnQiOiAtMTIsImJ1aWxkZXIuZmFrZWxhZy43IjogMCwiYnVpbGRlci5haXIuaml0dGVyIjogIm9mZnNldCIsImJ1aWxkZXIucnVuLmJhc2UiOiAiYXQgdGFyZ2V0cyIsImJ1aWxkZXIuYWlyYy43IjogMCwiYnVpbGRlci5zbG93LmJyZWFrX2xjIjogdHJ1ZSwiYnVpbGRlci5tYW51YWwuZGVmX3BpdGNoIjogImRlZmF1bHQiLCJidWlsZGVyLmRlZmF1bHQueF93YXkiOiAzLCJidWlsZGVyLnVzZS5zcGVlZCI6IDEsImJ1aWxkZXIudXNlLmRlZl9zcGVlZCI6IDEsImJ1aWxkZXIub24gc2hvdC5kZWZfbGVmdCI6IC0zNCwiYnVpbGRlci5ydW4uZW5hYmxlIjogdHJ1ZSwiYnVpbGRlci5ydW4ueWF3X3JhbmRvbWl6ZSI6IDAsImJ1aWxkZXIubWFudWFsLmRlbGF5IjogMiwiYnVpbGRlci5haXIuZXhwYW5kIjogImxlZnQvcmlnaHQiLCJidWlsZGVyLmZyZWVzdGFuZC40IjogMCwiYnVpbGRlci5mcmVlc3RhbmQuZXBkX3JpZ2h0IjogMTAsImJ1aWxkZXIucnVuLmRlZl9yaWdodCI6IDM0LCJidWlsZGVyLmZyZWVzdGFuZC5lcGRfbGVmdCI6IC04LCJidWlsZGVyLmR1Y2suZXBkX3dheSI6IDAsImJ1aWxkZXIuZHVjayBtb3ZlLnNwZWVkIjogMSwiYnVpbGRlci5ydW4uZGVmX3NwZWVkIjogMSwiYnVpbGRlci5kdWNrLmVwZF9sZWZ0IjogMCwiYnVpbGRlci51c2UuNyI6IDAsInZpc3VhbHMuYWNjZW50LmNvbG9yIjogWzI1NSwyNTUsMjU1LDI1NV0sImJ1aWxkZXIuZXh0ZW5zaW9ucy5mcmVlc3RhbmRpbmcuaG90a2V5X2tleWNvZGUiOiA2LCJidWlsZGVyLmZyZWVzdGFuZC5qaXR0ZXIiOiAiY2VudGVyIiwiYnVpbGRlci5vbiBzaG90LjQiOiAwLCJidWlsZGVyLmFpci4yIjogMCwiYnVpbGRlci5ydW4uZGVsYXkiOiAyLCJidWlsZGVyLmFpci5lbmFibGUiOiB0cnVlLCJidWlsZGVyLmlkbGUuZGVmX3BpdGNoX251bSI6IC0yOCwiYnVpbGRlci5mcmVlc3RhbmQuMyI6IDAsImJ1aWxkZXIuc2FmZSBoZWFkLjciOiAwLCJidWlsZGVyLm1hbnVhbC5kZWZlbnNpdmUiOiBmYWxzZSwiYnVpbGRlci5haXIuZGVmX2JvZHkiOiAiaml0dGVyIiwiYnVpbGRlci5zbG93LmJ5X21vZGUiOiAiaml0dGVyIiwiYnVpbGRlci5ydW4uYnlfbW9kZSI6ICJqaXR0ZXIiLCJidWlsZGVyLm1hbnVhbC40IjogMCwiYnVpbGRlci5zbG93LjUiOiAwLCJidWlsZGVyLmFpci54X3dheSI6IDMsImJ1aWxkZXIuYWlyLmFkZCI6IDAsImFpbWJvdC5mb3JjZV9yZWNoYXJnZSI6IHRydWUsInZpc3VhbHMuY3Jvc3NoYWlyX3N0eWxlIjogImNlbnRlciIsImJ1aWxkZXIuaWRsZS5kZWZfeWF3X251bSI6IC0yOCwiYnVpbGRlci5zbG93LmVwZF9sZWZ0IjogLTI4LCJidWlsZGVyLmR1Y2sgbW92ZS5kZWZfcGl0Y2hfbnVtIjogLTI4LCJidWlsZGVyLmFpcmMuZGVmX3BpdGNoIjogImRlZmF1bHQiLCJidWlsZGVyLnJ1bi4xIjogMCwiYnVpbGRlci5leHRlbnNpb25zLm1hbnVhbF9hYV9ob3RrZXkubWFudWFsX3JpZ2h0IjogZmFsc2UsImJ1aWxkZXIuZXh0ZW5zaW9ucy5kZWZlbnNpdmUiOiBbIm9uIHNob3QiLCJmbGFzaGVkIiwiZGFtYWdlIHJlY2VpdmVkIiwicmVsb2FkaW5nIiwid2VhcG9uIHN3aXRjaCJdLCJidWlsZGVyLnJ1bi5kZWZfbGVmdCI6IC0zNCwiYnVpbGRlci5kdWNrIG1vdmUuMiI6IDAsImJ1aWxkZXIuYWlyLjMiOiAwLCJ2aXN1YWxzLmxvZ2dpbmdfb3B0aW9uc19jb25zb2xlIjogWyJoaXQiLCJtaXNzIiwiYnV5IiwiYWltYm90Il0sImJ1aWxkZXIuYWlyYy5kZWZfcmlnaHQiOiAyNiwiYnVpbGRlci5haXJjLmV4cGFuZCI6ICJsZWZ0L3JpZ2h0IiwiYnVpbGRlci5kdWNrLnhfd2F5bGFiZWwiOiAid2F5IDMiLCJidWlsZGVyLmZha2VsYWcuZGVmX2JvZHkiOiAiaml0dGVyIiwiYnVpbGRlci51c2UueF93YXkiOiAzLCJidWlsZGVyLnNhZmUgaGVhZC5kZWZlbnNpdmUiOiBmYWxzZSwiYnVpbGRlci5leHRlbnNpb25zLmxhZGRlciI6IHRydWUsImJ1aWxkZXIuZHVjay40IjogMCwiYnVpbGRlci5kdWNrLmJyZWFrX2xjIjogdHJ1ZSwiYnVpbGRlci5mcmVlc3RhbmQuMSI6IDAsImJ1aWxkZXIuZHVjay5leHBhbmQiOiAibGVmdC9yaWdodCIsImJ1aWxkZXIuZmFrZWxhZy5kZWxheSI6IDIsImJ1aWxkZXIuZXh0ZW5zaW9ucy5lZGdlX3lhdy5ob3RrZXlfbW9kZV9pZHgiOiAxLCJidWlsZGVyLmR1Y2suc3BlZWQiOiAxLCJidWlsZGVyLmZyZWVzdGFuZC54X3dheSI6IDMsImJ1aWxkZXIuZHVjayBtb3ZlLjUiOiAwLCJidWlsZGVyLnNhZmUgaGVhZC5lcGRfbGVmdCI6IDAsImJ1aWxkZXIucnVuLjQiOiAwLCJidWlsZGVyLnVzZS41IjogMCwiYnVpbGRlci51c2UuYmFzZSI6ICJsb2NhbCB2aWV3IiwiYnVpbGRlci5zYWZlIGhlYWQuYnlfbW9kZSI6ICJzdGF0aWMiLCJidWlsZGVyLnVzZS5hbGxvd191c2VfYWEiOiB0cnVlLCJidWlsZGVyLmlkbGUuZXBkX3JpZ2h0IjogLTEwLCJidWlsZGVyLnNhZmUgaGVhZC5kZWZfcGl0Y2giOiAiZGVmYXVsdCIsImJ1aWxkZXIuYWlyLmRlbGF5IjogMSwiYnVpbGRlci5leHRlbnNpb25zLm1hbnVhbF9hYV9ob3RrZXkubWFudWFsX2ZvcndhcmQuaG90a2V5X21vZGVfaWR4IjogMSwiYnVpbGRlci5leHRlbnNpb25zLmRpc19mcyI6IFsiaWRsZSIsInJ1biJdfX0="
+    local default_config = ""
 
     local b64_chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
     local function b64_encode_fallback(str)
@@ -6048,6 +5985,7 @@ configs = {} do
     end
 
     local state = { list = {}, data = {}, load_on_startup = nil }
+    local current_loaded_config = nil
 
     local function screen_key()
         local w, h = client.screen_size()
@@ -6119,8 +6057,11 @@ configs = {} do
         end)
     end
 
-    function configs.collect()
+    function configs.collect(config_name)
         local out = { version = 1, values = {}, widgets = {} }
+        if config_name then
+            out.config_name = config_name
+        end
         collect_group('aimbot', interface.aimbot, out)
         collect_group('visuals', interface.visuals, out)
         collect_group('utility', interface.utility, out)
@@ -6190,53 +6131,6 @@ configs = {} do
         if type(data) ~= 'table' then return end
         local values = data.values or {}
         apply_group('builder', interface.builder, values)
-    end
-
-    function configs.export_to_clipboard()
-        local payload = configs.collect()
-        local ok, json_str = pcall(json.encode, payload, false)
-        if not ok or not json_str then
-            logMessage('noctua · config', '', 'failed to encode config!')
-            client.exec("play ui/menu_invalid.wav")
-            return
-        end
-        -- print(json_str)
-        local enc = b64_encode(json_str)
-        clipboard.set('noctua:' .. enc)
-        logMessage('noctua · config', '', 'config exported to clipboard!')
-        client.exec("play ui/beepclear.wav")
-    end
-
-    function configs.import_from_clipboard()
-        local clip = clipboard.get() or ''
-        clip = clip:gsub('^%s+', ''):gsub('%s+$', '')
-        if clip:find('^noctua:') then clip = clip:sub(8) end
-        clip = clip:gsub('^%s+', ''):gsub('%s+$', '')
-        if clip == '' then
-            logMessage('noctua · config', '', 'clipboard is empty!')
-            client.exec("play ui/menu_invalid.wav")
-            return
-        end
-        local decoded = b64_decode(clip)
-        if not decoded or decoded == '' then
-            logMessage('noctua · config', '', 'failed to decode base64!')
-            client.exec("play ui/menu_invalid.wav")
-            return
-        end
-        local ok_json, data = pcall(json.decode, decoded)
-        if not ok_json then
-            logMessage('noctua · config', '', 'json decode error: ' .. tostring(data))
-            client.exec("play ui/menu_invalid.wav")
-            return
-        end
-        if type(data) ~= 'table' or not data.values then
-            logMessage('noctua · config', '', 'failed to parse config! (invalid structure)')
-            client.exec("play ui/menu_invalid.wav")
-            return
-        end
-        configs.apply(data)
-        logMessage('noctua · config', '', 'config imported successfully!')
-        client.exec("play ui/beepclear.wav")
     end
 
     function configs.import_aa_from_clipboard()
@@ -6344,10 +6238,112 @@ configs = {} do
         return name
     end
 
+    function configs.export_to_clipboard()
+        local config_name = get_selected_name()
+        if config_name == '+ new' then
+            logMessage('noctua · config', '', 'select a valid config first!')
+            client.exec("play ui/menu_invalid.wav")
+            return
+        end
+        local payload = configs.collect(config_name)
+        local ok, json_str = pcall(json.encode, payload, false)
+        if not ok or not json_str then
+            logMessage('noctua · config', '', 'failed to encode config!')
+            client.exec("play ui/menu_invalid.wav")
+            return
+        end
+        -- print(json_str)
+        local enc = b64_encode(json_str)
+        clipboard.set('noctua:' .. enc)
+        logMessage('noctua · config', '', 'config exported to clipboard!')
+        client.exec("play ui/beepclear.wav")
+    end
+
+    function configs.import_from_clipboard()
+        local clip = clipboard.get() or ''
+        clip = clip:gsub('^%s+', ''):gsub('%s+$', '')
+        if clip:find('^noctua:') then clip = clip:sub(8) end
+        clip = clip:gsub('^%s+', ''):gsub('%s+$', '')
+        if clip == '' then
+            logMessage('noctua · config', '', 'clipboard is empty!')
+            client.exec("play ui/menu_invalid.wav")
+            return
+        end
+        local decoded = b64_decode(clip)
+        if not decoded or decoded == '' then
+            logMessage('noctua · config', '', 'failed to decode base64!')
+            client.exec("play ui/menu_invalid.wav")
+            return
+        end
+        local ok_json, data = pcall(json.decode, decoded)
+        if not ok_json then
+            logMessage('noctua · config', '', 'json decode error: ' .. tostring(data))
+            client.exec("play ui/menu_invalid.wav")
+            return
+        end
+        if type(data) ~= 'table' or not data.values then
+            logMessage('noctua · config', '', 'failed to parse config! (invalid structure)')
+            client.exec("play ui/menu_invalid.wav")
+            return
+        end
+        configs.apply(data)
+        local config_name = data.config_name
+        if config_name and config_name ~= 'default' and config_name ~= '+ new' then
+            local final_name = config_name
+            local counter = 1
+            local exists = false
+            for _, name in ipairs(state.list) do
+                if name == final_name then
+                    exists = true
+                    break
+                end
+            end
+            while exists do
+                final_name = config_name .. ' (' .. counter .. ')'
+                exists = false
+                for _, name in ipairs(state.list) do
+                    if name == final_name then
+                        exists = true
+                        break
+                    end
+                end
+                if not exists then
+                    break
+                end
+                counter = counter + 1
+            end
+            table.insert(state.list, final_name)
+            state.data[final_name] = data.values
+            configs.save_db()
+            configs.update_list_ui()
+        end
+        logMessage('noctua · config', '', 'config imported successfully!')
+        client.exec("play ui/beepclear.wav")
+    end
+
     function configs.save_selected()
         local name = get_selected_name()
         if not name then
             logMessage('noctua · config', '', 'select a config first!')
+            client.exec("play ui/menu_invalid.wav")
+            return
+        end
+        if name == 'default' or name == '+ new' then
+            logMessage('noctua · config', '', 'cannot overwrite default!')
+            client.exec("play ui/menu_invalid.wav")
+            return
+        end
+        state.data[name] = configs.collect()
+        configs.save_db()
+        widgets.save_all()
+        logMessage('noctua · config', '', 'config saved!')
+        client.exec("play ui/beepclear.wav")
+    end
+
+    function configs.save_loaded()
+        local name = current_loaded_config
+        if not name then
+            logMessage('noctua · config', '', 'no config loaded!')
             client.exec("play ui/menu_invalid.wav")
             return
         end
@@ -6372,6 +6368,7 @@ configs = {} do
         end
         if name == 'default' then
             configs.load_default()
+            current_loaded_config = 'default'
             return
         end
         if name == '+ new' then
@@ -6386,6 +6383,7 @@ configs = {} do
             return
         end
         configs.apply(data)
+        current_loaded_config = name
         logMessage('noctua · config', '', 'config loaded!')
         client.exec("play ui/beepclear.wav")
     end
@@ -6547,11 +6545,13 @@ configs = {} do
 
         if state.load_on_startup == 'default' then
             configs.load_default()
+            current_loaded_config = 'default'
             return
         end
 
         if state.data[state.load_on_startup] then
             configs.apply(state.data[state.load_on_startup])
+            current_loaded_config = state.load_on_startup
             logMessage('noctua · config', '', 'autoloaded config: ' .. state.load_on_startup)
         else
             logMessage('noctua · config', '', 'autoload config not found: ' .. state.load_on_startup)
@@ -8469,10 +8469,6 @@ client.set_event_callback('console_input', function(str)
     return true
 end)
 
-interface.aimbot.dump_resolver_data:set_callback(function()
-    resolver:dump_data()
-end)
-
 --@region: on shutdown
 shutdown_handler = {} do
     local controller = {
@@ -8501,6 +8497,14 @@ shutdown_handler = {} do
         end
     end
 
+    shutdown_handler.restore_hitsound = function()
+        local hitsound_original = ui.reference("Visuals", "Player ESP", "Hit marker sound")
+        ui.set_enabled(hitsound_original, true)
+        if hitsound.hitsound_original_state ~= nil then
+            ui.set(hitsound_original, hitsound.hitsound_original_state)
+        end
+    end
+
     shutdown_handler.setup = function()
         client.set_event_callback('paint', function()
             local enabled = (interface.aimbot.enabled_aimbot:get() and interface.aimbot.enabled_resolver_tweaks:get())
@@ -8512,6 +8516,7 @@ shutdown_handler = {} do
 
         client.set_event_callback('shutdown', function()
             shutdown_handler.reset_all_players()
+            shutdown_handler.restore_hitsound()
         end)
     end
 
@@ -8588,7 +8593,6 @@ client.set_event_callback('paint', function()
 end)
 --@endregion
 
---@region: summary
 summary = {} do
     if not _G.noctua_session then
         _G.noctua_session = {
@@ -8614,6 +8618,26 @@ summary = {} do
             return string.format('%.2f', a)
         end
         return string.format('%.2f', a / b)
+    end
+
+    local function format_duration(seconds)
+        local weeks = math.floor(seconds / 604800)
+        seconds = seconds % 604800
+        local days = math.floor(seconds / 86400)
+        seconds = seconds % 86400
+        local hours = math.floor(seconds / 3600)
+        seconds = seconds % 3600
+        local minutes = math.floor(seconds / 60)
+        seconds = math.floor(seconds % 60)
+
+        local result = {}
+        if weeks > 0 then table.insert(result, weeks .. "w") end
+        if days > 0 then table.insert(result, days .. "d") end
+        if hours > 0 then table.insert(result, hours .. "h") end
+        if minutes > 0 then table.insert(result, minutes .. "m") end
+        table.insert(result, seconds .. "s")
+        
+        return table.concat(result, " ")
     end
 
     local function log_txt(text)
@@ -8680,9 +8704,6 @@ summary = {} do
         
         local duration = math.max(0, globals.realtime() - s.start_time)
         if duration < 1 then return end
-
-        local m = math.floor(duration / 60)
-        local sec = math.floor(duration % 60)
         
         local res_count = 0
         for _ in pairs(s.resolved) do res_count = res_count + 1 end
@@ -8691,7 +8712,7 @@ summary = {} do
         
         log_accent("noctua · ")
         log_txt("you've played ")
-        log_val(string.format("%dm %ds ", m, sec))
+        log_val(format_duration(duration) .. " ")
         log_txt("on ")
         log_val(s.map_name)
         log_txt(".\nhere is your summary:\n")
@@ -8804,7 +8825,6 @@ summary = {} do
 
     summary.setup()
 end
---@endregion
 
 --@region: bomb timer
 bomb_timer = {} do
@@ -9010,7 +9030,6 @@ bomb_timer = {} do
 end
 --@endregion
 
---@region: world damage
 world_damage = {} do
     world_damage.markers = {}
 
@@ -9034,8 +9053,10 @@ world_damage = {} do
         local x, y, z = entity.hitbox_position(victim, hitbox_idx)
         if not x then return end
 
-        local spread = 15
-        local drift = 15
+        local damage_type = interface.visuals.world_damage_type:get()
+        local is_static = damage_type == 'static'
+        local spread = is_static and 0 or 15
+        local drift = is_static and 0 or 15
 
         table.insert(world_damage.markers, {
             x = x + math.random(-spread, spread),
@@ -9048,7 +9069,8 @@ world_damage = {} do
             off_z = 0,
             damage = e.dmg_health,
             start_time = globals.realtime(),
-            alpha = 0
+            alpha = 0,
+            damage_type = damage_type
         })
     end
 
@@ -9064,14 +9086,17 @@ world_damage = {} do
         for i = #world_damage.markers, 1, -1 do
             local marker = world_damage.markers[i]
             local elapsed = curtime - marker.start_time
+            local is_static = marker.damage_type == 'static'
+            local duration = 2.5
 
-            if elapsed > 2.5 then
+            if elapsed > duration then
                 table.remove(world_damage.markers, i)
             else
-                marker.off_x = mathematic.lerp(marker.off_x, marker.dest_x, frametime * 2)
-                marker.off_y = mathematic.lerp(marker.off_y, marker.dest_y, frametime * 2)
-                
-                marker.off_z = marker.off_z + (frametime * 50)
+                if not is_static then
+                    marker.off_x = mathematic.lerp(marker.off_x, marker.dest_x, frametime * 2)
+                    marker.off_y = mathematic.lerp(marker.off_y, marker.dest_y, frametime * 2)
+                    marker.off_z = marker.off_z + (frametime * 50)
+                end
                 
                 if elapsed < 0.2 then
                     marker.alpha = mathematic.lerp(marker.alpha, 255, frametime * 15)
@@ -9100,10 +9125,306 @@ world_damage = {} do
 
     world_damage.setup()
 end
+
+--@region: grenade radius
+grenade_radius = {} do
+    local anim_data = {}
+    local tracks = {}
+    local TWO_PI = 2 * math.pi
+
+    local function lerp(start, vend, time)
+        return start + (vend - start) * time
+    end
+
+    local function smooth_contour(points, iterations)
+        if #points < 3 then return points end
+        local smoothed = points
+        for k = 1, iterations do
+            local next_pass = {}
+            for i = 1, #smoothed do
+                local prev = smoothed[(i - 2) % #smoothed + 1]
+                local curr = smoothed[i]
+                local next = smoothed[i % #smoothed + 1]
+                
+                table.insert(next_pass, {
+                    x = (prev.x + curr.x + next.x) / 3,
+                    y = (prev.y + curr.y + next.y) / 3,
+                    z = curr.z
+                })
+            end
+            smoothed = next_pass
+        end
+        return smoothed
+    end
+
+    local function draw_contour_smooth_limit(points, r, g, b, a, limit_fraction)
+        if #points < 2 then return end
+        
+        local total_segments = #points
+        local draw_amount = total_segments * limit_fraction
+        
+        local full_segments = math.floor(draw_amount)
+        local remainder = draw_amount - full_segments
+
+        local prev_sx, prev_sy = nil, nil
+        local first_sx, first_sy = nil, nil
+
+        for i = 1, full_segments + 1 do
+            local idx = ((i - 1) % #points) + 1
+            local p = points[idx]
+            local sx, sy = renderer.world_to_screen(p.x, p.y, p.z)
+            
+            if sx and sy then
+                if prev_sx and prev_sy then
+                    renderer.line(prev_sx, prev_sy, sx, sy, r, g, b, a)
+                else
+                    first_sx, first_sy = sx, sy
+                end
+                prev_sx, prev_sy = sx, sy
+            else
+                prev_sx, prev_sy = nil, nil
+            end
+        end
+
+        if remainder > 0.01 and prev_sx and prev_sy then
+            local curr_idx = (full_segments % #points) + 1
+            local next_idx = (curr_idx % #points) + 1
+            
+            local p_curr = points[curr_idx]
+            local p_next = points[next_idx]
+
+            local last_x = p_curr.x + (p_next.x - p_curr.x) * remainder
+            local last_y = p_curr.y + (p_next.y - p_curr.y) * remainder
+            local last_z = p_curr.z
+
+            local last_sx, last_sy = renderer.world_to_screen(last_x, last_y, last_z)
+            if last_sx and last_sy then
+                renderer.line(prev_sx, prev_sy, last_sx, last_sy, r, g, b, a)
+            end
+        end
+        
+        if limit_fraction >= 0.995 and first_sx and prev_sx then
+             renderer.line(prev_sx, prev_sy, first_sx, first_sy, r, g, b, a)
+        end
+    end
+
+    local function draw_filled_contour(center_x, center_y, center_z, points, r, g, b, a_fill)
+        if #points < 3 or a_fill <= 1 then return end
+        
+        local cx, cy = renderer.world_to_screen(center_x, center_y, center_z)
+        if not (cx and cy) then return end
+
+        for i = 1, #points do
+            local p1 = points[i]
+            local p2 = points[(i % #points) + 1]
+
+            local x1, y1 = renderer.world_to_screen(p1.x, p1.y, p1.z)
+            local x2, y2 = renderer.world_to_screen(p2.x, p2.y, p2.z)
+
+            if x1 and y1 and x2 and y2 then
+                renderer.triangle(cx, cy, x1, y1, x2, y2, r, g, b, a_fill)
+            end
+        end
+    end
+
+    local function draw_blob(circles, base_radius, r, g, b, a, outline_limit)
+        if #circles == 0 then return end
+
+        local avg_x, avg_y, avg_z = 0, 0, 0
+        for _, c in ipairs(circles) do
+            avg_x = avg_x + c.x
+            avg_y = avg_y + c.y
+            avg_z = avg_z + c.z
+        end
+        avg_x = avg_x / #circles
+        avg_y = avg_y / #circles
+        avg_z = avg_z / #circles
+
+        local contour_points = {}
+        local num_rays = 90
+        local step = TWO_PI / num_rays
+
+        for i = 0, num_rays - 1 do
+            local theta = i * step
+            local dir_x = math.cos(theta)
+            local dir_y = math.sin(theta)
+            local max_dist = 0
+
+            for _, c in ipairs(circles) do
+                local R = base_radius * c.scale
+                local Vx = avg_x - c.x
+                local Vy = avg_y - c.y
+                
+                local B = 2 * (Vx * dir_x + Vy * dir_y)
+                local C = Vx*Vx + Vy*Vy - R*R
+                local det = B*B - 4*C
+
+                if det >= 0 then
+                    local sqrt_det = math.sqrt(det)
+                    local t1 = (-B + sqrt_det) / 2
+                    local t2 = (-B - sqrt_det) / 2
+                    max_dist = math.max(max_dist, t1, t2)
+                end
+            end
+
+            if max_dist > 0 then
+                table.insert(contour_points, {
+                    x = avg_x + dir_x * max_dist,
+                    y = avg_y + dir_y * max_dist,
+                    z = avg_z
+                })
+            end
+        end
+
+        local smoothed_points = smooth_contour(contour_points, 3)
+        local fill_alpha = math.floor(a * 0.25)
+        
+        draw_filled_contour(avg_x, avg_y, avg_z, smoothed_points, r, g, b, fill_alpha)
+        draw_contour_smooth_limit(smoothed_points, r, g, b, a, outline_limit)
+    end
+
+    grenade_radius.on_paint = function()
+        if not interface.visuals.enabled_visuals:get() then return end
+        if not interface.visuals.grenade_radius:get() then return end
+
+        local selection = interface.visuals.grenade_radius:get()
+        local show_smoke = utils.contains(selection, 'smoke')
+        local show_molotov = utils.contains(selection, 'molotov')
+        local frame_time = globals.frametime() * 6
+        local cur_time_sec = globals.curtime()
+        
+        local smoke_duration = 18.0
+
+        for id, track in pairs(tracks) do
+            track.updated = false
+        end
+
+        if show_molotov then
+            local molotovs = entity.get_all("CInferno")
+            for _, idx in ipairs(molotovs) do
+                local circles = {}
+                local fire_count = entity.get_prop(idx, "m_fireCount") or 0
+                local ox, oy, oz = entity.get_prop(idx, "m_vecOrigin")
+
+                for i = 0, fire_count do
+                    local key = idx .. "_f_" .. i
+                    local is_burning = entity.get_prop(idx, "m_bFireIsBurning", i) == 1
+                    local target = is_burning and 1 or 0
+                    
+                    anim_data[key] = lerp(anim_data[key] or 0, target, frame_time)
+
+                    if anim_data[key] > 0.01 then
+                        local dx = entity.get_prop(idx, "m_fireXDelta", i)
+                        local dy = entity.get_prop(idx, "m_fireYDelta", i)
+                        local dz = entity.get_prop(idx, "m_fireZDelta", i)
+                        if dx and dy and dz then
+                            table.insert(circles, {
+                                x = ox + dx, y = oy + dy, z = oz + dz,
+                                scale = anim_data[key]
+                            })
+                        end
+                    end
+                end
+                
+                if #circles > 0 then
+                    if not tracks[idx] then tracks[idx] = { alpha = 0 } end
+                    tracks[idx].type = 'molotov'
+                    tracks[idx].circles = circles
+                    tracks[idx].updated = true
+                    tracks[idx].target_alpha = 1
+                end
+            end
+        end
+
+        if show_smoke then
+            local smokes = entity.get_all("CSmokeGrenadeProjectile")
+            for _, idx in ipairs(smokes) do
+                local begin_tick = entity.get_prop(idx, "m_nSmokeEffectTickBegin")
+                if begin_tick and begin_tick > 0 then
+                    local x, y, z = entity.get_prop(idx, "m_vecOrigin")
+                    
+                    local key = "smoke_grow_" .. idx
+                    anim_data[key] = lerp(anim_data[key] or 0, 1, frame_time)
+
+                    if not tracks[idx] then 
+                        local tick_interval = globals.tickinterval()
+                        local ticks_alive = globals.tickcount() - begin_tick
+                        local time_alive = ticks_alive * tick_interval
+                        
+                        anim_data[key] = 0
+                        
+                        tracks[idx] = { 
+                            alpha = 0,
+                            start_time = cur_time_sec - time_alive 
+                        } 
+                    end
+                    
+                    tracks[idx].type = 'smoke'
+                    tracks[idx].circles = {{ x = x, y = y, z = z, scale = anim_data[key] }}
+                    tracks[idx].updated = true
+                    tracks[idx].target_alpha = 1
+                end
+            end
+        end
+
+        local r_mol, g_mol, b_mol, a_mol = unpack(interface.visuals.grenade_radius_molotov_color.color.value)
+        local r_sm, g_sm, b_sm, a_sm = unpack(interface.visuals.grenade_radius_smoke_color.color.value)
+
+        for id, track in pairs(tracks) do
+            if not track.updated then
+                track.target_alpha = 0
+            end
+            
+            track.alpha = lerp(track.alpha, track.target_alpha, frame_time)
+
+            if track.alpha < 0.01 and track.target_alpha == 0 then
+                tracks[id] = nil
+            else
+                local render_alpha = track.alpha
+                
+                if track.type == 'molotov' then
+                     local final_a = math.floor(a_mol * render_alpha)
+                     if final_a > 1 then
+                         draw_blob(track.circles, 60, r_mol, g_mol, b_mol, final_a, 1.0)
+                     end
+
+                elseif track.type == 'smoke' then
+                    local final_a = math.floor(a_sm * render_alpha)
+                    if final_a > 1 then
+                        local elapsed = cur_time_sec - track.start_time
+                        local progress = 1.0 - (elapsed / smoke_duration)
+                        if progress < 0 then progress = 0 end
+                        
+                        draw_blob(track.circles, 144, r_sm, g_sm, b_sm, final_a, progress)
+                    end
+                end
+            end
+        end
+    end
+
+    client.set_event_callback("paint", grenade_radius.on_paint)
+end
 --@endregion
 
 --@region: art
 art = {} do
+    local changelog = [[
+    Changelog:
+    - Added streamer mode
+    - Added animation breakers
+    - Added buybot fallback option
+    - Added bomb timer
+    - Added grenade radius visualization
+    - Added world damage
+    - Added world damage animations
+    - Added mismatch reasons
+    - Reworked miss reasons
+    - Reworked config export/import
+    - Fixed buybot fallback purchasing after primary items
+    - Fixed shutdown restoration
+    - Fixed config synchronization
+    ]]
+
     local star = [[
        .-.                         .-.                    |     '      .        
       (   )    '        +         (   )                  -o-               o    
@@ -9125,7 +9446,8 @@ art = {} do
    '       +      .           '               +                      +        ''
            .                                                  +'      .       . 
  +          +                         ' o           '               *     *     
-]]
+    
+{changelog}]]
 
     local function log_val(text)
         client.color_log(255, 255, 255, text .. "\0")
@@ -9138,11 +9460,13 @@ art = {} do
 
     art.display = function()
         local target1 = "noctua.sbs"
-        local placeholder = "{ver}"
+        local target2 = "{ver}"
+        local target3 = "{changelog}"
         local s1, e1 = star:find(target1, 1, true)
-        local s2, e2 = star:find(placeholder, (e1 or 0) + 1, true)
+        local s2, e2 = star:find(target2, (e1 or 0) + 1, true)
+        local s3, e3 = star:find(target3, (e2 or 0) + 1, true)
 
-        if not s1 or not s2 then
+        if not s1 or not s2 or not s3 then
             log_val(star .. "\n")
             return
         end
@@ -9151,7 +9475,9 @@ art = {} do
         log_accent(star:sub(s1, e1))
         log_val(star:sub(e1 + 1, s2 - 1))
         log_accent(tostring(_version))
-        log_val(star:sub(e2 + 1) .. "\n")
+        log_val(star:sub(e2 + 1, s3 - 1))
+        log_val(changelog)
+        log_val(star:sub(e3 + 1) .. "\n")
     end
 
     art.setup = function()
@@ -9166,19 +9492,6 @@ end
 --@region: menu info
 menu_info = {} do
     menu_info.alpha = 0
-    menu_info.expanded = true
-    menu_info.mouse_pressed = false
-    menu_info.is_interacting = false 
-
-    local function point_in_rect(px, py, rx, ry, rw, rh)
-        return px >= rx and px <= rx + rw and py >= ry and py <= ry + rh
-    end
-
-    local function get_menu_rect()
-        local mx, my = ui.menu_position()
-        local mw, mh = ui.menu_size()
-        return mx or 0, my or 0, mw or 0, mh or 0
-    end
 
     menu_info.paint = function()
         local is_open = ui.is_menu_open()
@@ -9187,7 +9500,6 @@ menu_info = {} do
         menu_info.alpha = mathematic.lerp(menu_info.alpha, target_alpha, globals.frametime() * 20)
 
         if menu_info.alpha < 1 then 
-            menu_info.is_interacting = false
             return 
         end
 
@@ -9199,74 +9511,14 @@ menu_info = {} do
         local realtime = globals.realtime()
         local pulse = (math.sin(realtime * 1.8) + 1) / 2 
         local star_alpha = menu_info.alpha * (0.4 + 0.6 * pulse)
-        
+
         renderer.text(x, y - up, r, g, b, star_alpha, 'l', 0, "✦ ")
         renderer.text(x + renderer.measure_text(0, "✦ "), y - up, r, g, b, menu_info.alpha, 'lb', 0, "noctua")
         renderer.text(x + w, y - up, 255, 255, 255, menu_info.alpha, 'r', 0, _nickname or "user")
-
-        local list_x = x - 7
-        local list_y = y + 10
-        local line_height = 13
-        
-        local status_text = menu_info.expanded and "(close)" or "(open)"
-        local update_header = string.format("what's new %s", status_text)
-        local tw, th = renderer.measure_text(0, update_header)
-
-        local mx, my = ui.mouse_position()
-        local m1 = client.key_state(0x01)
-
-        if is_open then
-            local menu_x, menu_y, menu_w, menu_h = get_menu_rect()
-            local is_hovering = point_in_rect(mx, my, list_x - tw, list_y, tw, th) and not point_in_rect(mx, my, menu_x, menu_y, menu_w, menu_h)
-
-            if m1 then
-                if is_hovering or menu_info.is_interacting then
-                    menu_info.is_interacting = true 
-                    if not menu_info.mouse_pressed and is_hovering then
-                        menu_info.expanded = not menu_info.expanded
-                        menu_info.mouse_pressed = true
-                    end
-                end
-            else
-                menu_info.is_interacting = false
-                menu_info.mouse_pressed = false
-            end
-        else
-            menu_info.is_interacting = false
-        end
-
-        renderer.text(list_x, list_y, r, g, b, menu_info.alpha, 'rb', 0, update_header)
-        
-        if menu_info.expanded then
-            local update_list = {
-                "streamer mode",
-                "animation breakers",
-                "buybot fallback option",
-                "enemy ping warning",
-                "dump resolver data",
-                "automatic osaa & disablers",
-                "new miss reasons",
-                "modern debug window",
-                "winter mode ❄️",
-                "custom bomb timer"
-            }
-            for i, line in ipairs(update_list) do
-                renderer.text(list_x, list_y + (i * line_height), 255, 255, 255, menu_info.alpha, 'r', 0, line)
-            end
-        end
-    end
-
-    menu_info.setup_command = function(cmd)
-        if menu_info.is_interacting then
-            cmd.in_attack = 0
-            cmd.in_attack2 = 0
-        end
     end
 
     menu_info.setup = function()
         client.set_event_callback('paint_ui', menu_info.paint)
-        client.set_event_callback('setup_command', menu_info.setup_command)
-
         client.set_event_callback('paint_ui', function()
             local shimmer_text = table.concat(colors.shimmer(
                 globals.realtime() * 2,
@@ -9283,7 +9535,6 @@ end
 --@endregion
 
 --@region: on load
-logging:push("happy new year! ❄️")
 logging:push("nice to see you at " .. _name .. " " .. _version .. " (" .. (_nickname or "user") .. ")")
 client.exec("play items/flashlight1.wav")
 confetti:push(0, false)
