@@ -9,8 +9,9 @@
 --@region: information
 information = {} do
     _G.noctua_runtime = _G.noctua_runtime or {}
+    _G.noctua_runtime.stats = _G.noctua_runtime.stats or { hits = 0, misses = 0 }
     _G._name = 'noctua'
-    _G._version = '1.4d'
+    _G._version = '1.4'
     _G._nickname = nil
 
     information.update_nickname = function()
@@ -556,7 +557,7 @@ interface = {} do
 
     interface.aimbot = {
         enabled_aimbot = interface.header.general:checkbox('enable aimbot'),
-        enabled_resolver_tweaks = interface.header.general:checkbox('\aa5ab55ffresolver tweaks'),
+        enabled_resolver_tweaks = interface.header.general:checkbox('\aa5ab55ffyaw correction'),
         resolver_mode = interface.header.general:combobox('mode', 'autopilot', 'experimental'),
         silent_shot = interface.header.general:checkbox('silent shot'),
         force_recharge = interface.header.general:checkbox('allow force recharge'),
@@ -579,7 +580,7 @@ interface = {} do
         damage_indicator = interface.header.general:checkbox('damage indicator'),
         lc_status = interface.header.general:checkbox('lc status'),
         window = interface.header.general:checkbox('debug window'),
-        window_style = interface.header.general:combobox('style', 'old', 'modern'),
+        window_style = interface.header.general:combobox('style', 'new', 'old'),
         watermark = interface.header.general:checkbox('watermark'),
         watermark_show = interface.header.general:multiselect('show', 'script', 'player', 'time', 'ping'),
         -- shared = interface.header.general:checkbox('shared identity (wip)'),
@@ -651,9 +652,12 @@ interface = {} do
     interface.builder = {} do
         local e_statement = {"default","idle","run","air","airc","duck","duck move","slow","use","fakelag","on shot","freestand","manual","safe head"}
         local tooltips  = {delay = {[1] = "off"}, body = {[0] = "off"}}
+        
+        interface.builder.enabled = interface.header.general:checkbox("enable anti-aim")
+        interface.builder.enabled:depend({ interface.search, 'antiaim' })
         interface.condition = interface.header.general:combobox("condition", e_statement)
         if interface.condition.depend then
-            interface.condition:depend({ interface.search, 'antiaim' })
+            interface.condition:depend({ interface.search, 'antiaim' }, { interface.builder.enabled, true })
         end
         for _, state in ipairs(e_statement) do
             interface.builder[state] = {}
@@ -706,7 +710,12 @@ interface = {} do
             this.def_body = interface.header.general:combobox("body defensive ",{ "default", "auto", "jitter"}):depend({this.defensive,true})
             for key, v in pairs(this) do
                 if type(v) == 'table' and v.depend then
-                    local arr = { { interface.search, 'antiaim' }, { interface.condition, state } }
+                    local arr = { 
+                        { interface.search, 'antiaim' }, 
+                        { interface.condition, state },
+                        { interface.builder.enabled, true }
+                    }
+                    
                     if key ~= "enable" and state ~= "default" then
                         if not (state == "use" and key == "allow_use_aa") then
                             arr[#arr+1] = { this.enable, true }
@@ -730,7 +739,6 @@ interface = {} do
         extensions.warmup_aa = interface.header.fake_lag:multiselect("warmup aa", {"warmup", "round end"})
         extensions.automatic_osaa = interface.header.fake_lag:checkbox("automatic osaa")
         extensions.automatic_osaa_disablers = interface.header.fake_lag:multiselect("automatic osaa disablers", {"autosnipers"})
-        
         extensions.edge_yaw = interface.header.other:hotkey("edge yaw")
         extensions.freestanding = interface.header.other:hotkey("freestanding")
         extensions.dis_fs = interface.header.other:multiselect("allow freestand on", {"idle", "run", "air", "airc", "duck", "duck move", "slow"})
@@ -738,24 +746,24 @@ interface = {} do
         
         for key, v in pairs(extensions) do
             if (key == "anti_backstab" or key == "ladder" or key == "anti_bruteforce" or key == "defensive" or key == "safe_head" or key == "warmup_aa" or key == "automatic_osaa") then
-                v:depend({ interface.search, 'antiaim' })
+                v:depend({ interface.search, 'antiaim' }, { interface.builder.enabled, true })
             end
         end
 
-        extensions.edge_yaw:depend({ interface.search, 'antiaim' })
-        extensions.freestanding:depend({ interface.search, 'antiaim' })
-        extensions.manual_aa:depend({ interface.search, 'antiaim' })
-        extensions.anti_bruteforce_type:depend({ interface.search, 'antiaim' }, { extensions.anti_bruteforce, true })
-        extensions.dis_fs:depend({ interface.search, 'antiaim' }, { extensions.freestanding, true })
-        extensions.automatic_osaa_disablers:depend({ interface.search, 'antiaim' }, { extensions.automatic_osaa, true })
-        
+        extensions.edge_yaw:depend({ interface.search, 'antiaim' }, { interface.builder.enabled, true })
+        extensions.freestanding:depend({ interface.search, 'antiaim' }, { interface.builder.enabled, true })
+        extensions.manual_aa:depend({ interface.search, 'antiaim' }, { interface.builder.enabled, true })
+        extensions.anti_bruteforce_type:depend({ interface.search, 'antiaim' }, { interface.builder.enabled, true }, { extensions.anti_bruteforce, true })
+        extensions.dis_fs:depend({ interface.search, 'antiaim' }, { interface.builder.enabled, true }, { extensions.freestanding, true })
+        extensions.automatic_osaa_disablers:depend({ interface.search, 'antiaim' }, { interface.builder.enabled, true }, { extensions.automatic_osaa, true })
         extensions.manual_aa_hotkey = extensions.manual_aa_hotkey or {}
         extensions.manual_aa_hotkey.manual_left = interface.header.other:hotkey("manual left")
         extensions.manual_aa_hotkey.manual_right = interface.header.other:hotkey("manual right")
         extensions.manual_aa_hotkey.manual_forward = interface.header.other:hotkey("manual forward")
         extensions.manual_aa_hotkey.manual_back = interface.header.other:hotkey("manual backward")
+        
         for _, v in pairs(extensions.manual_aa_hotkey) do
-            v:depend({ interface.search, 'antiaim' }, { extensions.manual_aa, true })
+            v:depend({ interface.search, 'antiaim' }, { interface.builder.enabled, true }, { extensions.manual_aa, true })
         end
     end
 
@@ -1064,6 +1072,25 @@ interface = {} do
                         end
 
                         element:set_visible(true)
+                end
+            },
+            builder = {
+                groups_to_show = { groups.builder },
+                groups_to_hide = { groups.home, groups.aimbot, groups.visuals, groups.models, groups.utility, groups.config },
+                element_visibility_logic = function(element, path)
+                    local key = path[#path]
+
+                    if key == 'enabled' then
+                        element:set_visible(true)
+                        return
+                    end
+
+                    if not interface.builder.enabled:get() then
+                        element:set_visible(false)
+                        return
+                    end
+
+                    element:set_visible(true)
                 end
             },
             config = {
@@ -1868,6 +1895,17 @@ utils = {} do
             return current_state
         end
     end)()
+
+    utils.get_scoreboard_ping = function()
+        local resource = entity.get_player_resource()
+        local me = entity.get_local_player()
+        
+        if not resource or not me then return 0 end
+        
+        local ping = entity.get_prop(resource, "m_iPing", me)
+        
+        return ping or 0
+    end
 end
 --@endregion
 
@@ -3206,7 +3244,7 @@ visuals = {} do
             end
         end
 
-        if style == 'modern' then
+        if style == 'new' then
             local line_spacing = 13
             local y = base_y
             local indent = (align == 'l') and "   " or "" 
@@ -3228,6 +3266,62 @@ visuals = {} do
 
             y = y + line_spacing + 5
 
+            renderer.text(base_x, y, 255, 255, 255, self.windowAlpha, align, 0, _nickname or "user")
+            y = y + line_spacing
+            
+            local hits = _G.noctua_runtime.stats.hits
+            local misses = _G.noctua_runtime.stats.misses
+            local accuracy = (hits > 0 and misses == 0) and 100 or (misses > 0 and math.floor((hits / misses) * 100) or 0)
+            local aimbot_text = indent .. "- aimbot: " .. hits .. "/" .. misses .. " (" .. accuracy .. "%)"
+            renderer.text(base_x, y, 215, 215, 215, self.windowAlpha, align, 0, aimbot_text)
+            y = y + line_spacing
+            
+            local latency_ms = math.floor(client.latency() * 1000 + 0.5)
+            local latency_str = "- latency: " .. latency_ms .. "ms"
+            local full_latency_text = indent .. latency_str
+            
+            local scoreboard_ping = utils.get_scoreboard_ping()
+            local ping_diff = math.floor(scoreboard_ping - latency_ms + 0.5)
+            
+            local latency_x = base_x
+            if align == 'c' then
+                latency_x = base_x - (select(1, renderer.measure_text("l", full_latency_text)) / 2)
+            elseif align == 'r' then
+                latency_x = base_x - select(1, renderer.measure_text("l", full_latency_text))
+            end
+            
+            renderer.text(latency_x, y, 215, 215, 215, self.windowAlpha, "l", 0, full_latency_text)
+            
+            if ping_diff >= 0 then
+                local r, g, b = 220, 200, 100
+                
+                if ping_diff < 50 then
+                    local ratio = ping_diff / 50
+                    r = 220
+                    g = 120 + (80 * ratio)
+                    b = 120
+                else
+                    local ratio = math.min((ping_diff - 50) / 100, 1)
+                    r = 220 - (100 * ratio)
+                    g = 200
+                    b = 120 - (20 * ratio)
+                end
+                
+                local diff_text = " (+" .. ping_diff .. "ms)"
+                local full_w = select(1, renderer.measure_text("l", full_latency_text))
+                
+                renderer.text(latency_x + full_w, y, r, g, b, self.windowAlpha, "l", 0, diff_text)
+            end
+            y = y + line_spacing
+            
+            local aa_state = utils.get_state()
+            if _G.noctua_runtime.use_active then aa_state = "use"
+            elseif _G.noctua_runtime.manual_active then aa_state = "manual"
+            elseif _G.noctua_runtime.safe_head_active then aa_state = "safe head" end
+
+            renderer.text(base_x, y, 215, 215, 215, self.windowAlpha, align, 0, indent .. "- state: " .. aa_state)
+            y = y + line_spacing + 6 
+
             if t_yaw ~= "off" then
                 renderer.text(base_x, y, 255, 255, 255, self.windowAlpha, align, 0, "resolver")
                 y = y + line_spacing
@@ -3238,17 +3332,6 @@ visuals = {} do
                 renderer.text(base_x, y, 215, 215, 215, self.windowAlpha, align, 0, indent .. "- yaw: " .. t_yaw)
                 y = y + line_spacing + 6
             end
-
-            renderer.text(base_x, y, 255, 255, 255, self.windowAlpha, align, 0, "anti-aim")
-            y = y + line_spacing
-            
-            local aa_state = utils.get_state()
-            if _G.noctua_runtime.use_active then aa_state = "use"
-            elseif _G.noctua_runtime.manual_active then aa_state = "manual"
-            elseif _G.noctua_runtime.safe_head_active then aa_state = "safe head" end
-
-            renderer.text(base_x, y, 215, 215, 215, self.windowAlpha, align, 0, indent .. "- state: " .. aa_state)
-            y = y + line_spacing + 6 
 
             local isDT = ui.get(ui_references.double_tap[1]) and ui.get(ui_references.double_tap[2])
             local isOS = ui.get(ui_references.on_shot_anti_aim[1]) and ui.get(ui_references.on_shot_anti_aim[2])
@@ -5057,7 +5140,7 @@ widgets.register({
     get_size = function(st)
         local style = interface.visuals.window_style:get()
         
-        if style == 'modern' then
+        if style == 'new' then
             local lineh = 13
             local padding = 6 
             local total_lines = 1
@@ -5069,7 +5152,7 @@ widgets.register({
                 total_pixels = total_pixels + 6
             end
             
-            total_lines = total_lines + 2
+            total_lines = total_lines + 4
             total_pixels = total_pixels + 6
             
             local isDT = ui.get(ui_references.double_tap[1]) and ui.get(ui_references.double_tap[2])
@@ -5086,14 +5169,7 @@ widgets.register({
         end
     end,
     draw = function(ctx)
-        local sw, _ = client.screen_size()
-        local third = sw / 3
-        local align, x
-        if ctx.cx < third then align = "l"; x = ctx.x
-        elseif ctx.cx > (sw - third) then align = "r"; x = ctx.x + ctx.w
-        else align = "c"; x = ctx.x + ctx.w / 2 end
-        
-        visuals:window(x, ctx.y + 6, align)
+        visuals:window(ctx.x, ctx.y + 6, "l")
     end,
     z = 6
 })
@@ -5321,10 +5397,14 @@ client.set_event_callback("shutdown", function()
     logging:clearCache()
 end)
 
+client.set_event_callback("game_start", function()
+    _G.noctua_runtime.stats = { hits = 0, misses = 0 }
+end)
+
 local aimHandlers = {
     aim_fire = function(e) logging:handleAimFire(e) end,
-    aim_miss = function(e) logging:handleAimMiss(e) end,
-    aim_hit  = function(e) logging:handleAimHit(e) end,
+    aim_miss = function(e) logging:handleAimMiss(e); _G.noctua_runtime.stats.misses = _G.noctua_runtime.stats.misses + 1 end,
+    aim_hit  = function(e) logging:handleAimHit(e); _G.noctua_runtime.stats.hits = _G.noctua_runtime.stats.hits + 1 end,
     player_hurt = function(e)
         local victim = client.userid_to_entindex(e.userid)
         local attacker = client.userid_to_entindex(e.attacker)
@@ -8042,25 +8122,34 @@ antiaim = {} do
         client.set_event_callback("run_command", process_pending)
     end
 
-    client.set_event_callback('predict_command', function(cmd) player.predict_command(cmd) end)
+    client.set_event_callback('predict_command', function(cmd) 
+        if interface.builder.enabled:get() then
+            player.predict_command(cmd) 
+        end
+    end)
+
     client.set_event_callback('setup_command', function(cmd)
+        if not interface.builder.enabled:get() then
+            return
+        end
+
         player.setup_command(cmd)
         antiaim.features.main(cmd)
         antiaim.builder.main(cmd)
     end)
 
     naac = function(page)
-        local show_builder = (page == 'builder')
         local show_settings = (page == 'extensions')
-        pui.traverse(interface.builder, function(element)
-            element:set_visible(show_builder)
-        end)
-        pui.traverse(interface.builder.extensions, function(element)
-            element:set_visible(show_settings)
-        end)
-        pui.traverse(interface.builder.extensions.manual_aa_hotkey, function(element)
-            element:set_visible(show_settings and interface.builder.extensions.manual_aa:get())
-        end)
+        
+        if interface.builder.extensions then
+            pui.traverse(interface.builder.extensions, function(element)
+                element:set_visible(show_settings)
+            end)
+            
+            pui.traverse(interface.builder.extensions.manual_aa_hotkey, function(element)
+                element:set_visible(show_settings and interface.builder.extensions.manual_aa:get())
+            end)
+        end
     end
 end
 --@endregion
