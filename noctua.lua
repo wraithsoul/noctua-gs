@@ -4457,8 +4457,6 @@ end)
 
 client.set_event_callback('paint', function()
     stickman:setup()
-    world_snow:update()
-    world_snow:draw()
 end)
 
 client.set_event_callback('paint_ui', function()
