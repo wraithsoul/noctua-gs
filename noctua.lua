@@ -532,7 +532,7 @@ interface = {} do
         empty = '⠀'
     }
  
-    interface.search = interface.header.general:combobox(pui.macros.title .. ' - '.. _version, 'home', 'aimbot', 'antiaim', 'visuals', 'utility', 'config', 'other')
+    interface.search = interface.header.general:combobox(pui.macros.title .. ' - '.. _version, 'home', 'aimbot', 'visuals', 'utility', 'config', 'other')
 
     interface.home = {
         title = interface.header.fake_lag:label('your stats:'),
@@ -548,7 +548,7 @@ interface = {} do
         confetti = interface.header.general:button('confetti'),
         winter_label = interface.header.other:label('\a89cff0ff❄ winter'),
         menu_snow = interface.header.other:checkbox('menu snow'),
-        world_snow = interface.header.other:checkbox('world snow')
+        compatibility_mode = interface.header.other:checkbox('noctua · compatibility mode')
     }
 
     -- interface.home.show_updates:override(true)
@@ -580,15 +580,15 @@ interface = {} do
         damage_indicator = interface.header.general:checkbox('damage indicator'),
         lc_status = interface.header.general:checkbox('lc status'),
         window = interface.header.general:checkbox('debug window'),
-        window_style = interface.header.general:combobox('style', 'new', 'old'),
+        window_flag = interface.header.general:checkbox('render user flag'),
         watermark = interface.header.general:checkbox('watermark'),
         watermark_show = interface.header.general:multiselect('show', 'script', 'player', 'time', 'ping'),
         -- shared = interface.header.general:checkbox('shared identity (wip)'),
         bomb_timer = interface.header.general:checkbox('bomb timer'),
         logging = interface.header.general:checkbox('logging'),
         logging_options = interface.header.general:multiselect('options', 'console', 'screen'),
-        logging_options_console = interface.header.general:multiselect('console', 'fire', 'hit', 'miss', 'buy', 'aimbot', 'anti aim'),
-        logging_options_screen = interface.header.general:multiselect('screen', 'fire', 'hit', 'miss', 'aimbot', 'anti aim'),
+        logging_options_console = interface.header.general:multiselect('console', 'fire', 'hit', 'miss', 'buy', 'aimbot'),
+        logging_options_screen = interface.header.general:multiselect('screen', 'fire', 'hit', 'miss', 'aimbot'),
         logging_slider = interface.header.general:slider('slider', 40, 450, 240),
         aspect_ratio = interface.header.fake_lag:checkbox('override aspect ratio'),
         aspect_ratio_slider = interface.header.fake_lag:slider('value', 0, aspect_ratio.steps, aspect_ratio.steps/2, true, '', 1, aspect_ratio.ratio_table),
@@ -619,10 +619,8 @@ interface = {} do
         create_button = interface.header.general:button('create'),
         load_on_startup = interface.header.general:checkbox('load on startup'),
         load_button = interface.header.general:button('load'),
-        load_aa_button = interface.header.general:button('load aa'),
         save_button = interface.header.general:button('save'),
         import_button = interface.header.other:button('import'),
-        import_aa_button = interface.header.other:button('import aa'),
         export_button = interface.header.other:button('export'),
         delete_button = interface.header.other:button('\aff4444ffdelete'),
     }
@@ -648,124 +646,6 @@ interface = {} do
         streamer_mode_add = interface.header.fake_lag:button('add'),
         streamer_mode_delete = interface.header.fake_lag:button('\aff4444ffdelete')
     }
-
-    interface.builder = {} do
-        local e_statement = {"default","idle","run","air","airc","duck","duck move","slow","use","fakelag","on shot","freestand","manual","safe head"}
-        local tooltips  = {delay = {[1] = "off"}, body = {[0] = "off"}}
-        
-        interface.builder.enabled = interface.header.general:checkbox("enable anti-aim")
-        interface.builder.enabled:depend({ interface.search, 'antiaim' })
-        interface.condition = interface.header.general:combobox("condition", e_statement)
-        if interface.condition.depend then
-            interface.condition:depend({ interface.search, 'antiaim' }, { interface.builder.enabled, true })
-        end
-        for _, state in ipairs(e_statement) do
-            interface.builder[state] = {}
-            local this = interface.builder[state]
-            if state == "use" then
-                this.allow_use_aa = interface.header.general:checkbox('allow antiaim on use', false)
-            end
-            if state ~= "default" then
-                this.enable = interface.header.general:checkbox('override ' .. state, false)
-                if state == "use" and this.enable.depend then
-                    this.enable:depend({ this.allow_use_aa, true })
-                end
-            end
-            this.base = interface.header.general:combobox("base", {"local view", "at targets"})
-            this.add = interface.header.general:slider("yaw", -180, 180, 0, true, "°", 1)
-            this.expand = interface.header.general:combobox("expand" ,{ "off", "left/right","x-way","spin"})
-            this.epd_left = interface.header.general:slider("\n", -180, 180, 0, true, "°", 1):depend({this.expand,"x-way",true},{this.expand,"off",true})
-            this.epd_right = interface.header.general:slider("\n", -180, 180, 0, true, "°", 1):depend({this.expand,"x-way",true},{this.expand,"off",true})
-            this.delay = interface.header.general:slider("delay ", 1, 10, 0, true, "t", 1, tooltips.delay):depend({this.expand,"left/right"})
-            this.speed = interface.header.general:slider("speed ", 1, 64, 1, true, "t", 1):depend({this.expand,"spin"})
-            this.ways_manual = interface.header.general:checkbox('ways manual', false):depend({ this.expand, "x-way" })
-            this.x_way = interface.header.general:slider("total ", 3, 7, 3, true, "w"):depend({ this.expand, "x-way" })
-            this.x_waylabel = interface.header.general:label("way"):depend({this.expand,"x-way"}, {this.ways_manual,true})
-            this.x_way:set_callback(function (ctx) this.x_waylabel:set("way " .. ctx.value) end, true)
-            this.epd_way = interface.header.general:slider("way ", -180, 180, 0, true, "°", 1):depend({this.expand,"x-way"}, {this.ways_manual,false})
-            for w = 1, 7 do
-                this[w] = interface.header.general:slider(tostring(w), -180, 180, 0, true, "°", 1, {[0] = "R"}):depend({this.expand, "x-way"}, {this.ways_manual, true}, {this.x_way, w, 7})
-            end
-            this.jitter = interface.header.general:combobox("modifier",{ "off", "offset", "center", "random"})
-            this.jitter_add = interface.header.general:slider("\n", -180, 180, 0, true,"°"):depend({this.jitter,"off",true})
-            this.yaw_randomize = interface.header.general:slider("randomization", 0, 100, 0, 0, '%', 1, {[0] = "off"})
-            this.by_mode = interface.header.general:combobox("body ",{ "off", "static", "opposite", "jitter" })
-            this.by_num = interface.header.general:slider("\n", -180, 180, 0, true, "°", 1, tooltips.body):depend({ this.by_mode, "off", true }, { this.by_mode, "opposite", true })
-            this.break_lc = interface.header.general:checkbox("\aa5ab55ffforce break lc")
-            this.defensive = interface.header.general:checkbox("defensive")
-            -- if this.defensive and this.defensive.depend then
-            --     this.defensive:depend({ this.break_lc, true })
-            -- end
-            this.def_pitch = interface.header.general:combobox("pitch defensive ",{ "default", "up", "zero", "up switch","down switch", "random static","random","custom"}):depend({this.defensive,true})
-            this.def_pitch_num = interface.header.general:slider("\n", -89, 89, 0, true, "°", 1):depend({this.defensive,true},{this.def_pitch,"custom"})
-            this.def_yaw = interface.header.general:combobox("yaw defensive ",{ "default", "forward", "sideways", "delayed","spin","random", "random static","flick exploit","custom"}):depend({this.defensive,true})
-            this.def_left = interface.header.general:slider("left yaw ", -180, 180, 0, true, "°", 1):depend({this.defensive,true},{this.def_yaw, function()
-                return  this.def_yaw:get() == "delayed" or  this.def_yaw:get() == "spin" or  this.def_yaw:get() == "random" or  this.def_yaw:get() == "random static"
-            end})
-            this.def_right = interface.header.general:slider("right yaw ", -180, 180, 0, true, "°", 1):depend({this.defensive,true},{this.def_yaw, function()
-                return  this.def_yaw:get() == "delayed" or  this.def_yaw:get() == "spin" or  this.def_yaw:get() == "random" or  this.def_yaw:get() == "random static"
-            end})
-            this.def_speed = interface.header.general:slider("speed yaw ", 1, 64, 1, true, "t", 1):depend({this.defensive,true},{this.def_yaw, "spin" })
-            this.def_yaw_num = interface.header.general:slider("\n", -180, 180, 0, true, "°", 1):depend({this.defensive,true},{this.def_yaw,"custom"})
-            this.def_body = interface.header.general:combobox("body defensive ",{ "default", "auto", "jitter"}):depend({this.defensive,true})
-            for key, v in pairs(this) do
-                if type(v) == 'table' and v.depend then
-                    local arr = { 
-                        { interface.search, 'antiaim' }, 
-                        { interface.condition, state },
-                        { interface.builder.enabled, true }
-                    }
-                    
-                    if key ~= "enable" and state ~= "default" then
-                        if not (state == "use" and key == "allow_use_aa") then
-                            arr[#arr+1] = { this.enable, true }
-                        end
-                    end
-                    v:depend(table.unpack(arr))
-                end
-            end
-        end
-    end
-
-    interface.builder.extensions = {} do
-        local extensions = interface.builder.extensions
-        extensions.anti_backstab = interface.header.fake_lag:checkbox("avoid backstab")
-        -- extensions.fd_edge = interface.header.fake_lag:checkbox("fakeduck edge")
-        extensions.ladder = interface.header.fake_lag:checkbox("fast ladder")
-        extensions.anti_bruteforce = interface.header.fake_lag:checkbox("anti-bruteforce")
-        extensions.anti_bruteforce_type = interface.header.fake_lag:combobox("anti bruteforce type", "increase", "decrease")
-        extensions.defensive = interface.header.fake_lag:multiselect("defensive", {"on shot", "flashed", "damage received", "reloading", "weapon switch"})
-        extensions.safe_head = interface.header.fake_lag:multiselect("safe head", {"height distance", "high distance", "knife", "zeus"})
-        extensions.warmup_aa = interface.header.fake_lag:multiselect("warmup aa", {"warmup", "round end"})
-        extensions.automatic_osaa = interface.header.fake_lag:checkbox("automatic osaa")
-        extensions.automatic_osaa_disablers = interface.header.fake_lag:multiselect("automatic osaa disablers", {"autosnipers"})
-        extensions.edge_yaw = interface.header.other:hotkey("edge yaw")
-        extensions.freestanding = interface.header.other:hotkey("freestanding")
-        extensions.dis_fs = interface.header.other:multiselect("allow freestand on", {"idle", "run", "air", "airc", "duck", "duck move", "slow"})
-        extensions.manual_aa = interface.header.other:checkbox("manual antiaim")
-        
-        for key, v in pairs(extensions) do
-            if (key == "anti_backstab" or key == "ladder" or key == "anti_bruteforce" or key == "defensive" or key == "safe_head" or key == "warmup_aa" or key == "automatic_osaa") then
-                v:depend({ interface.search, 'antiaim' }, { interface.builder.enabled, true })
-            end
-        end
-
-        extensions.edge_yaw:depend({ interface.search, 'antiaim' }, { interface.builder.enabled, true })
-        extensions.freestanding:depend({ interface.search, 'antiaim' }, { interface.builder.enabled, true })
-        extensions.manual_aa:depend({ interface.search, 'antiaim' }, { interface.builder.enabled, true })
-        extensions.anti_bruteforce_type:depend({ interface.search, 'antiaim' }, { interface.builder.enabled, true }, { extensions.anti_bruteforce, true })
-        extensions.dis_fs:depend({ interface.search, 'antiaim' }, { interface.builder.enabled, true }, { extensions.freestanding, true })
-        extensions.automatic_osaa_disablers:depend({ interface.search, 'antiaim' }, { interface.builder.enabled, true }, { extensions.automatic_osaa, true })
-        extensions.manual_aa_hotkey = extensions.manual_aa_hotkey or {}
-        extensions.manual_aa_hotkey.manual_left = interface.header.other:hotkey("manual left")
-        extensions.manual_aa_hotkey.manual_right = interface.header.other:hotkey("manual right")
-        extensions.manual_aa_hotkey.manual_forward = interface.header.other:hotkey("manual forward")
-        extensions.manual_aa_hotkey.manual_back = interface.header.other:hotkey("manual backward")
-        
-        for _, v in pairs(extensions.manual_aa_hotkey) do
-            v:depend({ interface.search, 'antiaim' }, { interface.builder.enabled, true }, { extensions.manual_aa, true })
-        end
-    end
 
     -- interface.utility.item_anti_crash:override(true) -- uncomment later
 
@@ -825,19 +705,33 @@ interface = {} do
             home = interface.home,
             aimbot = interface.aimbot,
             visuals = interface.visuals,
-            builder = interface.builder,
             utility = interface.utility,
             config = interface.config
         }
 
+        if interface.home.compatibility_mode:get() then
+            interface.search:set_visible(false)
+
+            for _, group in pairs(groups) do
+                pui.traverse(group, function(element)
+                    element:set_visible(false)
+                end)
+            end
+
+            interface.home.compatibility_mode:set_visible(true)
+            return
+        else
+            interface.search:set_visible(true)
+        end
+
         local visibility_config = {
             home = {
                 groups_to_show = { groups.home },
-                groups_to_hide = { groups.aimbot, groups.visuals, groups.builder, groups.models, groups.utility, groups.config }
+                groups_to_hide = { groups.aimbot, groups.visuals, groups.models, groups.utility, groups.config }
             },
             aimbot = {
                 groups_to_show = { groups.aimbot },
-                groups_to_hide = { groups.home, groups.visuals, groups.builder, groups.models, groups.utility, groups.config },
+                groups_to_hide = { groups.home, groups.visuals, groups.models, groups.utility, groups.config },
                 element_visibility_logic = function(element, path)
                     local key = path[#path]
                     local enabled = (interface.aimbot.enabled_aimbot:get() == true)
@@ -868,7 +762,7 @@ interface = {} do
             },
             visuals = {
                 groups_to_show = { groups.visuals },
-                groups_to_hide = { groups.home, groups.aimbot, groups.builder, groups.models, groups.utility, groups.config },
+                groups_to_hide = { groups.home, groups.aimbot, groups.models, groups.utility, groups.config },
                 element_visibility_logic = function(element, path)
                     local key = path[#path]
                     local visuals_enabled = interface.visuals.enabled_visuals:get()
@@ -893,7 +787,7 @@ interface = {} do
                         return
                     end
 
-                    if key == 'window_style' then
+                    if key == 'window_flag' then
                         element:set_visible(interface.visuals.window:get())
                         return
                     end
@@ -933,81 +827,63 @@ interface = {} do
                 post_visibility_logic = function()
                     local visuals_enabled = interface.visuals.enabled_visuals:get()
                     
-                    if interface.visuals.logging then
-                        local logging_enabled = visuals_enabled and interface.visuals.logging:get() == true
-                        interface.visuals.logging_options:set_visible(logging_enabled)
-                        interface.visuals.logging_slider:set_visible(false)
-                        if logging_enabled then
-                            local opts = interface.visuals.logging_options:get()
-                            local console_enabled = false
-                            local screen_enabled = false
-                            if type(opts) == "table" then
-                                for _, v in ipairs(opts) do
-                                    if v == "console" then
-                                        console_enabled = true
-                                    end
-                                    if v == "screen" then
-                                        screen_enabled = true
-                                    end
+                    local logging_enabled = visuals_enabled and interface.visuals.logging:get() == true
+                    interface.visuals.logging_options:set_visible(logging_enabled)
+                    interface.visuals.logging_slider:set_visible(false)
+                    if logging_enabled then
+                        local opts = interface.visuals.logging_options:get()
+                        local console_enabled = false
+                        local screen_enabled = false
+                        if type(opts) == "table" then
+                            for _, v in ipairs(opts) do
+                                if v == "console" then
+                                    console_enabled = true
                                 end
-                            elseif type(opts) == "string" then
-                                if opts == "console" then console_enabled = true end
-                                if opts == "screen" then screen_enabled = true end
+                                if v == "screen" then
+                                    screen_enabled = true
+                                end
                             end
-                            interface.visuals.logging_options_console:set_visible(console_enabled)
-                            interface.visuals.logging_options_screen:set_visible(screen_enabled)
-                        else
-                            interface.visuals.logging_options_console:set_visible(false)
-                            interface.visuals.logging_options_screen:set_visible(false)
+                        elseif type(opts) == "string" then
+                            if opts == "console" then console_enabled = true end
+                            if opts == "screen" then screen_enabled = true end
                         end
+                        interface.visuals.logging_options_console:set_visible(console_enabled)
+                        interface.visuals.logging_options_screen:set_visible(screen_enabled)
+                    else
+                        interface.visuals.logging_options_console:set_visible(false)
+                        interface.visuals.logging_options_screen:set_visible(false)
                     end
 
-                    if interface.visuals.aspect_ratio then
-                        local show_aspect = visuals_enabled
-                        interface.visuals.aspect_ratio:set_visible(show_aspect)
-                        interface.visuals.aspect_ratio_slider:set_visible(show_aspect and interface.visuals.aspect_ratio:get())
-                    end
+                    local show_aspect = visuals_enabled
+                    interface.visuals.aspect_ratio:set_visible(show_aspect)
+                    interface.visuals.aspect_ratio_slider:set_visible(show_aspect and interface.visuals.aspect_ratio:get())
 
-                    if interface.visuals.thirdperson then
-                        local show_thirdperson = visuals_enabled
-                        interface.visuals.thirdperson:set_visible(show_thirdperson)
-                        interface.visuals.thirdperson_slider:set_visible(show_thirdperson and interface.visuals.thirdperson:get())
-                    end
+                    local show_thirdperson = visuals_enabled
+                    interface.visuals.thirdperson:set_visible(show_thirdperson)
+                    interface.visuals.thirdperson_slider:set_visible(show_thirdperson and interface.visuals.thirdperson:get())
 
-                    if interface.visuals.viewmodel then
-                        local show_viewmodel = visuals_enabled
-                        interface.visuals.viewmodel:set_visible(show_viewmodel)
-                        local show_viewmodel_settings = show_viewmodel and interface.visuals.viewmodel:get()
-                        interface.visuals.viewmodel_fov:set_visible(show_viewmodel_settings)
-                        interface.visuals.viewmodel_x:set_visible(show_viewmodel_settings)
-                        interface.visuals.viewmodel_y:set_visible(show_viewmodel_settings)
-                        interface.visuals.viewmodel_z:set_visible(show_viewmodel_settings)
-                    end
+                    local show_viewmodel = visuals_enabled
+                    interface.visuals.viewmodel:set_visible(show_viewmodel)
+                    local show_viewmodel_settings = show_viewmodel and interface.visuals.viewmodel:get()
+                    interface.visuals.viewmodel_fov:set_visible(show_viewmodel_settings)
+                    interface.visuals.viewmodel_x:set_visible(show_viewmodel_settings)
+                    interface.visuals.viewmodel_y:set_visible(show_viewmodel_settings)
+                    interface.visuals.viewmodel_z:set_visible(show_viewmodel_settings)
 
-                    if interface.visuals.stickman then
-                        interface.visuals.stickman:set_visible(visuals_enabled)
-                    end
+                    interface.visuals.stickman:set_visible(visuals_enabled)
 
-                    if interface.visuals.zoom_animation then
-                        local show_zoom = visuals_enabled
-                        interface.visuals.zoom_animation:set_visible(show_zoom)
-                        local show_zoom_settings = show_zoom and interface.visuals.zoom_animation:get()
-                        interface.visuals.zoom_animation_speed:set_visible(show_zoom_settings)
-                        interface.visuals.zoom_animation_value:set_visible(show_zoom_settings)
-                    end
+                    local show_zoom = visuals_enabled
+                    interface.visuals.zoom_animation:set_visible(show_zoom)
+                    local show_zoom_settings = show_zoom and interface.visuals.zoom_animation:get()
+                    interface.visuals.zoom_animation_speed:set_visible(show_zoom_settings)
+                    interface.visuals.zoom_animation_value:set_visible(show_zoom_settings)
 
-                    if interface.visuals.spawn_zoom then
-                        interface.visuals.spawn_zoom:set_visible(visuals_enabled)
-                    end
+                    interface.visuals.spawn_zoom:set_visible(visuals_enabled)
                 end
-            },
-            models = {
-                groups_to_show = { groups.models },
-                groups_to_hide = { groups.home, groups.aimbot, groups.visuals, groups.builder, groups.utility, groups.config }
             },
             utility = {
                 groups_to_show = { groups.utility },
-                groups_to_hide = { groups.home, groups.aimbot, groups.visuals, groups.builder, groups.models, groups.config },
+                groups_to_hide = { groups.home, groups.aimbot, groups.visuals, groups.models, groups.config },
                 element_visibility_logic = function(element, path)
                     local key = path[#path]
 
@@ -1074,28 +950,9 @@ interface = {} do
                         element:set_visible(true)
                 end
             },
-            builder = {
-                groups_to_show = { groups.builder },
-                groups_to_hide = { groups.home, groups.aimbot, groups.visuals, groups.models, groups.utility, groups.config },
-                element_visibility_logic = function(element, path)
-                    local key = path[#path]
-
-                    if key == 'enabled' then
-                        element:set_visible(true)
-                        return
-                    end
-
-                    if not interface.builder.enabled:get() then
-                        element:set_visible(false)
-                        return
-                    end
-
-                    element:set_visible(true)
-                end
-            },
             config = {
                 groups_to_show = { groups.config },
-                groups_to_hide = { groups.home, groups.aimbot, groups.visuals, groups.builder, groups.models, groups.utility },
+                groups_to_hide = { groups.home, groups.aimbot, groups.visuals, groups.models, groups.utility },
                 element_visibility_logic = function(element, path)
                     element:set_visible(true)
                 end,
@@ -1104,48 +961,29 @@ interface = {} do
                 end
             },
             default = {
-                groups_to_hide = { groups.home, groups.aimbot, groups.visuals, groups.builder, groups.models, groups.utility, groups.config }
+                groups_to_hide = { groups.home, groups.aimbot, groups.visuals, groups.models, groups.utility, groups.config }
             }
         }
 
-        if selection == 'antiaim' then
-            pui.traverse(interface.home, function(element) element:set_visible(false) end)
-            pui.traverse(interface.aimbot, function(element) element:set_visible(false) end)
-            pui.traverse(interface.visuals, function(element) element:set_visible(false) end)
-            
-            pui.traverse(interface.utility, function(element) element:set_visible(false) end)
-            pui.traverse(interface.config, function(element) element:set_visible(false) end)
-
-            if type(naac) == 'function' then
-                naac('')
-            end
-
-            return
-        end
-
         local config = visibility_config[selection] or visibility_config.default
 
-        if config.groups_to_show then
-            for _, group in pairs(config.groups_to_show) do
-                if group then
-                    pui.traverse(group, function(element, path)
-                        if config.element_visibility_logic then
-                            config.element_visibility_logic(element, path)
-                        else
-                            element:set_visible(true)
-                        end
-                    end)
-                end
+        for _, group in pairs(config.groups_to_show) do
+            if group then
+                pui.traverse(group, function(element, path)
+                    if config.element_visibility_logic then
+                        config.element_visibility_logic(element, path)
+                    else
+                        element:set_visible(true)
+                    end
+                end)
             end
         end
 
-        if config.groups_to_hide then
-            for _, group in pairs(config.groups_to_hide) do
-                if group then
-                    pui.traverse(group, function(element, path)
-                        element:set_visible(false)
-                    end)
-                end
+        for _, group in pairs(config.groups_to_hide) do
+            if group then
+                pui.traverse(group, function(element, path)
+                    element:set_visible(false)
+                end)
             end
         end
 
@@ -1909,6 +1747,219 @@ utils = {} do
 end
 --@endregion
 
+--@region: json
+local json = {
+    null = {}
+}
+
+function json.encode(val, pretty)
+    local indent = pretty and "    " or ""
+    local level = 0
+
+    local function _encode(v, _pretty)
+        if v == nil then
+            return "null"
+        elseif type(v) == "string" then
+            return string.format("%q", v)
+        elseif type(v) == "number" or type(v) == "boolean" then
+            return tostring(v)
+        elseif type(v) == "table" then
+            if v == json.null then
+                return "null"
+            end
+            
+            level = level + 1
+            local current_indent = _pretty and string.rep(indent, level) or ""
+            local next_indent = _pretty and string.rep(indent, level + 1) or ""
+            
+            local is_array = true
+            local max_index = 0
+            for k, _ in pairs(v) do
+                if type(k) ~= "number" or k < 1 or math.floor(k) ~= k then
+                    is_array = false
+                    break
+                end
+                max_index = math.max(max_index, k)
+            end
+
+            local parts
+            if is_array then
+                parts = {}
+                for i = 1, max_index do
+                    parts[i] = _encode(v[i] or json.null, _pretty)
+                            end
+                        else
+                parts = {}
+                for k, val in pairs(v) do
+                    parts[#parts + 1] = string.format(
+                        "%s%q: %s",
+                        next_indent,
+                        tostring(k),
+                        _encode(val, _pretty)
+                    )
+                end
+            end
+            
+            level = level - 1
+            
+            if is_array then
+                if _pretty then
+                    return "[\n" .. next_indent .. table.concat(parts, ",\n" .. next_indent) .. "\n" .. current_indent .. "]"
+                else
+                    return "[" .. table.concat(parts, ",") .. "]"
+                end
+            else
+                if _pretty then
+                    return "{\n" .. table.concat(parts, ",\n") .. "\n" .. current_indent .. "}"
+                else
+                    return "{" .. table.concat(parts, ",") .. "}"
+                end
+            end
+        end
+        return "null"
+    end
+
+    return _encode(val, pretty)
+end
+
+function json.decode(str)
+    local pos = 1
+    
+    local function skip_whitespace()
+        pos = string.find(str, "[^%s]", pos) or pos
+    end
+    
+    local function decode_string()
+        local quote = str:sub(pos, pos)
+        if quote ~= '"' and quote ~= "'" then return nil end
+        pos = pos + 1
+        local parts = {}
+        while pos <= #str do
+            local c = str:sub(pos, pos)
+            if c == quote then
+                pos = pos + 1
+                return table.concat(parts)
+            elseif c == "\\" then
+                pos = pos + 1
+                if pos > #str then return nil end
+                c = str:sub(pos, pos)
+                if c == "n" then 
+                    parts[#parts + 1] = "\n"
+                elseif c == "r" then 
+                    parts[#parts + 1] = "\r"
+                elseif c == "t" then 
+                    parts[#parts + 1] = "\t"
+                elseif c == "\\" then 
+                    parts[#parts + 1] = "\\"
+                elseif c == '"' then 
+                    parts[#parts + 1] = '"'
+                elseif c == "'" then 
+                    parts[#parts + 1] = "'"
+                elseif c == "/" then 
+                    parts[#parts + 1] = "/"
+                elseif c == "b" then 
+                    parts[#parts + 1] = "\b"
+                elseif c == "f" then 
+                    parts[#parts + 1] = "\f"
+                else
+                    parts[#parts + 1] = c
+                end
+                pos = pos + 1
+            else
+                parts[#parts + 1] = c
+                pos = pos + 1
+            end
+        end
+        return nil
+    end
+    
+    local function decode_number()
+        local start = pos
+        while pos <= #str and string.find(str:sub(pos, pos), "[%d%.eE%+%-]") do
+            pos = pos + 1
+        end
+        local num = tonumber(str:sub(start, pos - 1))
+        if not num then pos = start end
+        return num
+    end
+    
+    local function decode_value()
+        skip_whitespace()
+        if pos > #str then return nil end
+        local c = str:sub(pos, pos)
+        
+        if c == "{" then
+            pos = pos + 1
+            local obj = {}
+            skip_whitespace()
+            while pos <= #str do
+                if str:sub(pos, pos) == "}" then
+                    pos = pos + 1
+                    return obj
+                end
+                local key = decode_string()
+                if not key then return nil end
+                skip_whitespace()
+                if str:sub(pos, pos) ~= ":" then return nil end
+                pos = pos + 1
+                local val = decode_value()
+                obj[key] = val
+                skip_whitespace()
+                if str:sub(pos, pos) == "}" then
+                    pos = pos + 1
+                    return obj
+                elseif str:sub(pos, pos) ~= "," then
+                    return nil
+                end
+                pos = pos + 1
+                skip_whitespace()
+            end
+        elseif c == "[" then
+            pos = pos + 1
+            local arr = {}
+            local index = 1
+            skip_whitespace()
+            while pos <= #str do
+                if str:sub(pos, pos) == "]" then
+                    pos = pos + 1
+                    return arr
+                end
+                local val = decode_value()
+                arr[index] = val
+                index = index + 1
+                skip_whitespace()
+                if str:sub(pos, pos) == "]" then
+                    pos = pos + 1
+                    return arr
+                elseif str:sub(pos, pos) ~= "," then
+                    return nil
+                end
+                pos = pos + 1
+                skip_whitespace()
+            end
+        elseif c == '"' or c == "'" then
+            return decode_string()
+        else
+            local num = decode_number()
+            if num then return num end
+            if str:sub(pos, pos + 3) == "true" then
+                pos = pos + 4
+                return true
+            elseif str:sub(pos, pos + 4) == "false" then
+                pos = pos + 5
+                return false
+            elseif str:sub(pos, pos + 3) == "null" then
+                pos = pos + 4
+                return nil
+            end
+        end
+        return nil
+    end
+    
+    local result = decode_value()
+    return result
+end
+
 --@region: antiaim_funcs (embedded minimal)
 antiaim_funcs = antiaim_funcs or {}
 
@@ -2516,77 +2567,6 @@ end)
 client.set_event_callback('shutdown', allow_force_recharge.shutdown)
 --@endregion
 
---@region: automatic osaa
-automatic_osaa = {} do
-    automatic_osaa.state = false
-    automatic_osaa.last = false
-    automatic_osaa.dt_original = false
-
-    local function is_holding_sniper(lp)
-        local weapon = entity.get_player_weapon(lp)
-        if not weapon then return false end
-
-        local weap_class = entity.get_classname(weapon)
-        return weap_class == "CWeaponSCAR20" or weap_class == "CWeaponG3SG1"
-    end
-
-    automatic_osaa.setup = function(self, cmd)
-        if not interface.builder.extensions.automatic_osaa:get() then
-            if self.state then
-                ui.set(ui_references.double_tap[1], self.dt_original)
-                ui.set(ui_references.on_shot_anti_aim[2], "Toggle")
-                self.state = false
-            end
-            return
-        end
-
-        local local_player = entity.get_local_player()
-        if not local_player or not entity.is_alive(local_player) then return end
-
-        if not self.state then
-            self.dt_original = ui.get(ui_references.double_tap[1])
-        end
-
-        local dt_active = (self.state and self.dt_original or ui.get(ui_references.double_tap[1])) and ui.get(ui_references.double_tap[2])
-        local state = utils.get_state()
-        local is_idle_or_duck = state == 'duck' or state == 'duck move'
-        local disabler_selected = interface.builder.extensions.automatic_osaa_disablers:get("autosnipers")
-        local holding_sniper = is_holding_sniper(local_player)
-
-        local is_disabled_by_weapon = disabler_selected and holding_sniper
-        local should_activate = dt_active and is_idle_or_duck and not is_disabled_by_weapon
-
-        if should_activate ~= self.last then
-            self.last = should_activate
-            
-            if should_activate then
-                ui.set(ui_references.double_tap[1], false)
-                ui.set(ui_references.on_shot_anti_aim[2], "Always on")
-                self.state = true
-            else
-                ui.set(ui_references.on_shot_anti_aim[2], "Toggle")
-                ui.set(ui_references.double_tap[1], self.dt_original)
-                self.state = false
-            end
-        end
-    end
-
-    automatic_osaa.shutdown = function()
-        if automatic_osaa.state then
-            ui.set(ui_references.double_tap[1], true)
-            ui.set(ui_references.on_shot_anti_aim[2], "Toggle")
-            automatic_osaa.state = false
-        end
-    end
-end
-
-client.set_event_callback('setup_command', function(cmd)
-    automatic_osaa:setup(cmd)
-end)
-
-client.set_event_callback('shutdown', automatic_osaa.shutdown)
---@endregion
-
 --@region: quick stop in air
 quick_stop_in_air = {} do
     quick_stop_in_air.ticks = 0
@@ -2649,11 +2629,11 @@ quick_stop_in_air = {} do
     end
 end
 
-client.set_event_callback('paint', function()
-    if (interface.aimbot.enabled_aimbot:get() and interface.aimbot.quick_stop:get() and interface.aimbot.quick_stop.hotkey:get()) then 
-        renderer.indicator(214, 214, 214, 255, 'AS')
-    end
-end)
+-- client.set_event_callback('paint', function()
+--     if (interface.aimbot.enabled_aimbot:get() and interface.aimbot.quick_stop:get() and interface.aimbot.quick_stop.hotkey:get()) then 
+--         renderer.indicator(214, 214, 214, 255, 'AS')
+--     end
+-- end)
 
 client.set_event_callback('setup_command', function(cmd)
     quick_stop_in_air:setup(cmd)
@@ -3183,6 +3163,32 @@ end
 
 --@region: visuals
 visuals = {} do 
+    visuals.flag_texture = nil
+    visuals.flag_requested = false
+
+    visuals.fetch_flag = function()
+        if visuals.flag_requested then return end
+        visuals.flag_requested = true
+
+        http.get("http://ip-api.com/json/", function(success, response)
+            if success and response.status == 200 then
+                local data = json.decode(response.body)
+                if data and data.countryCode then
+                    local cc = string.lower(data.countryCode)
+                    local flag_url = string.format("https://flagcdn.com/w40/%s.png", cc)
+                    
+                    http.get(flag_url, function(s, r)
+                        if s and r.status == 200 then
+                            visuals.flag_texture = renderer.load_png(r.body, 40, 30)
+                        end
+                    end)
+                end
+            end
+        end)
+    end
+    
+    visuals.fetch_flag()
+
     visuals.window = function(self, base_x, base_y, align)
         self.windowAlpha = self.windowAlpha or 0
 
@@ -3203,7 +3209,7 @@ visuals = {} do
 
         if self.windowAlpha < 1 then return end
 
-        local style = interface.visuals.window_style:get()
+        local show_flag = interface.visuals.window_flag:get()
         local target = client.current_threat()
         local t_name = "none"
         local t_state = "none"
@@ -3244,133 +3250,139 @@ visuals = {} do
             end
         end
 
-        if style == 'new' then
-            local line_spacing = 13
-            local y = base_y
-            local indent = (align == 'l') and "   " or "" 
-            local r, g, b = unpack(interface.visuals.accent.color.value)
-            local name_w = select(1, renderer.measure_text("lb", _name))
-            local ver_w = select(1, renderer.measure_text("l", _version))
-            local spacing = 4 
-            local total_w = name_w + spacing + ver_w
+        local line_spacing = 13
+        local y = base_y
+        local indent = (align == 'l') and "   " or "" 
+        local r, g, b = unpack(interface.visuals.accent.color.value)
+        local name_w = select(1, renderer.measure_text("lb", _name))
+        local ver_w = select(1, renderer.measure_text("l", _version))
+        local spacing = 4 
+        local total_w = name_w + spacing + ver_w
 
-            local start_x = base_x
+        local start_x = base_x
+        if align == 'c' then
+            start_x = base_x - (total_w / 2)
+        elseif align == 'r' then
+            start_x = base_x - total_w
+        end
+
+        renderer.text(start_x, y, r, g, b, self.windowAlpha, "lb", 0, _name)
+        renderer.text(start_x + name_w + spacing, y, 255, 255, 255, self.windowAlpha, "l", 0, _version)
+
+        y = y + line_spacing + 5
+
+        local nick_str = _nickname or "user"
+        renderer.text(base_x, y, 255, 255, 255, self.windowAlpha, align, 0, nick_str)
+        
+        if show_flag and visuals.flag_texture then
+            local nick_w = select(1, renderer.measure_text("l", nick_str))
+            local flag_w, flag_h = 16, 11
+            local padding = 4
+            local flag_x = base_x
+            
             if align == 'c' then
-                start_x = base_x - (total_w / 2)
+                flag_x = base_x + (nick_w / 2) + padding
             elseif align == 'r' then
-                start_x = base_x - total_w
-            end
-
-            renderer.text(start_x, y, r, g, b, self.windowAlpha, "lb", 0, _name)
-            renderer.text(start_x + name_w + spacing, y, 255, 255, 255, self.windowAlpha, "l", 0, _version)
-
-            y = y + line_spacing + 5
-
-            renderer.text(base_x, y, 255, 255, 255, self.windowAlpha, align, 0, _nickname or "user")
-            y = y + line_spacing
-            
-            local hits = _G.noctua_runtime.stats.hits
-            local misses = _G.noctua_runtime.stats.misses
-            local accuracy = (hits > 0 and misses == 0) and 100 or (misses > 0 and math.floor((hits / misses) * 100) or 0)
-            local aimbot_text = indent .. "- aimbot: " .. hits .. "/" .. misses .. " (" .. accuracy .. "%)"
-            renderer.text(base_x, y, 215, 215, 215, self.windowAlpha, align, 0, aimbot_text)
-            y = y + line_spacing
-            
-            local latency_ms = math.floor(client.latency() * 1000 + 0.5)
-            local latency_str = "- latency: " .. latency_ms .. "ms"
-            local full_latency_text = indent .. latency_str
-            
-            local scoreboard_ping = utils.get_scoreboard_ping()
-            local ping_diff = math.floor(scoreboard_ping - latency_ms + 0.5)
-            
-            local latency_x = base_x
-            if align == 'c' then
-                latency_x = base_x - (select(1, renderer.measure_text("l", full_latency_text)) / 2)
-            elseif align == 'r' then
-                latency_x = base_x - select(1, renderer.measure_text("l", full_latency_text))
+                flag_x = base_x - nick_w - flag_w - padding
+            else
+                flag_x = base_x + nick_w + padding
             end
             
-            renderer.text(latency_x, y, 215, 215, 215, self.windowAlpha, "l", 0, full_latency_text)
+            renderer.texture(visuals.flag_texture, flag_x, y, flag_w, flag_h, 255, 255, 255, self.windowAlpha)
+        end
+        
+        y = y + line_spacing
+        
+        local hits = _G.noctua_runtime.stats.hits
+        local misses = _G.noctua_runtime.stats.misses
+        local ratio = (hits > 0 and misses == 0) and 100 or ((hits + misses) > 0 and math.floor((hits / (hits + misses)) * 100) or 0)
+        local aimbot_text = indent .. "- aimbot: " .. hits .. "/" .. misses .. " (" .. ratio .. "%)"
+        renderer.text(base_x, y, 215, 215, 215, self.windowAlpha, align, 0, aimbot_text)
+        y = y + line_spacing
+        
+        local latency_ms = math.floor(client.latency() * 1000 + 0.5)
+        local latency_str = "- latency: " .. latency_ms .. "ms"
+        local full_latency_text = indent .. latency_str
+        
+        local scoreboard_ping = utils.get_scoreboard_ping()
+        local ping_diff = math.floor(scoreboard_ping - latency_ms + 0.5)
+        
+        local latency_x = base_x
+        if align == 'c' then
+            latency_x = base_x - (select(1, renderer.measure_text("l", full_latency_text)) / 2)
+        elseif align == 'r' then
+            latency_x = base_x - select(1, renderer.measure_text("l", full_latency_text))
+        end
+        
+        renderer.text(latency_x, y, 215, 215, 215, self.windowAlpha, "l", 0, full_latency_text)
+        
+        if ping_diff >= 0 then
+            local r, g, b = 220, 200, 100
             
-            if ping_diff >= 0 then
-                local r, g, b = 220, 200, 100
+            if ping_diff < 50 then
+                local ratio = ping_diff / 50
+                r = 220
+                g = 120 + (80 * ratio)
+                b = 120
+            else
+                local ratio = math.min((ping_diff - 50) / 100, 1)
+                r = 220 - (100 * ratio)
+                g = 200
+                b = 120 - (20 * ratio)
+            end
+            
+            local diff_text = " (+" .. ping_diff .. "ms)"
+            local full_w = select(1, renderer.measure_text("l", full_latency_text))
+            
+            renderer.text(latency_x + full_w, y, r, g, b, self.windowAlpha, "l", 0, diff_text)
+        end
+        y = y + line_spacing
+        
+        local aa_state = utils.get_state()
+        if _G.noctua_runtime.use_active then aa_state = "use"
+        elseif _G.noctua_runtime.manual_active then aa_state = "manual"
+        elseif _G.noctua_runtime.safe_head_active then aa_state = "safe head" end
+
+        renderer.text(base_x, y, 215, 215, 215, self.windowAlpha, align, 0, indent .. "- state: " .. aa_state)
+        y = y + line_spacing + 6 
+
+        if t_yaw ~= "off" then
+            renderer.text(base_x, y, 255, 255, 255, self.windowAlpha, align, 0, "resolver")
+            y = y + line_spacing
+            renderer.text(base_x, y, 215, 215, 215, self.windowAlpha, align, 0, indent .. "- target: " .. t_name:lower())
+            y = y + line_spacing
+            renderer.text(base_x, y, 215, 215, 215, self.windowAlpha, align, 0, indent .. "- state: " .. t_state)
+            y = y + line_spacing
+            renderer.text(base_x, y, 215, 215, 215, self.windowAlpha, align, 0, indent .. "- yaw: " .. t_yaw)
+            y = y + line_spacing + 6
+        end
+
+        local isDT = ui.get(ui_references.double_tap[1]) and ui.get(ui_references.double_tap[2])
+        local isOS = ui.get(ui_references.on_shot_anti_aim[1]) and ui.get(ui_references.on_shot_anti_aim[2])
+        
+        if isDT or isOS then
+            renderer.text(base_x, y, 255, 255, 255, self.windowAlpha, align, 0, "exploit")
+            y = y + line_spacing
+
+            local exp_type = isDT and "dt" or "osaa"
+            local exp_state = "ready"
+
+            if isDT then
+                local dt_ready = antiaim_funcs.get_double_tap()
+                local tickbase = antiaim_funcs.get_tickbase_shifting()
                 
-                if ping_diff < 50 then
-                    local ratio = ping_diff / 50
-                    r = 220
-                    g = 120 + (80 * ratio)
-                    b = 120
+                if tickbase >= 4 and dt_ready then
+                    exp_state = "ready"
+                elseif not utils.weapon_ready() then
+                    exp_state = "waiting"
                 else
-                    local ratio = math.min((ping_diff - 50) / 100, 1)
-                    r = 220 - (100 * ratio)
-                    g = 200
-                    b = 120 - (20 * ratio)
+                    exp_state = "ready"
                 end
-                
-                local diff_text = " (+" .. ping_diff .. "ms)"
-                local full_w = select(1, renderer.measure_text("l", full_latency_text))
-                
-                renderer.text(latency_x + full_w, y, r, g, b, self.windowAlpha, "l", 0, diff_text)
             end
+
+            renderer.text(base_x, y, 215, 215, 215, self.windowAlpha, align, 0, indent .. "- type: " .. exp_type)
             y = y + line_spacing
-            
-            local aa_state = utils.get_state()
-            if _G.noctua_runtime.use_active then aa_state = "use"
-            elseif _G.noctua_runtime.manual_active then aa_state = "manual"
-            elseif _G.noctua_runtime.safe_head_active then aa_state = "safe head" end
-
-            renderer.text(base_x, y, 215, 215, 215, self.windowAlpha, align, 0, indent .. "- state: " .. aa_state)
-            y = y + line_spacing + 6 
-
-            if t_yaw ~= "off" then
-                renderer.text(base_x, y, 255, 255, 255, self.windowAlpha, align, 0, "resolver")
-                y = y + line_spacing
-                renderer.text(base_x, y, 215, 215, 215, self.windowAlpha, align, 0, indent .. "- target: " .. t_name:lower())
-                y = y + line_spacing
-                renderer.text(base_x, y, 215, 215, 215, self.windowAlpha, align, 0, indent .. "- state: " .. t_state)
-                y = y + line_spacing
-                renderer.text(base_x, y, 215, 215, 215, self.windowAlpha, align, 0, indent .. "- yaw: " .. t_yaw)
-                y = y + line_spacing + 6
-            end
-
-            local isDT = ui.get(ui_references.double_tap[1]) and ui.get(ui_references.double_tap[2])
-            local isOS = ui.get(ui_references.on_shot_anti_aim[1]) and ui.get(ui_references.on_shot_anti_aim[2])
-            
-            if isDT or isOS then
-                renderer.text(base_x, y, 255, 255, 255, self.windowAlpha, align, 0, "exploit")
-                y = y + line_spacing
-
-                local exp_type = isDT and "dt" or "osaa"
-                local exp_state = "ready"
-
-                if isDT then
-                    local dt_ready = antiaim_funcs.get_double_tap()
-                    local tickbase = antiaim_funcs.get_tickbase_shifting()
-                    
-                    if tickbase >= 4 and dt_ready then
-                        exp_state = "ready"
-                    elseif not utils.weapon_ready() then
-                        exp_state = "waiting"
-                    else
-                        exp_state = "ready"
-                    end
-                end
-
-                renderer.text(base_x, y, 215, 215, 215, self.windowAlpha, align, 0, indent .. "- type: " .. exp_type)
-                y = y + line_spacing
-                renderer.text(base_x, y, 215, 215, 215, self.windowAlpha, align, 0, indent .. "- state: " .. exp_state)
-            end
-        else
-            local lines = {
-                _name .. " " .. _version,
-                "target: " .. t_name,
-                "target state: " .. t_state,
-                "target yaw: " .. t_yaw
-            }
-            local a = align or "c"
-            for i, line in ipairs(lines) do
-                renderer.text(base_x, base_y + (i - 1) * 12, 255, 255, 255, self.windowAlpha, a, 1000, line)
-            end
+            renderer.text(base_x, y, 215, 215, 215, self.windowAlpha, align, 0, indent .. "- state: " .. exp_state)
         end
     end
 
@@ -4439,121 +4451,6 @@ local snow = {} do
 end
 --@endregion
 
---@region: world snow
-local renderer_rectangle, renderer_world_to_screen, client_trace_line, entity_get_origin, math_random, math_floor, table_remove, table_insert = renderer.rectangle, renderer.world_to_screen, client.trace_line, entity.get_origin, math.random, math.floor, table.remove, table.insert
-world_snow = {} do
-    world_snow.particles = {}
-    world_snow.max_particles = 600
-    world_snow.spawn_radius = 1500
-    world_snow.spawn_height = 800
-    world_snow.wind = {x = 15, y = 10}
-    world_snow.last_time = 0
-    world_snow.check_index = 1
-
-    world_snow.update = function(self)
-        if not interface.home.world_snow:get() then return end
-
-        local lp = entity.get_local_player()
-        if not lp then return end
-
-        local health = entity.get_prop(lp, "m_iHealth")
-        if not health or health <= 0 then return end
-
-        local current_time = globals.realtime()
-        local dt = (current_time - self.last_time)
-        if dt > 0.1 then dt = 0.01 end
-        self.last_time = current_time
-
-        local ox, oy, oz = entity_get_origin(lp)
-        
-        local p_count = #self.particles
-        if p_count < self.max_particles then
-            for i = 1, 4 do
-                local tx = ox + math_random(-self.spawn_radius, self.spawn_radius)
-                local ty = oy + math_random(-self.spawn_radius, self.spawn_radius)
-                local tz = oz + self.spawn_height + math_random(-100, 300)
-                
-                local f_check = client_trace_line(-1, tx, ty, tz, tx, ty, tz + 50)
-                if f_check > 0.5 then
-                    local f_down = client_trace_line(-1, tx, ty, tz, tx, ty, tz - 2000)
-                    local ground_z = tz - (2000 * f_down)
-
-                    if ground_z < oz + 500 then
-                        table_insert(self.particles, {
-                            x = tx, y = ty, z = tz,
-                            ground_z = ground_z,
-                            vx = self.wind.x + math_random(-5, 5),
-                            vy = self.wind.y + math_random(-5, 5),
-                            vz = math_random(-160, -100),
-                            size = math_random(10, 25) / 10,
-                            alpha = 0,
-                            visible = true,
-                            dist_alpha = 255
-                        })
-                    end
-                end
-            end
-        end
-
-        if p_count > 0 then
-            local ex, ey, ez = client.eye_position()
-            local spawn_rad = self.spawn_radius
-            for i = 1, 20 do
-                self.check_index = self.check_index + 1
-                if self.check_index > p_count then self.check_index = 1 end
-                
-                local p = self.particles[self.check_index]
-                if p then
-                    local fraction = client_trace_line(lp, ex, ey, ez, p.x, p.y, p.z)
-                    p.visible = (fraction >= 0.9)
-                    
-                    local dx, dy, dz = p.x - ox, p.y - oy, p.z - oz
-                    local d = (dx*dx + dy*dy + dz*dz)^0.5
-                    p.dist_alpha = math.max(0, 255 - (d / spawn_rad) * 255)
-                end
-            end
-        end
-
-        for i = p_count, 1, -1 do
-            local p = self.particles[i]
-            p.x = p.x + p.vx * dt
-            p.y = p.y + p.vy * dt
-            p.z = p.z + p.vz * dt
-            if p.alpha < 200 then p.alpha = p.alpha + 150 * dt end
-
-            local dx, dy = p.x - ox, p.y - oy
-            if p.z <= p.ground_z or (dx*dx + dy*dy) > 5062500 then
-                table_remove(self.particles, i)
-            end
-        end
-    end
-
-    world_snow.draw = function(self)
-        if not interface.home.world_snow:get() then return end
-
-        local lp = entity.get_local_player()
-        if not lp then return end
-
-        local health = entity.get_prop(lp, "m_iHealth")
-        if not health or health <= 0 then return end
-        
-        local particles = self.particles
-        for i=1, #particles do
-            local p = particles[i]
-            if p.visible and p.dist_alpha > 5 then
-                local wx, wy = renderer_world_to_screen(p.x, p.y, p.z)
-                if wx ~= nil then
-                    local final_alpha = p.alpha
-                    if p.dist_alpha < final_alpha then final_alpha = p.dist_alpha end
-                    
-                    renderer_rectangle(math_floor(wx), math_floor(wy), p.size, p.size, 255, 255, 255, math_floor(final_alpha))
-                end
-            end
-        end
-    end
-end
---@endregion
-
 interface.home.confetti:set_callback(function()
     confetti:push(0, false)
 end)
@@ -4818,14 +4715,25 @@ logging = {} do
     
             if doScreen then
                 msg = string.format(
-                    "hit %s's %s (expected: %s) for %d (expected: %d) / lc: %d - yaw: %s - reason: %s",
-                    playerName, hitbox, cached.hitbox, damage, cached.damage, lagComp, type(desiredYaw) == "number" and desiredYaw.."°" or desiredYaw.."°", mismatchReason
+                    "hit %s's %s for %d / exp: %s (%d) - lc: %d - yaw: %s - reason: %s",
+                    playerName, hitbox, damage,
+                    cached.hitbox, cached.damage,
+                    lagComp,
+                    type(desiredYaw) == "number" and desiredYaw.."°" or desiredYaw.."°",
+                    mismatchReason
                 )
                 self:push(msg)
             end
-    
+
             if doConsole then
-                argLog("hit %s's %s (expected: %s) for %d (expected: %d) / lc: %d - yaw: %s - reason: %s", playerName, hitbox, cached.hitbox, damage, cached.damage, lagComp, type(desiredYaw) == "number" and desiredYaw.."°" or desiredYaw.."°", mismatchReason)
+                argLog(
+                    "hit %s's %s for %d / exp: %s (%d) - lc: %d - yaw: %s - reason: %s",
+                    playerName, hitbox, damage,
+                    cached.hitbox, cached.damage,
+                    lagComp,
+                    type(desiredYaw) == "number" and desiredYaw.."°" or desiredYaw.."°",
+                    mismatchReason
+                )
             end
         else
             if doScreen then
@@ -5138,35 +5046,29 @@ widgets.register({
         offset_y = -80
     },
     get_size = function(st)
-        local style = interface.visuals.window_style:get()
+        local lineh = 13
+        local padding = 6 
+        local total_lines = 1
+        local total_pixels = 5
         
-        if style == 'new' then
-            local lineh = 13
-            local padding = 6 
-            local total_lines = 1
-            local total_pixels = 5
-            
-            local resolver_enabled = interface.aimbot.enabled_aimbot:get() and interface.aimbot.enabled_resolver_tweaks:get()
-            if resolver_enabled then
-                total_lines = total_lines + 4
-                total_pixels = total_pixels + 6
-            end
-            
+        local resolver_enabled = interface.aimbot.enabled_aimbot:get() and interface.aimbot.enabled_resolver_tweaks:get()
+        if resolver_enabled then
             total_lines = total_lines + 4
             total_pixels = total_pixels + 6
-            
-            local isDT = ui.get(ui_references.double_tap[1]) and ui.get(ui_references.double_tap[2])
-            local isOS = ui.get(ui_references.on_shot_anti_aim[1]) and ui.get(ui_references.on_shot_anti_aim[2])
-            if isDT or isOS then
-                total_lines = total_lines + 3
-            end
-            
-            local width = 150 
-            local height = (total_lines * lineh) + total_pixels + 2
-            return width, height
-        else
-            return 130, 60
         end
+        
+        total_lines = total_lines + 4
+        total_pixels = total_pixels + 6
+        
+        local isDT = ui.get(ui_references.double_tap[1]) and ui.get(ui_references.double_tap[2])
+        local isOS = ui.get(ui_references.on_shot_anti_aim[1]) and ui.get(ui_references.on_shot_anti_aim[2])
+        if isDT or isOS then
+            total_lines = total_lines + 3
+        end
+        
+        local width = 150 
+        local height = (total_lines * lineh) + total_pixels + 2
+        return width, height
     end,
     draw = function(ctx)
         visuals:window(ctx.x, ctx.y + 6, "l")
@@ -5351,10 +5253,11 @@ widgets.load_from_db()
 client.set_event_callback("paint_ui", function()
     widgets.paint_ui()
 end)
+
 client.set_event_callback('pre_config_save', function()
     widgets.save_all()
-    configs.save_loaded()
 end)
+
 client.set_event_callback('post_config_load', function() 
     widgets.load_from_db() 
     streamer_mode.load_db()
@@ -5721,225 +5624,10 @@ buybot = {} do
 end
 --@endregion
 
---@region: json
-local json = {
-    null = {}
-}
-
-function json.encode(val, pretty)
-    local indent = pretty and "    " or ""
-    local level = 0
-
-    local function _encode(v, _pretty)
-        if v == nil then
-            return "null"
-        elseif type(v) == "string" then
-            return string.format("%q", v)
-        elseif type(v) == "number" or type(v) == "boolean" then
-            return tostring(v)
-        elseif type(v) == "table" then
-            if v == json.null then
-                return "null"
-            end
-            
-            level = level + 1
-            local current_indent = _pretty and string.rep(indent, level) or ""
-            local next_indent = _pretty and string.rep(indent, level + 1) or ""
-            
-            local is_array = true
-            local max_index = 0
-            for k, _ in pairs(v) do
-                if type(k) ~= "number" or k < 1 or math.floor(k) ~= k then
-                    is_array = false
-                    break
-                end
-                max_index = math.max(max_index, k)
-            end
-
-            local parts
-            if is_array then
-                parts = {}
-                for i = 1, max_index do
-                    parts[i] = _encode(v[i] or json.null, _pretty)
-                            end
-                        else
-                parts = {}
-                for k, val in pairs(v) do
-                    parts[#parts + 1] = string.format(
-                        "%s%q: %s",
-                        next_indent,
-                        tostring(k),
-                        _encode(val, _pretty)
-                    )
-                end
-            end
-            
-            level = level - 1
-            
-            if is_array then
-                if _pretty then
-                    return "[\n" .. next_indent .. table.concat(parts, ",\n" .. next_indent) .. "\n" .. current_indent .. "]"
-                else
-                    return "[" .. table.concat(parts, ",") .. "]"
-                end
-            else
-                if _pretty then
-                    return "{\n" .. table.concat(parts, ",\n") .. "\n" .. current_indent .. "}"
-                else
-                    return "{" .. table.concat(parts, ",") .. "}"
-                end
-            end
-        end
-        return "null"
-    end
-
-    return _encode(val, pretty)
-end
-
-function json.decode(str)
-    local pos = 1
-    
-    local function skip_whitespace()
-        pos = string.find(str, "[^%s]", pos) or pos
-    end
-    
-    local function decode_string()
-        local quote = str:sub(pos, pos)
-        if quote ~= '"' and quote ~= "'" then return nil end
-        pos = pos + 1
-        local parts = {}
-        while pos <= #str do
-            local c = str:sub(pos, pos)
-            if c == quote then
-                pos = pos + 1
-                return table.concat(parts)
-            elseif c == "\\" then
-                pos = pos + 1
-                if pos > #str then return nil end
-                c = str:sub(pos, pos)
-                if c == "n" then 
-                    parts[#parts + 1] = "\n"
-                elseif c == "r" then 
-                    parts[#parts + 1] = "\r"
-                elseif c == "t" then 
-                    parts[#parts + 1] = "\t"
-                elseif c == "\\" then 
-                    parts[#parts + 1] = "\\"
-                elseif c == '"' then 
-                    parts[#parts + 1] = '"'
-                elseif c == "'" then 
-                    parts[#parts + 1] = "'"
-                elseif c == "/" then 
-                    parts[#parts + 1] = "/"
-                elseif c == "b" then 
-                    parts[#parts + 1] = "\b"
-                elseif c == "f" then 
-                    parts[#parts + 1] = "\f"
-                else
-                    parts[#parts + 1] = c
-                end
-                pos = pos + 1
-            else
-                parts[#parts + 1] = c
-                pos = pos + 1
-            end
-        end
-        return nil
-    end
-    
-    local function decode_number()
-        local start = pos
-        while pos <= #str and string.find(str:sub(pos, pos), "[%d%.eE%+%-]") do
-            pos = pos + 1
-        end
-        local num = tonumber(str:sub(start, pos - 1))
-        if not num then pos = start end
-        return num
-    end
-    
-    local function decode_value()
-        skip_whitespace()
-        if pos > #str then return nil end
-        local c = str:sub(pos, pos)
-        
-        if c == "{" then
-            pos = pos + 1
-            local obj = {}
-            skip_whitespace()
-            while pos <= #str do
-                if str:sub(pos, pos) == "}" then
-                    pos = pos + 1
-                    return obj
-                end
-                local key = decode_string()
-                if not key then return nil end
-                skip_whitespace()
-                if str:sub(pos, pos) ~= ":" then return nil end
-                pos = pos + 1
-                local val = decode_value()
-                obj[key] = val
-                skip_whitespace()
-                if str:sub(pos, pos) == "}" then
-                    pos = pos + 1
-                    return obj
-                elseif str:sub(pos, pos) ~= "," then
-                    return nil
-                end
-                pos = pos + 1
-                skip_whitespace()
-            end
-        elseif c == "[" then
-            pos = pos + 1
-            local arr = {}
-            local index = 1
-            skip_whitespace()
-            while pos <= #str do
-                if str:sub(pos, pos) == "]" then
-                    pos = pos + 1
-                    return arr
-                end
-                local val = decode_value()
-                arr[index] = val
-                index = index + 1
-                skip_whitespace()
-                if str:sub(pos, pos) == "]" then
-                    pos = pos + 1
-                    return arr
-                elseif str:sub(pos, pos) ~= "," then
-                    return nil
-                end
-                pos = pos + 1
-                skip_whitespace()
-            end
-        elseif c == '"' or c == "'" then
-            return decode_string()
-        else
-            local num = decode_number()
-            if num then return num end
-            if str:sub(pos, pos + 3) == "true" then
-                pos = pos + 4
-                return true
-            elseif str:sub(pos, pos + 4) == "false" then
-                pos = pos + 5
-                return false
-            elseif str:sub(pos, pos + 3) == "null" then
-                pos = pos + 4
-                return nil
-            end
-        end
-        return nil
-    end
-    
-    local result = decode_value()
-    return result
-end
-
-
-
 --@region: configs
 configs = {} do
     local DB_KEY = 'noctua.configs'
-    local default_config = ""
+    local default_config = "noctua:eyJ3aWRnZXRzIjogeyJzdHJlYW1lcl9tb2RlX2ltZ18zOSI6IHsib2Zmc2V0X3kiOiA5OTcsImFuY2hvcl94IjogImNlbnRlciIsIm9mZnNldF94IjogMH0sInN0cmVhbWVyX21vZGVfaW1nXzM4IjogeyJhbmNob3JfeSI6ICJjZW50ZXIiLCJvZmZzZXRfeSI6IDk1Mi45OTQ3NDMzMDU0NywiYW5jaG9yX3giOiAiY2VudGVyIiwib2Zmc2V0X3giOiA3NzUuMjAxNTIyODU0Nzd9LCJzdHJlYW1lcl9tb2RlX2ltZ185IjogeyJhbmNob3JfeSI6ICJjZW50ZXIiLCJvZmZzZXRfeSI6IDk2ODcuMTI4NDU4OTA4OSwiYW5jaG9yX3giOiAiY2VudGVyIiwib2Zmc2V0X3giOiAxOTY1Ny45OTc0MjU0NDd9LCJkYW1hZ2VfaW5kaWNhdG9yIjogeyJvZmZzZXRfeCI6IDk3MCwib2Zmc2V0X3kiOiA1NTd9LCJzY3JlZW5fbG9nZ2luZyI6IHsib2Zmc2V0X3kiOiA4NzguNSwiYW5jaG9yX3giOiAiY2VudGVyIiwib2Zmc2V0X3giOiAwfSwic3RyZWFtZXJfbW9kZV9pbWdfMjQiOiB7ImFuY2hvcl95IjogImNlbnRlciIsIm9mZnNldF95IjogMzkyOCwiYW5jaG9yX3giOiAiY2VudGVyIiwib2Zmc2V0X3giOiA5MTExfSwibGNfc3RhdHVzIjogeyJvZmZzZXRfeSI6IDEwNiwiYW5jaG9yX3giOiAiY2VudGVyIiwib2Zmc2V0X3giOiAwfSwid2F0ZXJtYXJrIjogeyJvZmZzZXRfeSI6IDEwNTcsImFuY2hvcl94IjogImNlbnRlciIsIm9mZnNldF94IjogMH0sInN0cmVhbWVyX21vZGVfaW1nXzciOiB7ImFuY2hvcl95IjogImNlbnRlciIsIm9mZnNldF95IjogMTM1ODMsImFuY2hvcl94IjogImNlbnRlciIsIm9mZnNldF94IjogMjY5NzJ9LCJib21iX3RpbWVyIjogeyJvZmZzZXRfeSI6IDE0MiwiYW5jaG9yX3giOiAiY2VudGVyIiwib2Zmc2V0X3giOiAwfSwiZGVidWdfd2luZG93IjogeyJhbmNob3JfeSI6ICJjZW50ZXIiLCJvZmZzZXRfeSI6IDAsIm9mZnNldF94IjogOTN9LCJzdHJlYW1lcl9tb2RlX2ltZ18yMSI6IHsiYW5jaG9yX3kiOiAiY2VudGVyIiwib2Zmc2V0X3kiOiA0NDk5LjAwMDA2MDAwNiwiYW5jaG9yX3giOiAiY2VudGVyIiwib2Zmc2V0X3giOiAxMDQyNi4wMDAwNjI2NTZ9LCJzdHJlYW1lcl9tb2RlX2ltZ18xIjogeyJvZmZzZXRfeSI6IDEwMDgsImFuY2hvcl94IjogImNlbnRlciIsIm9mZnNldF94IjogMH0sImNyb3NzaGFpcl9pbmRpY2F0b3JzIjogeyJvZmZzZXRfeSI6IDU3MiwiYW5jaG9yX3giOiAiY2VudGVyIiwib2Zmc2V0X3giOiAwfX0sInZhbHVlcyI6IHsidmlzdWFscy5lbmVteV9waW5nX3dhcm4iOiB0cnVlLCJ2aXN1YWxzLndpbmRvdyI6IHRydWUsInV0aWxpdHkuYnV5Ym90X3ByaW1hcnkiOiAiYXV0b3NuaXBlcnMiLCJ2aXN1YWxzLnNlY29uZGFyeSI6ICJzZWNvbmRhcnkgY29sb3IiLCJ2aXN1YWxzLmdyZW5hZGVfcmFkaXVzX21vbG90b3ZfY29sb3IuY29sb3IiOiBbMjU1LDIwNCwyMDMsMjU1XSwidmlzdWFscy52aWV3bW9kZWwiOiB0cnVlLCJ2aXN1YWxzLmdyZW5hZGVfcmFkaXVzX3Ntb2tlX2NvbG9yIjogInNtb2tlIGNvbG9yIiwidmlzdWFscy5sb2dnaW5nX29wdGlvbnMiOiBbImNvbnNvbGUiLCJzY3JlZW4iXSwidmlzdWFscy5hc3BlY3RfcmF0aW8iOiB0cnVlLCJ2aXN1YWxzLmFzcGVjdF9yYXRpb19zbGlkZXIiOiAxMjUsInZpc3VhbHMuY3Jvc3NoYWlyX2luZGljYXRvcnMiOiBmYWxzZSwidmlzdWFscy53aW5kb3dfZmxhZyI6IGZhbHNlLCJ2aXN1YWxzLnZndWkuY29sb3IiOiBbOTEsOTEsOTEsMjU1XSwidmlzdWFscy50aGlyZHBlcnNvbl9zbGlkZXIiOiAzMCwidmlzdWFscy5sb2dnaW5nX3NsaWRlciI6IDI0MCwidmlzdWFscy52Z3VpIjogInZndWkgY29sb3IiLCJ2aXN1YWxzLnZpZXdtb2RlbF95IjogMCwidXRpbGl0eS5zdHJlYW1lcl9tb2RlIjogZmFsc2UsInV0aWxpdHkuYnV5Ym90X3V0aWxpdHkiOiBbImtldmxhciIsImhlbG1ldCIsImRlZnVzZXIiLCJ0YXNlciIsImhlIiwibW9sb3RvdiIsInNtb2tlIl0sImFpbWJvdC5yZXNvbHZlcl9tb2RlIjogImV4cGVyaW1lbnRhbCIsInV0aWxpdHkub25fYWlyX29wdGlvbnMiOiAiZnJvemVuIiwidmlzdWFscy5zdGlja21hbi5jb2xvciI6IFsyNTUsMjU1LDI1NSwxNDBdLCJ1dGlsaXR5LmtpbGxzYXkiOiBmYWxzZSwidmlzdWFscy50aGlyZHBlcnNvbiI6IHRydWUsInZpc3VhbHMuc3RpY2ttYW4iOiBmYWxzZSwidmlzdWFscy5lbmVteV9waW5nX21pbmltdW0iOiA3MCwidmlzdWFscy56b29tX2FuaW1hdGlvbiI6IGZhbHNlLCJ2aXN1YWxzLnNlY29uZGFyeS5jb2xvciI6IFsyNDEsMjMxLDI1NSwyNTVdLCJ2aXN1YWxzLndvcmxkX2RhbWFnZSI6IHRydWUsInZpc3VhbHMuZW5hYmxlZF92aXN1YWxzIjogdHJ1ZSwidmlzdWFscy5ncmVuYWRlX3JhZGl1c19tb2xvdG92X2NvbG9yIjogIm1vbG90b3YgY29sb3IiLCJhaW1ib3Quc2lsZW50X3Nob3QiOiB0cnVlLCJhaW1ib3Qubm9zY29wZV9kaXN0YW5jZV9zY291dCI6IDQ1MCwidmlzdWFscy5ncmVuYWRlX3JhZGl1cyI6IFsic21va2UiLCJtb2xvdG92Il0sInZpc3VhbHMuYWNjZW50LmNvbG9yIjogWzIwOCwxNzEsMjU1LDI1NV0sInV0aWxpdHkuYnV5Ym90X3NlY29uZGFyeSI6ICJ0ZWMtOSAvIGZpdmUtcyAvIGN6LTc1IiwidmlzdWFscy52aWV3bW9kZWxfeiI6IDAsImFpbWJvdC5lbmFibGVkX3Jlc29sdmVyX3R3ZWFrcyI6IHRydWUsInV0aWxpdHkub25fZ3JvdW5kX29wdGlvbnMiOiAiaml0dGVyIiwiYWltYm90LmVuYWJsZWRfYWltYm90IjogdHJ1ZSwidmlzdWFscy5jcm9zc2hhaXJfYW5pbWF0ZV9zY29wZSI6IHRydWUsImFpbWJvdC5mb3JjZV9yZWNoYXJnZSI6IHRydWUsInZpc3VhbHMubG9nZ2luZ19vcHRpb25zX2NvbnNvbGUiOiBbImhpdCIsIm1pc3MiLCJhaW1ib3QiXSwidXRpbGl0eS5ib2R5X2xlYW5fYW1vdW50IjogMTAwLCJ2aXN1YWxzLmNyb3NzaGFpcl9zdHlsZSI6ICJjZW50ZXIiLCJ2aXN1YWxzLmdyZW5hZGVfcmFkaXVzX3Ntb2tlX2NvbG9yLmNvbG9yIjogWzE3MywyMTYsMjMwLDI1NV0sInV0aWxpdHkuYnV5Ym90X3ByaW1hcnlfZmFsbGJhY2siOiAic2NvdXQiLCJhaW1ib3Qubm9zY29wZV9kaXN0YW5jZV9hdXRvc25pcGVycyI6IDQ1MCwidXRpbGl0eS5idXlib3QiOiB0cnVlLCJ2aXN1YWxzLmRhbWFnZV9pbmRpY2F0b3IiOiB0cnVlLCJhaW1ib3QucXVpY2tfc3RvcC5ob3RrZXlfbW9kZV9pZHgiOiAwLCJ1dGlsaXR5LmhpdHNvdW5kIjogdHJ1ZSwidXRpbGl0eS5wYXJ0eV9tb2RlIjogZmFsc2UsInZpc3VhbHMud2F0ZXJtYXJrX3Nob3ciOiBbInRpbWUiLCJwaW5nIl0sInV0aWxpdHkuYW5pbWF0aW9uX2JyZWFrZXJzIjogWyJ6ZXJvIG9uIGxhbmQiLCJlYXJ0aHF1YWtlIiwic2xpZGluZyBzbG93IG1vdGlvbiIsInNsaWRpbmcgY3JvdWNoIiwib24gZ3JvdW5kIiwib24gYWlyIiwicXVpY2sgcGVlayBsZWdzIiwiYm9keSBsZWFuIl0sInV0aWxpdHkuY2xhbnRhZyI6IGZhbHNlLCJ1dGlsaXR5LnN0cmVhbWVyX21vZGVfc2VsZWN0IjogMSwidXRpbGl0eS5raWxsc2F5X21vZGVzIjogWyJvbiBraWxsIiwib24gZGVhdGgiXSwiYWltYm90Lm5vc2NvcGVfZGlzdGFuY2VfYXdwIjogNDUwLCJ2aXN1YWxzLnpvb21fYW5pbWF0aW9uX3NwZWVkIjogNTAsInZpc3VhbHMubG9nZ2luZyI6IHRydWUsInZpc3VhbHMud29ybGRfZGFtYWdlX3R5cGUiOiAiZHluYW1pYyIsImFpbWJvdC5xdWlja19zdG9wIjogZmFsc2UsInZpc3VhbHMubGNfc3RhdHVzIjogZmFsc2UsInZpc3VhbHMud2F0ZXJtYXJrIjogZmFsc2UsImFpbWJvdC5ub3Njb3BlX2Rpc3RhbmNlIjogdHJ1ZSwidmlzdWFscy52aWV3bW9kZWxfZm92IjogMjUsInZpc3VhbHMuem9vbV9hbmltYXRpb25fdmFsdWUiOiAyLCJ2aXN1YWxzLnNwYXduX3pvb20iOiB0cnVlLCJ2aXN1YWxzLnZpZXdtb2RlbF94IjogMCwidmlzdWFscy5ib21iX3RpbWVyIjogdHJ1ZSwidmlzdWFscy5hY2NlbnQiOiAiYWNjZW50IGNvbG9yIiwiYWltYm90LnF1aWNrX3N0b3AuaG90a2V5X2tleWNvZGUiOiAzMiwidmlzdWFscy5sb2dnaW5nX29wdGlvbnNfc2NyZWVuIjogWyJoaXQiLCJtaXNzIiwiYWltYm90Il0sImFpbWJvdC5ub3Njb3BlX3dlYXBvbnMiOiBbImF1dG9zbmlwZXJzIl19LCJ2ZXJzaW9uIjogMSwiY29uZmlnX25hbWUiOiAidGVzdCJ9"
 
     local b64_chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
     local function b64_encode_fallback(str)
@@ -6068,7 +5756,6 @@ configs = {} do
         collect_group('aimbot', interface.aimbot, out)
         collect_group('visuals', interface.visuals, out)
         collect_group('utility', interface.utility, out)
-        collect_group('builder', interface.builder, out)
         local wkey = screen_key()
         local ok, wpos = pcall(database.read, (widgets and widgets.db_key_prefix or 'noctua.widgets.positions') .. '.' .. wkey)
         if ok and type(wpos) == 'table' then
@@ -6121,57 +5808,12 @@ configs = {} do
         apply_group('aimbot', interface.aimbot, values)
         apply_group('visuals', interface.visuals, values)
         apply_group('utility', interface.utility, values)
-        apply_group('builder', interface.builder, values)
         if data.widgets then
             local key = (widgets and widgets.db_key_prefix or 'noctua.widgets.positions') .. '.' .. screen_key()
             pcall(database.write, key, data.widgets)
             widgets.load_from_db()
             streamer_mode.load_db()
         end
-    end
-
-    function configs.apply_aa_only(data)
-        if type(data) ~= 'table' then return end
-        local values = data.values or {}
-        apply_group('builder', interface.builder, values)
-    end
-
-    function configs.import_aa_from_clipboard()
-        local clip = clipboard.get() or ''
-        clip = clip:gsub('^%s+', ''):gsub('%s+$', '')
-        if clip:find('^noctua:') then clip = clip:sub(8) end
-        clip = clip:gsub('^%s+', ''):gsub('%s+$', '')
-        
-        if clip == '' then
-            logMessage('noctua · config', '', 'clipboard is empty!')
-            client.exec("play ui/menu_invalid.wav")
-            return
-        end
-        
-        local decoded = b64_decode(clip)
-        if not decoded or decoded == '' then
-            logMessage('noctua · config', '', 'failed to decode base64!')
-            client.exec("play ui/menu_invalid.wav")
-            return
-        end
-        
-        local ok_json, data = pcall(json.decode, decoded)
-        if not ok_json then
-            logMessage('noctua · config', '', 'json decode error: ' .. tostring(data))
-            client.exec("play ui/menu_invalid.wav")
-            return
-        end
-        
-        if type(data) ~= 'table' or not data.values then
-            logMessage('noctua · config', '', 'failed to parse config! (invalid structure)')
-            client.exec("play ui/menu_invalid.wav")
-            return
-        end
-        
-        configs.apply_aa_only(data)
-        
-        logMessage('noctua · config', '', 'anti-aim imported from clipboard!')
-        client.exec("play ui/beepclear.wav")
     end
 
     function configs.load_default()
@@ -6391,55 +6033,6 @@ configs = {} do
         client.exec("play ui/beepclear.wav")
     end
 
-    function configs.load_aa_only()
-        local name = get_selected_name()
-        if not name then
-            logMessage('noctua · config', '', 'select a config first!')
-            client.exec("play ui/menu_invalid.wav")
-            return
-        end
-        if name == 'default' then
-            if not default_config or default_config == '' then
-                logMessage('noctua · config', '', 'default config is empty!')
-                return
-            end
-            local clip = default_config
-            clip = clip:gsub('^%s+', ''):gsub('%s+$', '')
-            if clip:find('^noctua:') then clip = clip:sub(8) end
-            clip = clip:gsub('^%s+', ''):gsub('%s+$', '')
-            local decoded = b64_decode(clip)
-            if not decoded or decoded == '' then
-                logMessage('noctua · config', '', 'failed to decode default base64!')
-                client.exec("play ui/menu_invalid.wav")
-                return
-            end
-            local data = json.decode(decoded)
-            if type(data) ~= 'table' or not data.values then
-                logMessage('noctua · config', '', 'failed to parse default config!')
-                client.exec("play ui/menu_invalid.wav")
-                return
-            end
-            configs.apply_aa_only(data)
-            logMessage('noctua · config', '', 'anti-aim loaded from default!')
-            client.exec("play ui/beepclear.wav")
-            return
-        end
-        if name == '+ new' then
-            logMessage('noctua · config', '', 'please create a new config first!')
-            client.exec("play ui/menu_invalid.wav")
-            return
-        end
-        local data = state.data[name]
-        if type(data) ~= 'table' then
-            logMessage('noctua · config', '', 'config data is invalid!')
-            client.exec("play ui/menu_invalid.wav")
-            return
-        end
-        configs.apply_aa_only(data)
-        logMessage('noctua · config', '', 'anti-aim loaded!')
-        client.exec("play ui/beepclear.wav")
-    end
-
     function configs.delete_selected()
         local name = get_selected_name()
         if not name then
@@ -6494,49 +6087,18 @@ configs = {} do
         local is_default = (name == 'default')
         local has_config = name and name ~= '+ new' and name ~= '<no configs>'
         
-        if interface.config.name then
-            interface.config.name:set_visible(is_new)
+        interface.config.name:set_visible(is_new)
+        interface.config.create_button:set_visible(is_new)
+        interface.config.load_button:set_visible(has_config)
+        interface.config.load_on_startup:set_visible(has_config)
+        if has_config and name then
+            interface.config.load_on_startup:set(state.load_on_startup == name)
         end
-
-        if interface.config.create_button then
-            interface.config.create_button:set_visible(is_new)
-        end
-        
-        if interface.config.load_button then
-            interface.config.load_button:set_visible(has_config)
-        end
-        
-        if interface.config.load_aa_button then
-            interface.config.load_aa_button:set_visible(has_config)
-        end
-        
-        if interface.config.load_on_startup then
-            interface.config.load_on_startup:set_visible(has_config)
-            if has_config and name then
-                interface.config.load_on_startup:set(state.load_on_startup == name)
-            end
-        end
-        
         local show_user_buttons = has_config and not is_default
-        if interface.config.save_button then
-            interface.config.save_button:set_visible(show_user_buttons)
-        end
-        
-        if interface.config.import_button then
-            interface.config.import_button:set_visible(not is_new)
-        end
-
-        if interface.config.import_aa_button then
-            interface.config.import_aa_button:set_visible(not is_new)
-        end
-
-        if interface.config.export_button then
-            interface.config.export_button:set_visible(not is_new)
-        end
-
-        if interface.config.delete_button then
-            interface.config.delete_button:set_visible(show_user_buttons)
-        end
+        interface.config.save_button:set_visible(show_user_buttons)
+        interface.config.import_button:set_visible(not is_new)
+        interface.config.export_button:set_visible(not is_new)
+        interface.config.delete_button:set_visible(show_user_buttons)
     end
     
     function configs.update_load_on_startup_checkbox()
@@ -6590,15 +6152,11 @@ configs = {} do
 
         interface.config.load_button:set_callback(configs.load_selected)
 
-        interface.config.load_aa_button:set_callback(configs.load_aa_only)
-
         interface.config.delete_button:set_callback(configs.delete_selected)
 
         interface.config.export_button:set_callback(configs.export_to_clipboard)
 
         interface.config.import_button:set_callback(configs.import_from_clipboard)
-
-        interface.config.import_aa_button:set_callback(configs.import_aa_from_clipboard)
 
         interface.config.list:set_callback(function()
             -- replaced later
@@ -7146,1011 +6704,6 @@ party_mode = {} do
     end
     
     client.set_event_callback("paint", party_mode.setup)
-end
---@endregion
-
---@region: anti-aim
-antiaim = {} do
-    local reference = {} do
-        reference.ragebot = {} do
-            reference.ragebot.enabled = pui.reference("RAGE", "Aimbot", "Enabled")
-            reference.ragebot.double_tap = pui.reference("RAGE", "Aimbot", "Double tap")
-            reference.ragebot.dt_limit = {pui.reference("rage", "aimbot", "Double tap fake lag limit")}
-            reference.ragebot.duck = pui.reference("RAGE", "Other", "Duck peek assist")
-            reference.ragebot.quick_peek = pui.reference("Rage", "Other", "Quick peek assist")
-            reference.ragebot.ovr = { pui.reference('rage', 'aimbot', 'minimum damage override') }
-            reference.ragebot.force_bodyaim = pui.reference('RAGE', 'Aimbot', 'Force body aim')
-            reference.ragebot.force_safepoint = pui.reference('RAGE', 'Aimbot', 'Force safe point')
-        end
-
-        reference.antiaim = {} do
-            reference.antiaim.enable = pui.reference("AA", "Anti-Aimbot angles", "Enabled")
-            reference.antiaim.pitch = { pui.reference("AA", "Anti-Aimbot angles", "Pitch") }
-            reference.antiaim.yaw = { pui.reference("AA", "Anti-Aimbot angles", "Yaw") }
-            reference.antiaim.base = pui.reference("AA", "Anti-Aimbot angles", "Yaw base")
-            reference.antiaim.jitter = { pui.reference("AA", "Anti-Aimbot angles", "Yaw jitter") }
-            reference.antiaim.body = { pui.reference("AA", "Anti-Aimbot angles", "Body yaw") }
-            reference.antiaim.edge = pui.reference("AA", "Anti-Aimbot angles", "Edge yaw")
-            reference.antiaim.fs_body = pui.reference("AA", "Anti-Aimbot angles", "Freestanding body yaw")
-            reference.antiaim.freestand = pui.reference("AA", "Anti-Aimbot angles", "Freestanding")
-            reference.antiaim.roll = pui.reference("AA", "Anti-Aimbot angles", "Roll")
-            reference.antiaim.slowmotion = pui.reference("AA", "Other", "Slow motion")
-            reference.antiaim.onshot = pui.reference("AA", "Other", "On shot anti-aim")
-            reference.antiaim.leg_movement = pui.reference('AA', 'Other', 'Leg movement')
-        end
-
-        reference.fakelag = {} do
-            reference.fakelag.enable = {pui.reference('AA', 'Fake lag', 'Enabled')}
-            reference.fakelag.amount = pui.reference('AA', 'Fake lag', 'Amount')
-            reference.fakelag.variance = pui.reference('AA', 'Fake lag', 'Variance')
-            reference.fakelag.limit = pui.reference('AA', 'Fake lag', 'Limit')
-        end
-    end
-
-    local memory = {} do
-        local ffi_ok = true
-        pcall(function()
-            memory.get_client_entity = vtable_bind('client.dll', 'VClientEntityList003', 3, 'void*(__thiscall*)(void***, int)')
-        end)
-
-        memory.animstate = {} do
-            local animstate_t = ffi.typeof 'struct { char pad0[0x18]; float anim_update_timer; char pad1[0xC]; float started_moving_time; float last_move_time; char pad2[0x10]; float last_lby_time; char pad3[0x8]; float run_amount; char pad4[0x10]; void* entity; void* active_weapon; void* last_active_weapon; float last_client_side_animation_update_time; int last_client_side_animation_update_framecount; float eye_timer; float eye_angles_y; float eye_angles_x; float goal_feet_yaw; float current_feet_yaw; float torso_yaw; float last_move_yaw; float lean_amount; char pad5[0x4]; float feet_cycle; float feet_yaw_rate; char pad6[0x4]; float duck_amount; float landing_duck_amount; char pad7[0x4]; float current_origin[3]; float last_origin[3]; float velocity_x; float velocity_y; char pad8[0x4]; float unknown_float1; char pad9[0x8]; float unknown_float2; float unknown_float3; float unknown; float m_velocity; float jump_fall_velocity; float clamped_velocity; float feet_speed_forwards_or_sideways; float feet_speed_unknown_forwards_or_sideways; float last_time_started_moving; float last_time_stopped_moving; bool on_ground; bool hit_in_ground_animation; char pad10[0x4]; float time_since_in_air; float last_origin_z; float head_from_ground_distance_standing; float stop_to_full_running_fraction; char pad11[0x4]; float magic_fraction; char pad12[0x3C]; float world_force; char pad13[0x1CA]; float min_yaw; float max_yaw; } **'
-            memory.animstate.offset = 0x9960
-            memory.animstate.get = function (self, ent)
-                if not ent then return end
-                local client_entity = memory.get_client_entity and memory.get_client_entity(ent)
-                if not client_entity then return end
-                return ffi.cast(animstate_t, ffi.cast('uintptr_t', client_entity) + self.offset)[0]
-            end
-        end
-
-        memory.animlayers = {} do
-            if not pcall(ffi.typeof, 'bt_animlayer_t') then
-                ffi.cdef[[
-                    typedef struct {
-                        float   anim_time;
-                        float   fade_out_time;
-                        int     nil;
-                        int     activty;
-                        int     priority;
-                        int     order;
-                        int     sequence;
-                        float   prev_cycle;
-                        float   weight;
-                        float   weight_delta_rate;
-                        float   playback_rate;
-                        float   cycle;
-                        int     owner;
-                        int     bits;
-                    } bt_animlayer_t, *pbt_animlayer_t;
-                ]]
-            end
-            local ok, offset = pcall(function()
-                return ffi.cast('int*', ffi.cast('uintptr_t', client.find_signature('client.dll', '\x8B\x89\xCC\xCC\xCC\xCC\x8D\x0C\xD1')) + 2)[0]
-            end)
-            memory.animlayers.offset = ok and offset or 0x2990
-            memory.animlayers.get = function (self, ent)
-                local client_entity = memory.get_client_entity and memory.get_client_entity(ent)
-                if not client_entity then return end
-                return ffi.cast('pbt_animlayer_t*', ffi.cast('uintptr_t', client_entity) + self.offset)[0]
-            end
-        end
-
-        memory.activity = {} do
-            if not pcall(ffi.typeof, 'bt_get_sequence') then
-                ffi.cdef[[ typedef int(__fastcall* bt_get_sequence)(void* entity, void* studio_hdr, int sequence); ]]
-            end
-            memory.activity.offset = 0x2950
-            local ok, loc = pcall(function()
-                return ffi.cast('bt_get_sequence', client.find_signature('client.dll', '\x55\x8B\xEC\x53\x8B\x5D\x08\x56\x8B\xF1\x83'))
-            end)
-            memory.activity.location = ok and loc or nil
-            memory.activity.get = function (self, sequence, ent)
-                if not self.location then return 0 end
-                local client_entity = memory.get_client_entity and memory.get_client_entity(ent)
-                if not client_entity then return 0 end
-                local studio_hdr = ffi.cast('void**', ffi.cast('uintptr_t', client_entity) + self.offset)[0]
-                if not studio_hdr then return 0 end
-                return self.location(client_entity, studio_hdr, sequence)
-            end
-        end
-
-        memory.user_input = {} do
-            if not pcall(ffi.typeof, 'bt_cusercmd_t') then
-                ffi.cdef[[
-                    typedef struct {
-                        struct bt_cusercmd_t (*cusercmd)();
-                        int     command_number;
-                        int     tick_count;
-                        float   view[3];
-                        float   aim[3];
-                        float   move[3];
-                        int     buttons;
-                    } bt_cusercmd_t;
-                ]]
-            end
-            if not pcall(ffi.typeof, 'bt_get_usercmd') then
-                ffi.cdef[[ typedef bt_cusercmd_t*(__thiscall* bt_get_usercmd)(void* input, int, int command_number); ]]
-            end
-            local ok, vtbl = pcall(function()
-                return ffi.cast('void***', ffi.cast('void**', ffi.cast('uintptr_t', client.find_signature('client.dll', '\xB9\xCC\xCC\xCC\xCC\x8B\x40\x38\xFF\xD0\x84\xC0\x0F\x85') or error('sig')) + 1)[0])
-            end)
-            if ok and vtbl then
-                memory.user_input.vtbl = vtbl
-                memory.user_input.location = ffi.cast('bt_get_usercmd', vtbl[0][8])
-                memory.user_input.get_command = function (self, command_number)
-                    return self.location(self.vtbl, 0, command_number)
-                end
-            else
-                memory.user_input.get_command = function() return nil end
-            end
-        end
-
-        memory.get_simtime = function(ent)
-            local pointer = memory.get_client_entity and memory.get_client_entity(ent)
-            if pointer then
-                return entity.get_prop(ent, "m_flSimulationTime"), ffi.cast("float*", ffi.cast("uintptr_t", pointer) + 620)[0]
-            else
-                return 0
-            end
-        end
-    end
-
-    -- @region: animation breakers
-    local animation_breakers = {} do
-        local char_ptr = ffi.typeof('char*')
-        local class_ptr = ffi.typeof('void***')
-        local animation_layer_t = ffi.typeof([[struct {
-            char pad0[0x18];
-            uint32_t sequence;
-            float prev_cycle, weight, weight_delta_rate, playback_rate, cycle;
-            void *entity;
-            char pad1[0x4];
-        }**]])
-
-        local nullptr = ffi.new('void*')
-        local leg_movement_ref = reference.antiaim.leg_movement
-        local slowmotion_ref = reference.antiaim.slowmotion
-        local quick_peek_ref = reference.ragebot.quick_peek
-
-        local function get_player_state()
-            local me = entity.get_local_player()
-            if not me then return 'stand' end
-
-            local vx, vy = entity.get_prop(me, 'm_vecVelocity')
-            local speed = math.sqrt(vx*vx + vy*vy)
-            local flags = entity.get_prop(me, 'm_fFlags')
-            local on_ground = bit.band(flags, 1) == 1
-            local duck_amount = entity.get_prop(me, 'm_flDuckAmount')
-
-            if not on_ground then
-                return 'air'
-            elseif duck_amount > 0.7 then
-                return speed > 4 and 'crouch move' or 'crouch'
-            elseif speed > 4 then
-                return 'move'
-            else
-                return 'stand'
-            end
-        end
-
-        animation_breakers.update_pose_params = function()
-            local me = entity.get_local_player()
-            if not me or not entity.is_alive(me) then return end
-
-            local breakers_enabled = interface.utility.animation_breakers:get()
-            if not breakers_enabled then return end
-
-            local animlayers = memory.animlayers:get(me)
-            if not animlayers then return end
-
-            if utils.contains(breakers_enabled, 'keus scale') then
-                entity.set_prop(me, 'm_flModelScale', 0.5)
-                entity.set_prop(me, 'm_ScaleType', 1)
-            else
-                entity.set_prop(me, 'm_flModelScale', 1)
-                entity.set_prop(me, 'm_ScaleType', 0)
-            end
-
-            local player_state = get_player_state()
-            local on_ground = bit.band(entity.get_prop(me, 'm_fFlags'), 1) == 1
-
-            if utils.contains(breakers_enabled, 'on ground') and on_ground then
-                local leg_move = interface.utility.on_ground_options:get()
-
-                if leg_move == 'frozen' then
-                    entity.set_prop(me, 'm_flPoseParameter', 1, 0)
-                    leg_movement_ref:set('Always slide')
-                elseif leg_move == 'walking' then
-                    entity.set_prop(me, 'm_flPoseParameter', 0.5, 7)
-                    leg_movement_ref:set('Never slide')
-                elseif leg_move == 'jitter' and player_state == 'move' then
-                    entity.set_prop(me, 'm_flPoseParameter', client.random_float(0.65, 1), 0)
-                    leg_movement_ref:set('Always slide')
-                elseif leg_move == 'sliding' and player_state == 'move' then
-                    entity.set_prop(me, 'm_flPoseParameter', 0, 9)
-                    entity.set_prop(me, 'm_flPoseParameter', 0, 10)
-                    leg_movement_ref:set('Never slide')
-                elseif leg_move == 'star' then
-                    entity.set_prop(me, 'm_flPoseParameter', 1, globals.tickcount() % 4 > 1 and 0.5 / 10 or 1)
-                end
-            end
-
-            local move_type = entity.get_prop(me, 'm_MoveType')
-            if utils.contains(breakers_enabled, 'on air') and not on_ground and not (move_type == 9 or move_type == 8) then
-                local air_legs = interface.utility.on_air_options:get()
-
-                if air_legs == 'frozen' then
-                    entity.set_prop(me, 'm_flPoseParameter', 1, 6)
-                elseif air_legs == 'walking' then
-                    local cycle = globals.realtime() * 0.7 % 2
-                    if cycle > 1 then cycle = 1 - (cycle - 1) end
-                    animlayers[6]['weight'] = 1
-                    animlayers[6]['cycle'] = cycle
-                elseif air_legs == 'kinguru' then
-                    entity.set_prop(me, 'm_flPoseParameter', math.random(0, 10) / 10, 6)
-                end
-            end
-
-            if utils.contains(breakers_enabled, 'sliding slow motion') and slowmotion_ref.hotkey:get() then
-                entity.set_prop(me, 'm_flPoseParameter', 0, 9)
-            end
-
-            if utils.contains(breakers_enabled, 'sliding crouch') and (player_state == 'crouch' or player_state == 'crouch move') then
-                entity.set_prop(me, 'm_flPoseParameter', 0, 8)
-            end
-
-            if utils.contains(breakers_enabled, 'zero on land') and memory.animstate:get(me).hit_in_ground_animation and on_ground then
-                entity.set_prop(me, 'm_flPoseParameter', 0.5, 12)
-            end
-
-            if utils.contains(breakers_enabled, 'earthquake') or utils.contains(breakers_enabled, 'body lean') then
-                local player_ptr = ffi.cast(class_ptr, memory.get_client_entity(ffi.cast('int', me)))
-                if player_ptr ~= nullptr then
-                    local anim_layers = ffi.cast(animation_layer_t, ffi.cast(char_ptr, player_ptr) + 0x2990)[0]
-                    if anim_layers ~= nullptr then
-                        if utils.contains(breakers_enabled, 'earthquake') then
-                            anim_layers[12].weight = client.random_float(-0.3, 0.75)
-                        elseif utils.contains(breakers_enabled, 'body lean') then
-                            local body_lean_value = interface.utility.body_lean_amount:get() or 50
-                            anim_layers[12].weight = body_lean_value / 100
-                        end
-                    end
-                end
-            end
-        end
-
-        animation_breakers.post = function(cmd)
-            local enabled = interface.utility.animation_breakers:get()
-            if not enabled then return end
-
-            if utils.contains(enabled, 'quick peek legs') and quick_peek_ref.hotkey:get() then
-                local me = entity.get_local_player()
-                if not me then return end
-
-                local move_type = entity.get_prop(me, 'm_MoveType')
-                if move_type == 2 then
-                    local command = memory.user_input:get_command(cmd.command_number)
-                    if command then
-                        command.buttons = bit.band(command.buttons, bit.bnot(8))
-                        command.buttons = bit.band(command.buttons, bit.bnot(16))
-                        command.buttons = bit.band(command.buttons, bit.bnot(512))
-                        command.buttons = bit.band(command.buttons, bit.bnot(1024))
-                    end
-                end
-            end
-        end
-
-        animation_breakers.setup = function()
-            client.set_event_callback('pre_render', animation_breakers.update_pose_params)
-            client.set_event_callback('post', animation_breakers.post)
-        end
-
-        animation_breakers.setup()
-    end
-    --@endregion
-
-    local math_utils = {} do
-        math_utils.normalize_yaw = function(a)
-            while a > 180 do a = a - 360 end
-            while a < -180 do a = a + 360 end
-            return a
-        end
-        math_utils.lerp = function(a, b, w) return a + (b - a) * w end
-        math_utils.contains = function(tbl, value)
-            local tbl_len = #tbl
-            for i=1, tbl_len do if tbl[i] == value then return true end end
-            return false
-        end
-        math_utils.extend_vector = function(pos, length, angle)
-            local rad = angle * math.pi / 180
-            if not angle or not pos or not length then return end
-            return { pos[1] + (math.cos(rad) * length), pos[2] + (math.sin(rad) * length), pos[3] }
-        end
-        math_utils.closest_ray_point = function(p, s, e)
-            local t, d = p - s, e - s
-            local l = d:length()
-            d = d / l
-            local r = d:dot(t)
-            if r < 0 then return s elseif r > l then return e end
-            return s + d * r
-        end
-    end
-
-    local player = {
-        shifting = false,
-        defensive = false,
-        onground = false,
-        is_fs_peek = false,
-        duckamount = 0,
-        speed = 0,
-        packets = 0,
-        fs_side = 'none',
-        state = 'idle',
-        body_yaw = 0.0,
-        get_players = {},
-        lc_left = 0.0,
-        crouching = false,
-    }
-
-    do
-        local last_commandnumber
-        local tickbase_max = 0
-        local function get_double_tap()
-            local me = entity.get_local_player()
-            local m_nTickBase = me and entity.get_prop(me, 'm_nTickBase') or 0
-            local client_latency = client.latency()
-            local shift = math.floor(m_nTickBase - globals.tickcount() - 3 - toticks(client_latency) * .5 + .5 * (client_latency * 10))
-            local wanted = -14 + ((reference.ragebot.dt_limit[1] and reference.ragebot.dt_limit[1]:get() or 1) - 1) + 3
-            return shift <= wanted
-        end
-        local function defensive_predict(cmd)
-            local me = entity.get_local_player()
-            if not me or last_commandnumber ~= cmd.command_number then return false end
-            local tickbase = entity.get_prop(me, "m_nTickBase") or 0
-            if math.abs(tickbase - tickbase_max) > 64 then tickbase_max = 0 end
-            if tickbase > tickbase_max then
-                tickbase_max = tickbase
-            end
-            player.lc_left = math.min(14, math.max(0, tickbase_max - tickbase - 1))
-            return player.lc_left ~= 1 and player.lc_left > 2 and globals.chokedcommands() < 13
-        end
-        client.set_event_callback("run_command", function(cmd)
-            last_commandnumber = cmd.command_number
-            player.shifting = get_double_tap()
-        end)
-        local function is_onground()
-            local animstate = memory.animstate:get(entity.get_local_player())
-            if not animstate then return true end
-            local ptr_addr = ffi.cast('uintptr_t', ffi.cast('void*', animstate))
-            local landed_on_ground_this_frame = ffi.cast('bool*', ptr_addr + 0x120)[0]
-            return animstate.on_ground and not landed_on_ground_this_frame
-        end
-        local function is_fs_peek()
-            local me = entity.get_local_player()
-            local enemy = client.current_threat()
-            if not me or entity.is_dormant(enemy) then return false end
-            local _, yaw = client.camera_angles(me)
-            local left2 = math_utils.extend_vector({entity.get_origin(me)},30,yaw + 60)
-            local right2 = math_utils.extend_vector({entity.get_origin(me)},30,yaw - 60)
-            local _, yaw_e = entity.get_prop(enemy, "m_angEyeAngles")
-            local enemy_right2 = math_utils.extend_vector({entity.get_origin(enemy)},20,yaw_e - 35)
-            local enemy_left2 = math_utils.extend_vector({entity.get_origin(enemy)},20,yaw_e + 35)
-            local _, dmg_left2 = client.trace_bullet(enemy, enemy_left2[1], enemy_left2[2], enemy_left2[3] + 30, left2[1], left2[2], left2[3], true)
-            local _, dmg_right2 = client.trace_bullet(enemy, enemy_right2[1], enemy_right2[2], enemy_right2[3] + 30, right2[1], right2[2], right2[3], true)
-            if dmg_right2 > 0 and dmg_left2 > 0 then return false
-            elseif dmg_left2 > 0 then return true
-            elseif dmg_right2 > 0 then return true end
-            return false
-        end
-        local function get_state()
-            if not player.onground then
-                if player.duckamount > 0.5 then return 'airc' else return 'air' end
-            end
-            if player.duckamount > 0.5 or (reference.ragebot.duck and reference.ragebot.duck:get()) then
-                if player.speed > 4 then return 'duck move' else return 'duck' end
-            end
-            local slowmotion_state = reference.antiaim.slowmotion.hotkey:get()
-            if slowmotion_state then return 'slow' end
-            if player.speed > 4 then return 'run' end
-            return 'idle'
-        end
-        local function get_side(target)
-            local local_pos, enemy_pos = vector(entity.hitbox_position(entity.get_local_player(), 0)), vector(entity.hitbox_position(target, 0))
-            local _, yaw = (local_pos-enemy_pos):angles()
-            local l_dir, r_dir = vector():init_from_angles(0, yaw+90), vector():init_from_angles(0, yaw-90)
-            local l_pos, r_pos = local_pos + l_dir * 110, local_pos + r_dir * 110
-            local fraction = client.trace_line(target, enemy_pos.x, enemy_pos.y, enemy_pos.z, l_pos.x, l_pos.y, l_pos.z)
-            local fraction_s = client.trace_line(target, enemy_pos.x, enemy_pos.y, enemy_pos.z, r_pos.x, r_pos.y, r_pos.z)
-            if fraction > fraction_s then return 'left'
-            elseif fraction_s > fraction then return 'right'
-            elseif fraction == fraction_s then return 'none' end
-            return 'none'
-        end
-        local function get_fs_side()
-            local me = entity.get_local_player()
-            local target, cross_target, best_yaw = nil, nil, 362
-            local enemy_list = entity.get_players(true)
-            local stomach_origin = vector(entity.hitbox_position(me, 2))
-            local camera_angles = vector(client.camera_angles())
-            for idx=1, #enemy_list do
-                local ent = enemy_list[idx]
-                local ent_wpn = entity.get_player_weapon(ent)
-                if ent_wpn then
-                    local enemy_head = vector(entity.hitbox_position(ent, 2))
-                    local _, yaw = (stomach_origin-enemy_head):angles()
-                    local base_diff = math.abs(camera_angles.y-yaw)
-                    if base_diff < best_yaw then cross_target = ent; best_yaw = base_diff end
-                end
-            end
-            if not target then target = cross_target end
-            return target and get_side(target) or 'none'
-        end
-        function player.predict_command(cmd)
-            local me = entity.get_local_player()
-            player.speed = vector(entity.get_prop(me, 'm_vecVelocity')):length()
-            player.state = get_state()
-            player.fs_side = get_fs_side()
-            player.defensive = defensive_predict(cmd)
-            player.onground = is_onground()
-            player.is_fs_peek = is_fs_peek()
-            player.duckamount = entity.get_prop(me, 'm_flDuckAmount')
-        end
-        function player.setup_command(cmd)
-            player.get_players = entity.get_players()
-            player.crouching = cmd.in_duck == 1
-            player.walking = player.speed > 5 and (cmd.in_speed == 1)
-        end
-    end
-
-
-
-    antiaim.features = {}
-
-    do
-        antiaim.features.use_aa = false
-        antiaim.features.stab = false
-        antiaim.features.fast_ladder = false
-        antiaim.features.safe_head = false
-        antiaim.features.manual = 0.0
-        antiaim.features.defensive = false
-        antiaim.features.warmup_aa = false
-
-        do
-            local start_time = globals.realtime()
-            antiaim.features.legit_run = function(cmd)
-                local use_cfg = interface.builder['use']
-                if not use_cfg or not use_cfg.allow_use_aa or not use_cfg.allow_use_aa:get() then return false end
-                if cmd.in_use == 0 then start_time = globals.realtime(); return end
-                local plyr = entity.get_local_player()
-                if plyr == nil then return end
-                local player_origin = { entity.get_origin(plyr) }
-                local CPlantedC4 = entity.get_all('CPlantedC4')
-                local dist_to_bomb = 999
-                if #CPlantedC4 > 0 then
-                    local bomb = CPlantedC4[1]
-                    local bomb_origin = { entity.get_origin(bomb) }
-                    dist_to_bomb = vector(player_origin[1], player_origin[2], player_origin[3]):dist(vector(bomb_origin[1], bomb_origin[2], bomb_origin[3]))
-                end
-                local CHostage = entity.get_all('CHostage')
-                local dist_to_hostage = 999
-                if CHostage ~= nil then
-                    if #CHostage > 0 then
-                        local hostage_origin = { entity.get_origin(CHostage[1]) }
-                        dist_to_hostage = math.min(
-                            vector(player_origin[1], player_origin[2], player_origin[3]):dist(vector(hostage_origin[1], hostage_origin[2], hostage_origin[3])),
-                            vector(player_origin[1], player_origin[2], player_origin[3]):dist(vector(hostage_origin[1], hostage_origin[2], hostage_origin[3])))
-                    end
-                end
-                if dist_to_hostage < 65 and entity.get_prop(plyr, 'm_iTeamNum') ~= 2 then return end
-                if dist_to_bomb < 65 and entity.get_prop(plyr, 'm_iTeamNum') ~= 2 then return end
-                if cmd.in_use then if globals.realtime() - start_time < 0.02 then return end end
-                cmd.in_use = false
-                return true
-            end
-        end
-
-        antiaim.features.anti_backstab = function()
-            local players = entity.get_players(true)
-            for i = 1, #players do
-                local x, y, z = entity.get_prop(players[i], 'm_vecOrigin')
-                local origin = vector(entity.get_prop(entity.get_local_player(), 'm_vecOrigin'))
-                local distance = math.sqrt((x - origin.x) ^ 2 + (y - origin.y) ^ 2 + (z - origin.z) ^ 2)
-                local weapon = entity.get_player_weapon(players[i])
-                if entity.get_classname(weapon) == 'CKnife' and distance <= 200 then
-                    return true
-                end
-            end
-            return false
-        end
-
-        antiaim.features.ladder_run = function(cmd)
-            if not interface.builder.extensions.ladder:get() then return false end
-            if entity.get_prop(entity.get_local_player(), "m_MoveType") ~= 9 or cmd.forwardmove == 0 then return false end
-            local camera_pitch, camera_yaw = client.camera_angles()
-            local descending = cmd.forwardmove < 0 or camera_pitch > 45
-            cmd.in_moveleft, cmd.in_moveright = descending and 1 or 0, not descending and 1 or 0
-            cmd.in_forward, cmd.in_back = descending and 1 or 0, not descending and 1 or 0
-            cmd.pitch, cmd.yaw = 89, math_utils.normalize_yaw(cmd.yaw + 90)
-            return true
-        end
-
-        antiaim.features.safe_run = function(cmd)
-            local result = math.huge
-            local heightDifference = 0
-            local localplayer = entity.get_local_player()
-            local entities = entity.get_players(true)
-            for i = 1, #entities do
-                local ent = entities[i]
-                local ent_origin = { entity.get_origin(ent) }
-                local lp_origin = { entity.get_origin(localplayer) }
-                if ent ~= localplayer and entity.is_alive(ent) then
-                    local distance = (vector(ent_origin[1], ent_origin[2], ent_origin[3]) - vector(lp_origin[1], lp_origin[2], lp_origin[3])):length2d()
-                    if distance < result then result = distance; heightDifference = ent_origin[3] - lp_origin[3] end
-                end
-            end
-            local distance_to_enemy = { math.floor(result / 10), math.floor(heightDifference) }
-            local weapon = entity.get_player_weapon(entity.get_local_player())
-            local knife = weapon ~= nil and entity.get_classname(weapon) == 'CKnife'
-            local zeus = weapon ~= nil and entity.get_classname(weapon) == 'CWeaponTaser'
-            local safe_knife = (interface.builder.extensions.safe_head:get('knife')) and knife and not player.onground
-            local safe_zeus = (interface.builder.extensions.safe_head:get('zeus')) and zeus and not player.onground
-            local distance_height = (interface.builder.extensions.safe_head:get('height distance')) and distance_to_enemy[2] < -50
-            local distance_hight = (interface.builder.extensions.safe_head:get('high distance')) and distance_to_enemy[1] > 119
-            if safe_knife or safe_zeus or distance_hight or distance_height then return true end
-            return false
-        end
-
-        do
-            local manual_cur = nil
-            local manual_keys = {
-                { "left", yaw = -90, item = interface.builder.extensions.manual_aa_hotkey.manual_left },
-                { "right", yaw = 90, item = interface.builder.extensions.manual_aa_hotkey.manual_right },
-                { "reset", yaw = nil, item = interface.builder.extensions.manual_aa_hotkey.manual_back },
-                { "forward", yaw = 180, item = interface.builder.extensions.manual_aa_hotkey.manual_forward },
-            }
-            local toggled = { false, false, false, false }
-            local prev = { false, false, false, false }
-            antiaim.features.manual_run = function()
-                if not interface.builder.extensions.manual_aa:get() then
-                    manual_cur = nil
-                    return 0
-                end
-                for i, v in ipairs(manual_keys) do
-                    local active = v.item.get and select(1, v.item:get()) or (v.item.ref and ui.get(v.item.ref)) or false
-                    local pressed = active and not prev[i]
-                    prev[i] = active
-                    if pressed then
-                        if v.yaw == nil then
-                            for j = 1, #manual_keys do toggled[j] = false end
-                            manual_cur = nil
-                        else
-                            for j = 1, #manual_keys do if j ~= i then toggled[j] = false end end
-                            toggled[i] = not toggled[i]
-                            manual_cur = toggled[i] and i or nil
-                        end
-                    end
-                end
-                if manual_cur and not toggled[manual_cur] then manual_cur = nil end
-                if not manual_cur then
-                    if toggled[2] then manual_cur = 2
-                    elseif toggled[1] then manual_cur = 1
-                    elseif toggled[4] then manual_cur = 4 end
-                end
-                return manual_cur and manual_keys[manual_cur].yaw or 0
-            end
-        end
-
-        antiaim.features.on_hotkey = function()
-            local is_allowed_state = math_utils.contains(interface.builder.extensions.dis_fs:get(), player.state)
-            local want_fs = interface.builder.extensions.freestanding:get() and (antiaim.features.manual == 0)
-            local fs_on_hotkey = is_allowed_state and want_fs and (not antiaim.features.use_aa)
-            local edge_on_hotkey = interface.builder.extensions.edge_yaw:get()
-            reference.antiaim.edge:set(edge_on_hotkey)
-            reference.antiaim.freestand:set(fs_on_hotkey)
-            reference.antiaim.freestand.hotkey:set(fs_on_hotkey and "Always on" or "On hotkey")
-        end
-
-        antiaim.features.defensive_run = function(cmd)
-            local me = entity.get_local_player()
-            if not me then return false end
-            local wpn = entity.get_player_weapon(me)
-            local function is_exploit_ready_and_active(w)
-                local doubletap_active = reference.ragebot.double_tap.hotkey:get()
-                local onshot_active = reference.antiaim.onshot.hotkey:get()
-                local fakeduck_active = reference.ragebot.duck:get()
-                if fakeduck_active or not (onshot_active or doubletap_active) or doubletap_active and not player.shifting then return false end
-                if ok_weapons and w then
-                    local wpn_info = weapons(w)
-                    if wpn_info and wpn_info.is_revolver then return false end
-                end
-                return true
-            end
-            if not is_exploit_ready_and_active(wpn) then return false end
-            local animlayers = memory.animlayers:get(me)
-            if not animlayers then return false end
-            local weapon_activity_number = memory.activity:get(animlayers[1]['sequence'], me)
-            local flash_activity_number = memory.activity:get(animlayers[9]['sequence'], me)
-            local is_reloading = animlayers[1]['weight'] ~= 0.0 and weapon_activity_number == 967
-            local is_flashed = animlayers[9]['weight'] > 0.1 and flash_activity_number == 960
-            local is_under_attack = animlayers[10]['weight'] > 0.1
-            local is_swapping_weapons = cmd.weaponselect > 0
-            if (interface.builder.extensions.defensive:get("flashed") and is_flashed)
-            or (interface.builder.extensions.defensive:get("damage received") and is_under_attack)
-            or (interface.builder.extensions.defensive:get("reloading") and is_reloading)
-            or (interface.builder.extensions.defensive:get("weapon switch") and is_swapping_weapons)
-            or (interface.builder.extensions.defensive:get("on shot") and reference.antiaim.onshot.hotkey:get() ) then
-                return false
-            end
-            return true
-        end
-
-        antiaim.features.warmup_run = function()
-            local game_rules = entity.get_game_rules()
-            if not game_rules then return false end
-            local warmup_period do
-                local is_active = interface.builder.extensions.warmup_aa:get("warmup")
-                local is_warmup = entity.get_prop(game_rules, 'm_bWarmupPeriod') == 1
-                warmup_period = is_active and is_warmup
-            end
-            if not warmup_period then
-                local player_resource = entity.get_player_resource()
-                if player_resource then
-                    local are_all_enemies_dead = true
-                    for i = 1, globals.maxplayers() do
-                        if entity.get_prop(player_resource, 'm_bConnected', i) == 1 then
-                            if entity.is_enemy(i) and entity.is_alive(i) then
-                                are_all_enemies_dead = false
-                                break
-                            end
-                        end
-                    end
-                    warmup_period = (are_all_enemies_dead and globals.curtime() < (entity.get_prop(game_rules, 'm_flRestartRoundTime') or 0)) and interface.builder.extensions.warmup_aa:get("round end")
-                end
-            end
-            return warmup_period and true or false
-        end
-
-        antiaim.features.main = function(cmd)
-            antiaim.features.use_aa = antiaim.features.legit_run(cmd)
-            antiaim.features.stab = interface.builder.extensions.anti_backstab:get() and antiaim.features.anti_backstab() or false
-            antiaim.features.fast_ladder = antiaim.features.ladder_run(cmd)
-            antiaim.features.safe_head = antiaim.features.safe_run(cmd)
-            antiaim.features.manual = antiaim.features.manual_run()
-            antiaim.features.defensive = antiaim.features.defensive_run(cmd)
-            antiaim.features.on_hotkey()
-            antiaim.features.warmup_aa = antiaim.features.warmup_run(cmd)
-
-            _G.noctua_runtime = _G.noctua_runtime or {}
-            _G.noctua_runtime.manual_active = (antiaim.features.manual ~= 0)
-            _G.noctua_runtime.safe_head_active = (antiaim.features.safe_head == true)
-            _G.noctua_runtime.use_active = (antiaim.features.use_aa == true)
-        end
-    end
-    do
-        antiaim.builder = antiaim.builder or {}
-        antiaim.builder.venture = false
-        antiaim.builder.latest = 0
-        antiaim.builder.switch = false
-        antiaim.builder.delay = 0
-        antiaim.builder.restrict = 0
-        antiaim.builder.last_packets = 0
-        antiaim.builder.way = 0
-
-        local function get_state(state)
-            local double_tap = reference.ragebot.double_tap.hotkey:get()
-            local onshot = reference.antiaim.onshot.hotkey:get()
-            local fake_duck = reference.ragebot.duck:get()
-            local freestand_allowed = math_utils.contains(interface.builder.extensions.dis_fs:get(), player.state)
-            local freestand_hotkey = interface.builder.extensions.freestanding:get()
-            local freestand = (freestand_hotkey or player.is_fs_peek) and freestand_allowed
-            if interface.builder['use'] and interface.builder['use'].enable and interface.builder['use'].enable:get() and antiaim.features.use_aa then return 'use' end
-            if interface.builder['manual'] and interface.builder['manual'].enable and interface.builder['manual'].enable:get() and antiaim.features.manual ~= 0 then return 'manual' end
-            if interface.builder['freestand'] and interface.builder['freestand'].enable and interface.builder['freestand'].enable:get() and freestand then return 'freestand' end
-            if interface.builder['safe head'] and interface.builder['safe head'].enable and interface.builder['safe head'].enable:get() and antiaim.features.safe_head then return 'safe head' end
-            if interface.builder['on shot'] and interface.builder['on shot'].enable and interface.builder['on shot'].enable:get() and onshot and not double_tap and not fake_duck then return 'on shot' end
-            if interface.builder['fakelag'] and interface.builder['fakelag'].enable and interface.builder['fakelag'].enable:get() and not onshot and not double_tap and not fake_duck then return 'fakelag' end
-            return state
-        end
-
-        local choke = 1
-        local function yaw_base_for(this)
-            if antiaim.features.use_aa then return 0 , "180" ,this.base.value end
-            if antiaim.features.stab then return 0 , "off" ,this.base.value end
-            return 'default', "180", (reference.antiaim.edge:get() and "local view" or this.base.value)
-        end
-
-        local function modifier(this)
-            local add , expand = this.add.value, this.expand.value
-            local delay = (expand ~= "left/right" or not player.shifting) and 1 or this.delay.value
-            if globals.chokedcommands() == 0 then choke = choke + 1 end
-            local add_ab_left , add_ab_right = 0 , 0
-            if interface.builder.extensions.anti_bruteforce:get() and antiaim.builder.venture then
-                if interface.builder.extensions.anti_bruteforce_type:get() == "increase" then
-                    add_ab_right = antiaim.builder.restrict * 3; add_ab_left = antiaim.builder.restrict * -3
-                elseif interface.builder.extensions.anti_bruteforce_type:get() == "decrease" then
-                    add_ab_right = antiaim.builder.restrict * -3; add_ab_left = antiaim.builder.restrict * 3
-                end
-            end
-            if (choke - antiaim.builder.last_packets >= antiaim.builder.delay) then
-                antiaim.builder.delay = delay
-                antiaim.builder.switch = not antiaim.builder.switch
-                antiaim.builder.last_packets = choke
-            end
-            if expand == "left/right" then
-                local epd_left , epd_right = this.epd_left.value , this.epd_right.value
-                add = add + ( antiaim.builder.switch and epd_left + add_ab_left or epd_right + add_ab_right)
-            elseif expand == "x-way" then
-                local x_way , epd_way = this.x_way.value , this.epd_way.value
-                antiaim.builder.way = antiaim.builder.way < (x_way - 1) and (antiaim.builder.way + 1) or 0
-                if this.ways_manual.value then add = add + this[antiaim.builder.way+1]:get()
-                else
-                    local step = (antiaim.builder.way) / (x_way - 1)
-                    add = add + math_utils.lerp(-epd_way, epd_way, step)
-                end
-            elseif expand == "spin" then
-                local epd_left , epd_right , speed = this.epd_left.value , this.epd_right.value , this.speed.value
-                add = add + math_utils.lerp(epd_left, epd_right , globals.curtime() * (speed * 0.1) % 1)
-            end
-            local jitter_mode, jitter_degree = this.jitter.value, this.jitter_add.value
-            if jitter_mode == "offset" then
-                add = add + (antiaim.builder.switch and jitter_degree + add_ab_left or 0 + add_ab_right)
-            elseif jitter_mode == "center" then
-                add = add + (antiaim.builder.switch and -jitter_degree / 2 + add_ab_left or jitter_degree / 2 + add_ab_right)
-            elseif jitter_mode == "random" then
-                add = add + (math.random(0, jitter_degree) - jitter_degree / 2)
-            end
-            if not antiaim.features.use_aa then
-                add = add + antiaim.features.manual + math.random(this.yaw_randomize:get() * 0.01 * -add, this.yaw_randomize:get() * 0.01 * add)
-            end
-            if antiaim.features.use_aa then add = add + 180 end
-            return math_utils.normalize_yaw(add)
-        end
-
-        local function body(this)
-            local by_mdoe , by_num , by_tpye = this.by_mode.value , 0 , "static"
-            if by_mdoe == "static" then
-                by_tpye = "static"; by_num = this.by_num.value
-            elseif by_mdoe == "jitter" then
-                by_tpye = "static"; by_num = antiaim.builder.switch and this.by_num.value or - this.by_num.value
-            elseif by_mdoe == "opposite" then
-                by_tpye = "static"
-                if player.fs_side == 'left' then by_num = 180
-                elseif player.fs_side == 'right' then by_num = -180 else by_num = 0 end
-            elseif by_mdoe == "off" then
-                by_tpye = "off"
-            end
-            return math_utils.normalize_yaw(by_num) , by_tpye
-        end
-
-        local srx, pitch_srx
-        local function defensive_builder(cmd, this)
-            cmd.force_defensive = this.break_lc.value
-            local yaw , pitch = this.def_yaw.value , this.def_pitch.value
-            local pitch_num , yaw_num , body_tpye , body_num = 'default' , nil , nil , nil
-            if pitch == "up" then pitch_num = -88
-            elseif pitch == "zero" then pitch_num = 0
-            elseif pitch == "up switch" then pitch_num = client.random_int(-45, 65)
-            elseif pitch == "down switch" then pitch_num = client.random_int(45, 65)
-            elseif pitch == "random" then pitch_num = client.random_int(-89, 89)
-            elseif pitch == "random static" then
-                if not pitch_srx then pitch_srx = client.random_int(-89, 89) end
-                pitch_num = pitch_srx
-            elseif pitch == "custom" then pitch_num = this.def_pitch_num.value end
-            if yaw == "sideways" then
-                yaw_num = (antiaim.builder.switch and 90 or -90 ) + client.random_int(-15, 15)
-            elseif yaw == "forward" then
-                yaw_num = 180 + client.random_int(-30, 30)
-            elseif yaw == "delayed" then
-                local left , right = this.def_left.value , this.def_right.value
-                yaw_num = (antiaim.builder.switch and left or right )
-            elseif yaw == "spin" then
-                local left , right , speed = this.def_left.value , this.def_right.value , this.def_speed.value
-                yaw_num = math_utils.lerp(left, right , globals.curtime() * (speed * 0.1) % 1)
-            elseif yaw == "random" then
-                local left , right = this.def_left.value , this.def_right.value
-                yaw_num = client.random_int(left, right)
-            elseif yaw == "random static" then
-                local left , right = this.def_left.value , this.def_right.value
-                if not srx then srx = client.random_int(left, right) end
-                yaw_num = srx
-            elseif yaw == "flick exploit" then
-                yaw_num = (player.fs_side == 'left' and -90 or 90) + client.random_int(-20, 20)
-            elseif yaw == "custom" then
-                yaw_num = player.fs_side == 'left' and this.def_yaw_num.value or -this.def_yaw_num.value
-            end
-            local body = this.def_body.value
-            if body == "default" then
-                body_tpye = "static"; body_num = 120
-            elseif body == "auto" then
-                if yaw_num ~= nil then body_tpye = "static"; body_num = yaw_num < 0 and -60 or 60 end
-            elseif body == "jitter" then
-                body_tpye = "static"; body_num = antiaim.builder.switch and -120 or 120
-            end
-            return pitch_num , yaw_num , body_tpye , body_num
-        end
-
-        antiaim.builder.main = function(cmd)
-            local state = get_state(player.state)
-            local ok = pcall(function()
-                if ui.get(reference.antiaim.enable) ~= true then
-                    ui.set(reference.antiaim.enable, true)
-                end
-            end)
-            local this = (interface.builder[state] and interface.builder[state].enable and interface.builder[state].enable.value and interface.builder[state]) or interface.builder["default"]
-            local pitch , yaw_type , yaw_base = yaw_base_for(this)
-            local yaw_add = modifier(this)
-            local by_num , by_tpye = body(this)
-            local pitch_num , yaw_num , body_tpye , body_num = defensive_builder(cmd, this)
-            if (player.defensive and not antiaim.features.fast_ladder and not antiaim.features.use_aa and player.shifting) and this.defensive.value and antiaim.features.defensive then
-                pitch = pitch_num ~= nil and pitch_num or pitch
-                yaw_add = yaw_num ~= nil and yaw_num or yaw_add
-                by_num = body_num ~= nil and body_num or by_num
-                by_tpye = body_tpye ~= nil and body_tpye or by_tpye
-            else
-                srx = nil; pitch_srx = nil
-            end
-            if antiaim.features.warmup_aa then
-                pitch = 0; yaw_type = "spin"; yaw_add = 42; by_tpye = "off"
-            end
-            if antiaim.builder.venture then
-                if antiaim.builder.latest + 2 == globals.curtime() then antiaim.builder.venture = false end
-            end
-            reference.antiaim.pitch[1]:set(type(pitch) == "number" and 'custom' or pitch)
-            reference.antiaim.pitch[2]:set(type(pitch) == "number" and pitch or 0 )
-            reference.antiaim.yaw[1]:set(yaw_type)
-            reference.antiaim.yaw[2]:set( math_utils.normalize_yaw(yaw_add) )
-            reference.antiaim.base:set(yaw_base)
-            reference.antiaim.fs_body:set(false)
-            reference.antiaim.jitter[1]:set("off")
-            reference.antiaim.jitter[2]:set(0)
-            reference.antiaim.body[1]:set(by_tpye)
-            reference.antiaim.body[2]:set(by_num)
-        end
-    end
-
-    do
-        local latest = 0
-        local last_hurt_by = {}
-        local last_death_tick = 0
-        local pending_evade_logs = {}
-
-        client.set_event_callback('player_hurt', function(e)
-            local me = entity.get_local_player()
-            if not me then return end
-            local victim = client.userid_to_entindex(e.userid)
-            local attacker = client.userid_to_entindex(e.attacker)
-            if victim == me and attacker and entity.is_enemy(attacker) then
-                last_hurt_by[attacker] = globals.tickcount()
-            end
-        end)
-
-        client.set_event_callback('player_death', function(e)
-            local me = entity.get_local_player()
-            if not me then return end
-            local victim = client.userid_to_entindex(e.userid)
-            if victim == me then
-                last_death_tick = globals.tickcount()
-            end
-        end)
-
-        local function process_pending()
-            local tick = globals.tickcount()
-            for attacker, data in pairs(pending_evade_logs) do
-                if tick > data.created_tick then
-                    local hurt_tick = last_hurt_by[attacker] or 0
-                    local killed_recently = (last_death_tick ~= 0) and (last_death_tick >= data.created_tick) and (last_death_tick <= data.created_tick + 2)
-                    local hurt_recently = (hurt_tick >= data.created_tick) and (hurt_tick <= data.created_tick + 2)
-                    if not hurt_recently and not killed_recently then
-                        if interface.visuals.logging:get() then
-                            local logOptions = interface.visuals.logging_options:get()
-                            local screenOptions = interface.visuals.logging_options_screen:get()
-                            local consoleOptions = interface.visuals.logging_options_console:get()
-
-                            local doScreen = utils.contains(logOptions, 'screen') and utils.contains(screenOptions, 'anti aim')
-                            local doConsole = utils.contains(logOptions, 'console') and utils.contains(consoleOptions, 'anti aim')
-
-                            if doScreen then
-                                logging:push(string.format("evaded %s's shot / value: %s - mode: %s", data.name, data.value, tostring(data.mode)))
-                            end
-
-                            if doConsole then
-                                argLog("evaded %s's shot / value: %s - mode: %s", data.name, data.value, tostring(data.mode))
-                            end
-                        end
-
-                        stats.on_evaded(data.name, data.value, data.mode)
-                    end
-                    pending_evade_logs[attacker] = nil
-                end
-            end
-        end
-
-        local function trigger(event)
-            local ab_enabled = interface.builder.extensions.anti_bruteforce:get()
-
-            local me = entity.get_local_player()
-            local valid = (me and entity.is_alive(me))
-            if not valid or latest == globals.tickcount() then return end
-            local attacker = client.userid_to_entindex(event.userid)
-            if not attacker or not entity.is_enemy(attacker) or entity.is_dormant(attacker) then return end
-            local attacker_info = utils.get_player_info(attacker)
-
-            if attacker_info.__fakeplayer then return end
-
-            local curtick = globals.tickcount()
-            local hurt_tick = last_hurt_by[attacker] or 0
-            if (hurt_tick ~= 0 and (curtick - hurt_tick) <= 2) or (last_death_tick ~= 0 and (curtick - last_death_tick) <= 2) then
-                return
-            end
-
-            if not player.get_players or #player.get_players == 0 then return end
-
-            local impact = vector(event.x, event.y, event.z)
-            local enemy_view = vector(entity.get_origin(attacker))
-            enemy_view.z = enemy_view.z + 64
-            local dists = {}
-            for i = 1, #player.get_players do
-                local v = player.get_players[i]
-                if not entity.is_enemy(v) then
-                    local head = vector(entity.hitbox_position(v, 0))
-                    local point = math_utils.closest_ray_point(head, enemy_view, impact)
-                    dists[#dists+1] = head:dist(point)
-                    if v == me then dists.mine = dists[#dists] end
-                end
-            end
-
-            if #dists == 0 then return end
-            local closest = math.min( unpack(dists) )
-            if (dists.mine and closest) and dists.mine < 40 or (closest == dists.mine and dists.mine < 128) then
-                latest = globals.tickcount()
-                if ab_enabled then
-                    antiaim.builder.latest = globals.curtime()
-                    antiaim.builder.venture = true
-                end
-                local restrict = math.random(1, 3)
-                if ab_enabled then antiaim.builder.restrict = restrict end
-
-                local mode = interface.builder.extensions.anti_bruteforce_type and interface.builder.extensions.anti_bruteforce_type:get() or "increase"
-                local name = entity.get_player_name(attacker) or "enemy"
-                local value = tostring(restrict)
-
-                pending_evade_logs[attacker] = { name = name, value = value, mode = mode, created_tick = curtick }
-            end
-        end
-        client.set_event_callback("bullet_impact", trigger)
-        client.set_event_callback("run_command", process_pending)
-    end
-
-    client.set_event_callback('predict_command', function(cmd) 
-        if interface.builder.enabled:get() then
-            player.predict_command(cmd) 
-        end
-    end)
-
-    client.set_event_callback('setup_command', function(cmd)
-        if not interface.builder.enabled:get() then
-            return
-        end
-
-        player.setup_command(cmd)
-        antiaim.features.main(cmd)
-        antiaim.builder.main(cmd)
-    end)
-
-    naac = function(page)
-        local show_settings = (page == 'extensions')
-        
-        if interface.builder.extensions then
-            pui.traverse(interface.builder.extensions, function(element)
-                element:set_visible(show_settings)
-            end)
-            
-            pui.traverse(interface.builder.extensions.manual_aa_hotkey, function(element)
-                element:set_visible(show_settings and interface.builder.extensions.manual_aa:get())
-            end)
-        end
-    end
 end
 --@endregion
 
@@ -9405,9 +7958,11 @@ art = {} do
     - Added world damage
     - Added world damage animations
     - Added mismatch reasons
+    - Added compatibility mode
     - Reworked miss reasons
-    - Reworked config export/import
     - Reworked buybot
+    - Reworked experimental resolver logic
+    - Reworked debug window
     - Fixed buybot fallback purchasing after primary items
     - Fixed shutdown restoration
     - Fixed config synchronization
