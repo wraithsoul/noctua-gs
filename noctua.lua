@@ -1940,7 +1940,6 @@ resolver = {} do
     resolver.state_cache = {}
     resolver.layer_cache = {}
     resolver.precision   = {}
-    resolver.bruteforce  = {}
     
     function resolver:calculate_layer_delta(idx)
         if not self.layers[idx] or not self.layers[idx][6] then return 0 end
@@ -2009,70 +2008,6 @@ resolver = {} do
         return mathematic.sign(calculated_yaw)
     end
     
-    function resolver:on_aim_miss(e)
-        if not e or not e.target then return end
-        if not interface or not interface.aimbot then return end
-        if not interface.aimbot.enabled_aimbot:get() or not interface.aimbot.enabled_resolver_tweaks:get() then return end
-        if interface.aimbot.resolver_mode:get() ~= 'experimental' then return end
-
-        local idx = e.target
-        if not idx or not entity.is_enemy(idx) then return end
-
-        local health = entity.get_prop(idx, "m_iHealth") or 0
-        if health <= 0 then return end
-
-        local reason = tostring(e.reason or '')
-        if reason == 'spread' or reason == 'prediction error' then
-            return
-        end
-
-        self.bruteforce[idx] = self.bruteforce[idx] or {}
-        local data = self.bruteforce[idx]
-
-        data.misses = (data.misses or 0) + 1
-        data.hits = 0
-        data.locked_yaw = nil
-        data.lock_expire = nil
-
-        local max_stage = 5
-        local stage = (data.stage or 1) + 1
-        if stage > max_stage then
-            stage = 1
-        end
-
-        data.stage = stage
-        data.last_miss_time = globals.curtime()
-
-        self.bruteforce[idx] = data
-    end
-
-    function resolver:on_aim_hit(e)
-        if not e or not e.target then return end
-        if not interface or not interface.aimbot then return end
-        if not interface.aimbot.enabled_aimbot:get() or not interface.aimbot.enabled_resolver_tweaks:get() then return end
-        if interface.aimbot.resolver_mode:get() ~= 'experimental' then return end
-
-        local idx = e.target
-        if not idx or not entity.is_enemy(idx) then return end
-
-        self.bruteforce[idx] = self.bruteforce[idx] or {}
-        local data = self.bruteforce[idx]
-
-        data.hits = (data.hits or 0) + 1
-        data.misses = 0
-        data.stage = 1
-
-        local yaw = self.cache[idx]
-        if type(yaw) == 'number' then
-            local now = globals.curtime()
-            local extra = math.min((data.hits or 0) * 0.5, 3)
-            data.locked_yaw = yaw
-            data.lock_expire = now + 1.5 + extra
-        end
-
-        self.bruteforce[idx] = data
-    end
-
     resolver.getMaxDesyncDelta = function(idx)
         if not idx or idx <= 0 then
             return nil
@@ -2135,7 +2070,6 @@ resolver = {} do
         local layers = self.layers[idx] or {}
         local layer3 = layers[3]
         local layer6 = layers[6]
-        local layer12 = layers[12]
 
         local side = self:calc_side(idx, animstate, velocity_2d, lby)
 
@@ -2169,9 +2103,9 @@ resolver = {} do
             side = 1
         end
 
-        local max_desync = self.getMaxDesyncDelta(idx) or 1
-        local base_desync = mathematic.clamp(max_desync * 58, 10, 58)
-
+        local max_desync = self.getMaxDesyncDelta(idx) or 0
+        local cold_desync = max_desync * 58.0
+        
         local precision = self:compute_precision(animstate, velocity_2d, lby)
         self.precision[idx] = precision
 
@@ -2181,50 +2115,21 @@ resolver = {} do
         local layer_activity = self:calculate_layer_delta(idx)
         local layer_factor = 1 - mathematic.clamp(layer_activity * 2.0, 0, 0.4)
 
-        local amplitude = base_desync * vel_factor * duck_factor * layer_factor
-        amplitude = amplitude * (0.75 + 0.5 * precision)
-        amplitude = mathematic.clamp(amplitude, 18, 58)
+        local amplitude = cold_desync * vel_factor * duck_factor * layer_factor
+        
+        if amplitude < 10 then amplitude = 10 end
+        if amplitude > 58 then amplitude = 58 end
 
-        self.bruteforce[idx] = self.bruteforce[idx] or {}
-        local bf = self.bruteforce[idx]
-
-        if bf.last_state ~= enemy_state then
-            bf.stage = 1
-            bf.locked_yaw = nil
-            bf.lock_expire = nil
-            bf.last_state = enemy_state
-        end
-
-        bf.stage = bf.stage or 1
-        local stage = bf.stage
-
-        local candidates = {}
-        candidates[1] = side * amplitude
-        candidates[2] = -side * amplitude
-        candidates[3] = side * amplitude * 0.5
-        candidates[4] = -side * amplitude * 0.5
-        candidates[5] = 0
-
-        local max_stage = #candidates
-        if stage < 1 or stage > max_stage then
-            stage = 1
-            bf.stage = stage
-        end
-
-        local yaw = candidates[stage]
-
-        if bf.locked_yaw and bf.lock_expire and globals.curtime() < bf.lock_expire then
-            yaw = bf.locked_yaw
-        end
+        local yaw = side * amplitude
 
         yaw = mathematic.clamp(yaw, -58, 58)
+        
         if yaw >= 0 then
             yaw = math.floor(yaw + 0.5)
         else
             yaw = math.ceil(yaw - 0.5)
         end
 
-        self.bruteforce[idx] = bf
         self.cache[idx] = yaw
 
         self.history[idx] = self.history[idx] or {}
@@ -2237,16 +2142,12 @@ resolver = {} do
         player_list.SetBodyYaw(player_list, idx, yaw)
         player_list.SetCorrection(player_list, idx, false) -- skeet resolver sucks, turn it off
 
-        local confidence = precision * (1 - (stage - 1) * 0.2)
+        local confidence = precision
         confidence = mathematic.clamp(confidence, 0.1, 1)
         self:updateSafety(idx, side, yaw, confidence)
     end
 
     resolver.updateSafety = function(self, idx, side, desync, precision)
-        assert(idx, "resolver.updateSafety: Invalid parameters (idx is nil)")
-        assert(side ~= nil and desync ~= nil, "resolver.updateSafety: Invalid parameters (side or desync is nil)")
-        assert(side >= -1 and side <= 1, "resolver.updateSafety: Invalid 'side' value (" .. tostring(side) .. ")")
-
         self.safepoints[idx] = self.safepoints[idx] or {}
         local safepoints = self.safepoints[idx]
 
@@ -2273,10 +2174,10 @@ resolver = {} do
         local PLAYER_RUN_SPEED = 260.0
         local WALK_SPEED_MODIFIER = 0.52
 
-        walkToRun  = walkToRun or 0
-        updateInc  = updateInc or 0
+        walkToRun   = walkToRun or 0
+        updateInc   = updateInc or 0
         velocityXY = velocityXY or 0
-        state      = state or TRANSITION_RUN_TO_WALK
+        state       = state or TRANSITION_RUN_TO_WALK
 
         if walkToRun > 0 and walkToRun < 1 then
             if state == TRANSITION_WALK_TO_RUN then
@@ -2453,6 +2354,8 @@ resolver = {} do
             local amplitude = 0.5 + 0.5 * (self.precision[idx] or 0.5)
             local raw_yaw = side * desync_value * amplitude
             local final_yaw = raw_yaw >= 0 and math.floor(raw_yaw + 0.5) or math.ceil(raw_yaw - 0.5)
+            
+            final_yaw = mathematic.clamp(final_yaw, -58, 58)
 
             resolver.cache[idx] = final_yaw
             player_list.SetForceBodyYawCheckbox(player_list, idx, true)
@@ -4978,7 +4881,7 @@ logging = {} do
                     local cur_speed = math.sqrt(vx*vx + vy*vy)
                     
                     if math.abs(cur_speed - (cached.start_speed or 0)) > 50 then
-                        reason = "unknown"
+                        reason = "prediction error"
                     end
                 end
             end
@@ -5420,8 +5323,8 @@ end)
 
 local aimHandlers = {
     aim_fire = function(e) logging:handleAimFire(e) end,
-    aim_miss = function(e) resolver:on_aim_miss(e); logging:handleAimMiss(e) end,
-    aim_hit  = function(e) resolver:on_aim_hit(e); logging:handleAimHit(e) end,
+    aim_miss = function(e) logging:handleAimMiss(e) end,
+    aim_hit  = function(e) logging:handleAimHit(e) end,
     player_hurt = function(e)
         local victim = client.userid_to_entindex(e.userid)
         local attacker = client.userid_to_entindex(e.attacker)
