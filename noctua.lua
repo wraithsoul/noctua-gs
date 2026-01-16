@@ -607,7 +607,7 @@ interface = {} do
         world_damage_type = interface.header.other:combobox('type', {'static', 'dynamic'}),
         enemy_ping_warn = interface.header.other:checkbox('enemy ping warning'),
         enemy_ping_minimum = interface.header.other:slider('minimum latency to show', 10, 100, 80, true, 'ms'),
-        grenade_radius = interface.header.other:multiselect('grenade radius (beta)', 'smoke', 'molotov'),
+        grenade_radius = interface.header.other:multiselect('grenade radius', 'smoke', 'molotov'),
         grenade_radius_smoke_color = interface.header.other:label('smoke color', {173, 216, 230, 255}),
         grenade_radius_molotov_color = interface.header.other:label('molotov color', {255, 204, 203, 255})
     }
@@ -9152,10 +9152,6 @@ grenade_radius = {} do
     local tracks = {}
     local TWO_PI = 2 * math.pi
 
-    local function lerp(start, vend, time)
-        return start + (vend - start) * time
-    end
-
     local function smooth_contour(points, iterations)
         if #points < 3 then return points end
         local smoothed = points
@@ -9228,25 +9224,6 @@ grenade_radius = {} do
         end
     end
 
-    local function draw_filled_contour(center_x, center_y, center_z, points, r, g, b, a_fill)
-        if #points < 3 or a_fill <= 1 then return end
-        
-        local cx, cy = renderer.world_to_screen(center_x, center_y, center_z)
-        if not (cx and cy) then return end
-
-        for i = 1, #points do
-            local p1 = points[i]
-            local p2 = points[(i % #points) + 1]
-
-            local x1, y1 = renderer.world_to_screen(p1.x, p1.y, p1.z)
-            local x2, y2 = renderer.world_to_screen(p2.x, p2.y, p2.z)
-
-            if x1 and y1 and x2 and y2 then
-                renderer.triangle(cx, cy, x1, y1, x2, y2, r, g, b, a_fill)
-            end
-        end
-    end
-
     local function draw_blob(circles, base_radius, r, g, b, a, outline_limit)
         if #circles == 0 then return end
 
@@ -9297,9 +9274,7 @@ grenade_radius = {} do
         end
 
         local smoothed_points = smooth_contour(contour_points, 3)
-        local fill_alpha = math.floor(a * 0.25)
         
-        draw_filled_contour(avg_x, avg_y, avg_z, smoothed_points, r, g, b, fill_alpha)
         draw_contour_smooth_limit(smoothed_points, r, g, b, a, outline_limit)
     end
 
@@ -9331,7 +9306,7 @@ grenade_radius = {} do
                     local is_burning = entity.get_prop(idx, "m_bFireIsBurning", i) == 1
                     local target = is_burning and 1 or 0
                     
-                    anim_data[key] = lerp(anim_data[key] or 0, target, frame_time)
+                    anim_data[key] = mathematic.lerp(anim_data[key] or 0, target, frame_time)
 
                     if anim_data[key] > 0.01 then
                         local dx = entity.get_prop(idx, "m_fireXDelta", i)
@@ -9364,7 +9339,7 @@ grenade_radius = {} do
                     local x, y, z = entity.get_prop(idx, "m_vecOrigin")
                     
                     local key = "smoke_grow_" .. idx
-                    anim_data[key] = lerp(anim_data[key] or 0, 1, frame_time)
+                    anim_data[key] = mathematic.lerp(anim_data[key] or 0, 1, frame_time)
 
                     if not tracks[idx] then 
                         local tick_interval = globals.tickinterval()
@@ -9395,7 +9370,7 @@ grenade_radius = {} do
                 track.target_alpha = 0
             end
             
-            track.alpha = lerp(track.alpha, track.target_alpha, frame_time)
+            track.alpha = mathematic.lerp(track.alpha, track.target_alpha, frame_time)
 
             if track.alpha < 0.01 and track.target_alpha == 0 then
                 tracks[id] = nil
@@ -9403,10 +9378,10 @@ grenade_radius = {} do
                 local render_alpha = track.alpha
                 
                 if track.type == 'molotov' then
-                     local final_a = math.floor(a_mol * render_alpha)
-                     if final_a > 1 then
-                         draw_blob(track.circles, 60, r_mol, g_mol, b_mol, final_a, 1.0)
-                     end
+                    local final_a = math.floor(a_mol * render_alpha)
+                    if final_a > 1 then
+                        draw_blob(track.circles, 60, r_mol, g_mol, b_mol, final_a, 1.0)
+                    end
 
                 elseif track.type == 'smoke' then
                     local final_a = math.floor(a_sm * render_alpha)
