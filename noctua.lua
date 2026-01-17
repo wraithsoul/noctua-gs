@@ -639,7 +639,7 @@ interface = {} do
         buybot_primary_fallback = interface.header.general:combobox('primary fallback', '-', 'autosnipers', 'scout', 'awp'),
         buybot_secondary = interface.header.general:combobox('secondary weapon', '-', 'r8 / deagle', 'tec-9 / five-s / cz-75', 'duals', 'p-250'),
         buybot_utility = interface.header.general:multiselect('utility', 'kevlar', 'helmet', 'defuser', 'taser', 'he', 'molotov', 'smoke'),
-        auto_r8 = interface.header.general:checkbox('auto !r8'),
+        auto_r8 = interface.header.general:checkbox('automatic !r8'),
         party_mode = interface.header.other:checkbox('party mode'),
         animation_breakers = interface.header.other:multiselect('animation breakers', 'zero on land', 'earthquake', 'sliding slow motion', 'sliding crouch', 'on ground', 'on air', 'quick peek legs', 'keus scale', 'body lean'),
         on_ground_options = interface.header.other:combobox('on ground', {'frozen', 'walking', 'jitter', 'sliding', 'star'}),
@@ -759,6 +759,8 @@ interface = {} do
                         local v = (interface.aimbot.noscope_weapons:get() or {})
                         local has_awp = (type(v) == 'table') and utils.contains(v, 'awp')
                         element:set_visible(enabled and interface.aimbot.noscope_distance:get() and has_awp)
+                    elseif key == 'dormant_hitchance' or key == 'dormant_damage' then
+                        element:set_visible(enabled and interface.aimbot.dormant_enabled:get())
                     else
                         element:set_visible(enabled)
                     end
@@ -3349,21 +3351,19 @@ visuals = {} do
         elseif _G.noctua_runtime.safe_head_active then aa_state = "safe head" end
 
         renderer.text(base_x, y, 215, 215, 215, self.windowAlpha, align, 0, indent .. "- state: " .. aa_state)
-        y = y + line_spacing + 6 
-
+        y = y + line_spacing
+        
         local dormant_enabled = interface.aimbot.dormant_enabled:get() and interface.aimbot.dormant_enabled.hotkey:get()
         if dormant_enabled then
-            renderer.text(base_x, y, 255, 255, 255, self.windowAlpha, align, 0, "dormant")
-            y = y + line_spacing
-            local state_prefix = indent .. "- state: "
+            local state_prefix = indent .. "- dormant: "
             renderer.text(base_x, y, 215, 215, 215, self.windowAlpha, align, 0, state_prefix)
             local state_w = select(1, renderer.measure_text("l", state_prefix))
             
             local dormant_state = _G.noctua_runtime.dormant_state or "waiting"
-            local state_color = dormant_state == "working" and {140, 200, 140} or {215, 215, 215}
+            local state_color = dormant_state == "active" and {140, 200, 140} or {215, 215, 215}
             renderer.text(base_x + state_w, y, state_color[1], state_color[2], state_color[3], self.windowAlpha, "l", 0, dormant_state)
-            y = y + line_spacing + 6
         end
+        y = y + line_spacing + 6
 
         if t_yaw ~= "off" then
             renderer.text(base_x, y, 255, 255, 255, self.windowAlpha, align, 0, "resolver")
@@ -5079,8 +5079,7 @@ widgets.register({
         
         local dormant_enabled = interface.aimbot.dormant_enabled:get() and interface.aimbot.dormant_enabled.hotkey:get()
         if dormant_enabled then
-            total_lines = total_lines + 2
-            total_pixels = total_pixels + 6
+            total_lines = total_lines + 1
         end
         
         local isDT = ui.get(ui_references.double_tap[1]) and ui.get(ui_references.double_tap[2])
@@ -8169,10 +8168,15 @@ auto_r8 = {} do
 
         local game_rules = entity.get_all("CCSGameRulesProxy")[1]
         if not game_rules then return end
+        local game_phase = entity.get_prop(game_rules, "m_gamePhase")
+        local is_warmup = entity.get_prop(game_rules, "m_bWarmupPeriod") == 1
+        local rounds_played = entity.get_prop(game_rules, "m_totalRoundsPlayed") or 0
+        local is_freeze = entity.get_prop(game_rules, "m_bFreezePeriod") == 1
 
-        local is_halftime = entity.get_prop(game_rules, "m_gamePhase") == 4
+        local is_halftime = (game_phase == 4)
+        local is_game_start = (rounds_played == 0 and is_freeze and not is_warmup)
 
-        if is_halftime then
+        if is_halftime or is_game_start then
             if not auto_r8.has_sent then
                 client.exec("say_team !r8")
                 logging:push("swapped to revolver")
