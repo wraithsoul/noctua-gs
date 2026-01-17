@@ -566,7 +566,10 @@ interface = {} do
         noscope_distance_autosnipers = interface.header.general:slider('autosnipers distance', 1, 800, 450, true, ''),
         noscope_distance_scout = interface.header.general:slider('scout distance', 1, 800, 450, true, ''),
         noscope_distance_awp = interface.header.general:slider('awp distance', 1, 800, 450, true, ''),
-        quick_stop = interface.header.general:checkbox('air stop', 0x00)
+        quick_stop = interface.header.general:checkbox('air stop', 0x00),
+        dormant_enabled = interface.header.general:checkbox('dormant aimbot', 0x00),
+        dormant_hitchance = interface.header.general:slider('hit chance', 50, 100, 50, true, '%', 1, {[50] = 'auto'}),
+        dormant_damage = interface.header.general:slider('minimum damage', 1, 100, 7, true, '')
     }
 
     interface.visuals = {
@@ -636,6 +639,7 @@ interface = {} do
         buybot_primary_fallback = interface.header.general:combobox('primary fallback', '-', 'autosnipers', 'scout', 'awp'),
         buybot_secondary = interface.header.general:combobox('secondary weapon', '-', 'r8 / deagle', 'tec-9 / five-s / cz-75', 'duals', 'p-250'),
         buybot_utility = interface.header.general:multiselect('utility', 'kevlar', 'helmet', 'defuser', 'taser', 'he', 'molotov', 'smoke'),
+        auto_r8 = interface.header.general:checkbox('auto !r8'),
         party_mode = interface.header.other:checkbox('party mode'),
         animation_breakers = interface.header.other:multiselect('animation breakers', 'zero on land', 'earthquake', 'sliding slow motion', 'sliding crouch', 'on ground', 'on air', 'quick peek legs', 'keus scale', 'body lean'),
         on_ground_options = interface.header.other:combobox('on ground', {'frozen', 'walking', 'jitter', 'sliding', 'star'}),
@@ -3316,7 +3320,8 @@ visuals = {} do
         
         renderer.text(latency_x, y, 215, 215, 215, self.windowAlpha, "l", 0, full_latency_text)
         
-        if ping_diff >= 0 then
+        local is_local_server = latency_ms == 0
+        if ping_diff >= 0 and not is_local_server then
             local r, g, b = 220, 200, 100
             
             if ping_diff < 50 then
@@ -3345,6 +3350,20 @@ visuals = {} do
 
         renderer.text(base_x, y, 215, 215, 215, self.windowAlpha, align, 0, indent .. "- state: " .. aa_state)
         y = y + line_spacing + 6 
+
+        local dormant_enabled = interface.aimbot.dormant_enabled:get() and interface.aimbot.dormant_enabled.hotkey:get()
+        if dormant_enabled then
+            renderer.text(base_x, y, 255, 255, 255, self.windowAlpha, align, 0, "dormant")
+            y = y + line_spacing
+            local state_prefix = indent .. "- state: "
+            renderer.text(base_x, y, 215, 215, 215, self.windowAlpha, align, 0, state_prefix)
+            local state_w = select(1, renderer.measure_text("l", state_prefix))
+            
+            local dormant_state = _G.noctua_runtime.dormant_state or "waiting"
+            local state_color = dormant_state == "working" and {140, 200, 140} or {215, 215, 215}
+            renderer.text(base_x + state_w, y, state_color[1], state_color[2], state_color[3], self.windowAlpha, "l", 0, dormant_state)
+            y = y + line_spacing + 6
+        end
 
         if t_yaw ~= "off" then
             renderer.text(base_x, y, 255, 255, 255, self.windowAlpha, align, 0, "resolver")
@@ -5058,6 +5077,12 @@ widgets.register({
         total_lines = total_lines + 4
         total_pixels = total_pixels + 6
         
+        local dormant_enabled = interface.aimbot.dormant_enabled:get() and interface.aimbot.dormant_enabled.hotkey:get()
+        if dormant_enabled then
+            total_lines = total_lines + 2
+            total_pixels = total_pixels + 6
+        end
+        
         local isDT = ui.get(ui_references.double_tap[1]) and ui.get(ui_references.double_tap[2])
         local isOS = ui.get(ui_references.on_shot_anti_aim[1]) and ui.get(ui_references.on_shot_anti_aim[2])
         if isDT or isOS then
@@ -5576,7 +5601,11 @@ buybot = {} do
         
         local money = entity.get_prop(entity.get_local_player(), "m_iAccount")
 
-        if not interface.utility.buybot:get() or (money >= 800 and money <= 1000) then
+        -- if not interface.utility.buybot:get() or (money >= 800 and money <= 1000) then
+        --     return
+        -- end
+
+        if not interface.utility.buybot:get() or money <= 1000 then
             return
         end
 
@@ -7944,6 +7973,220 @@ grenade_radius = {} do
 end
 --@endregion
 
+--@region: dormant aimbot
+dormant_aimbot = {} do
+    _G.noctua_runtime.dormant_state = "waiting"
+
+    local virtual_hitboxes = {
+        { scale = 3.8, hitbox = "pelvis",      z = 28, duck_sub = 6,  priority = 1 },
+        { scale = 3.5, hitbox = "stomach",     z = 38, duck_sub = 8,  priority = 2 },
+        { scale = 3.6, hitbox = "thorax",      z = 45, duck_sub = 10, priority = 3 },
+        { scale = 3.2, hitbox = "chest",       z = 51, duck_sub = 12, priority = 4 },
+        { scale = 1.8, hitbox = "head",        z = 51, duck_sub = 12, priority = 5 }
+    }
+
+    local function calc_angle(src_x, src_y, src_z, dst_x, dst_y, dst_z)
+        local dx = dst_x - src_x
+        local dy = dst_y - src_y
+        local dz = dst_z - src_z
+        local hyp = math.sqrt(dx*dx + dy*dy)
+        local pitch = math.deg(math.atan2(-dz, hyp))
+        local yaw = math.deg(math.atan2(dy, dx))
+        return pitch, yaw
+    end
+
+    dormant_aimbot.on_setup_command = function(cmd)
+        if not interface.aimbot.dormant_enabled:get() or not interface.aimbot.dormant_enabled.hotkey:get() then return end
+
+        local lp = entity.get_local_player()
+        if not entity.is_alive(lp) then return end
+
+        local weapon = entity.get_player_weapon(lp)
+        local w_data = csgo_weapons(weapon)
+        if not w_data then return end
+
+        _G.noctua_runtime.dormant_state = "waiting"
+        
+        local w_type = w_data.type
+        if w_type == "grenade" or w_type == "knife" or w_type == "c4" then return end
+
+        local ex, ey, ez = client.eye_position()
+        local min_dmg_cfg = interface.aimbot.dormant_damage:get()
+        local max_players = globals.maxplayers()
+        local resource = entity.get_player_resource()
+        local best_safety_score = 0
+        local best_x, best_y, best_z
+        
+        local ping = math.max(0.0, client.latency())
+        local lerp = math.max(0.0, client.get_cvar("cl_interp") or 0.031)
+
+        for idx = 1, max_players do
+            if entity.get_prop(resource, "m_bConnected", idx) == 1 and 
+               idx ~= lp and 
+               entity.is_enemy(idx) and 
+               entity.is_dormant(idx) and
+               entity.get_prop(idx, "m_lifeState") == 0 then
+                
+                local x1, y1, x2, y2, alpha = entity.get_bounding_box(idx)
+                
+                if alpha and alpha > 0.3 then
+                    local ox, oy, oz = entity.get_origin(idx)
+                    local vx = entity.get_prop(idx, "m_vecVelocity[0]") or 0
+                    local vy = entity.get_prop(idx, "m_vecVelocity[1]") or 0
+                    
+                    if math.abs(ox) > 1 then
+                        local dist_sq = (ox-ex)^2 + (oy-ey)^2 + (oz-ez)^2
+                        
+                        if dist_sq < 9000000 then 
+                            local extrapolation = ping + lerp
+                            if extrapolation > 0.2 then extrapolation = 0.2 end
+
+                            local pred_x = ox + (vx * extrapolation)
+                            local pred_y = oy + (vy * extrapolation)
+                            
+                            local duck_amt = entity.get_prop(idx, "m_flDuckAmount") or 0
+                            
+                            for i = 1, #virtual_hitboxes do
+                                local box = virtual_hitboxes[i]
+                                local vz = oz + (box.z - (duck_amt * box.duck_sub))
+                                
+                                local _, yaw_to = calc_angle(ex, ey, ez, pred_x, pred_y, vz)
+                                local rad = math.rad(yaw_to + 90)
+                                
+                                local safe_scale = box.scale * 0.8
+                                local off_x = math.cos(rad) * safe_scale
+                                local off_y = math.sin(rad) * safe_scale
+                                
+                                local points = {
+                                    { x = pred_x, y = pred_y, z = vz },
+                                    { x = pred_x + off_x, y = pred_y + off_y, z = vz },
+                                    { x = pred_x - off_x, y = pred_y - off_y, z = vz }
+                                }
+
+                                local points_hit = 0
+                                local total_dmg = 0
+                                local valid_point_coords = nil
+
+                                for p = 1, 3 do
+                                    local pt = points[p]
+                                    local _, dmg = client.trace_bullet(lp, ex, ey, ez, pt.x, pt.y, pt.z, true)
+                                    
+                                    if dmg > min_dmg_cfg then
+                                        points_hit = points_hit + 1
+                                        total_dmg = total_dmg + dmg
+                                        if p == 1 or not valid_point_coords then
+                                            valid_point_coords = pt
+                                        end
+                                    end
+                                end
+
+                                if points_hit >= 2 then
+                                    if points_hit > best_safety_score then
+                                        best_safety_score = points_hit
+                                        best_x, best_y, best_z = valid_point_coords.x, valid_point_coords.y, valid_point_coords.z
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+
+        if not best_x then 
+            _G.noctua_runtime.dormant_state = "waiting"
+            return 
+        end
+
+        _G.noctua_runtime.dormant_state = "working"
+        local hc_val = interface.aimbot.dormant_hitchance:get()
+        
+        if hc_val == 50 then
+            local w_idx = bit.band(entity.get_prop(weapon, "m_iItemDefinitionIndex") or 0, 0xFFFF)
+
+            if w_idx == 11 or w_idx == 38 then -- autosnipers
+                hc_val = 90
+            elseif w_idx == 64 then -- r8
+                hc_val = 65
+            elseif w_idx == 9 then -- awp
+                hc_val = 90
+            elseif w_idx == 40 then -- scout
+                hc_val = 85
+            else 
+                hc_val = 80
+            end
+        end
+
+        local inaccuracy = entity.get_prop(weapon, "m_fAccuracyPenalty") or 0
+        local spread_limit = (100 - hc_val) * 0.0006
+
+        if w_type == "sniperrifle" and entity.get_prop(lp, "m_bIsScoped") == 0 then
+            cmd.in_attack2 = 1
+            return
+        end
+
+        if inaccuracy > spread_limit then
+            local is_scoped = entity.get_prop(lp, "m_bIsScoped") == 1
+            local max_spd = is_scoped and w_data.max_player_speed_alt or w_data.max_player_speed
+            local stop_spd = max_spd * 0.33
+            
+            local v = math.sqrt(cmd.forwardmove*cmd.forwardmove + cmd.sidemove*cmd.sidemove)
+            if v > stop_spd then
+                local f = stop_spd / v
+                cmd.forwardmove = cmd.forwardmove * f
+                cmd.sidemove = cmd.sidemove * f
+            end
+        end
+
+        local curtime = globals.curtime()
+        local next_att = entity.get_prop(lp, "m_flNextAttack") or 0
+        local next_prim = entity.get_prop(weapon, "m_flNextPrimaryAttack") or 0
+        
+        if curtime < next_att or curtime < next_prim then return end
+
+        local final_inaccuracy = entity.get_prop(weapon, "m_fAccuracyPenalty") or 0
+        
+        if final_inaccuracy <= spread_limit then
+            local pitch, yaw = calc_angle(ex, ey, ez, best_x, best_y, best_z)
+            cmd.pitch = pitch
+            cmd.yaw = yaw
+            cmd.in_attack = 1
+            cmd.buttons = bit.bor(cmd.buttons, 1)
+            cmd.no_choke = true
+        end
+    end
+
+    client.set_event_callback('setup_command', dormant_aimbot.on_setup_command)
+end
+--@endregion
+
+--@region: auto !r8
+auto_r8 = {} do
+    auto_r8.has_sent = false
+
+    auto_r8.on_paint = function()
+        if not interface.utility.auto_r8:get() then return end
+
+        local game_rules = entity.get_all("CCSGameRulesProxy")[1]
+        if not game_rules then return end
+
+        local is_halftime = entity.get_prop(game_rules, "m_gamePhase") == 4
+
+        if is_halftime then
+            if not auto_r8.has_sent then
+                client.exec("say_team !r8")
+                logging:push("swapped to revolver")
+                auto_r8.has_sent = true
+            end
+        else
+            auto_r8.has_sent = false
+        end
+    end
+
+    client.set_event_callback("paint", auto_r8.on_paint)
+end
+--@endregion
+
 --@region: art
 art = {} do
     local changelog = [[
@@ -7957,9 +8200,11 @@ art = {} do
     - Added world damage animations
     - Added mismatch reasons
     - Added compatibility mode
+    - Added dormant aimbot
+    - Added auto r8
     - Reworked miss reasons
     - Reworked buybot
-    - Reworked experimental resolver logic
+    - Reworked experimental yaw correction
     - Reworked debug window
     - Fixed buybot fallback purchasing after primary items
     - Fixed shutdown restoration
