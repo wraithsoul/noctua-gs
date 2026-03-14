@@ -1534,6 +1534,15 @@ local ui_references = {
 }
 
 utils = {} do
+    utils.contains = function(tbl, val)
+        for _, item in ipairs(tbl) do
+            if item == val then
+                return true
+            end
+        end
+        return false
+    end
+
     utils.get_player_info = function(idx)
         if type(idx) ~= "number" then
             return nil
@@ -1544,15 +1553,6 @@ utils = {} do
             return out
         end
         return nil
-    end
-
-    utils.contains = function(tbl, val)
-        for _, item in ipairs(tbl) do
-            if item == val then
-                return true
-            end
-        end
-        return false
     end
 
     utils.weapon_ready = function()
@@ -3576,6 +3576,17 @@ visuals = {} do
         local fadeSpeedSetting = fadeSpeedBase * frameTime
         local local_player = entity.get_local_player()
         local health = local_player and entity.get_prop(local_player, "m_iHealth") or 0
+        local style = (interface.visuals.crosshair_style and interface.visuals.crosshair_style:get()) or 'default'
+        local isEmoji = (style == 'emoji')
+        local isCenteredStyle = (style == 'center') or isEmoji
+
+        local fade_lerp_t = fadeSpeedSetting
+        local position_lerp_t = fadeSpeedSetting
+
+        if isCenteredStyle then
+            fade_lerp_t = fade_lerp_t * 1.3
+            position_lerp_t = position_lerp_t * 1.2
+        end
 
         local is_scoreboard = client.key_state(0x09) -- TAB
         local game_rules = entity.get_all("CCSGameRulesProxy")[1]
@@ -3603,10 +3614,10 @@ visuals = {} do
                                   and ((local_player and (health > 0) and not is_scoreboard) or menuOpen)
 
         local scopeAlpha = is_scoped and (255 * 0.5) or 255
-        self.scopeAlpha = mathematic.lerp(self.scopeAlpha or 255, scopeAlpha, fadeSpeedSetting)
+        self.scopeAlpha = mathematic.lerp(self.scopeAlpha or 255, scopeAlpha, fade_lerp_t)
 
         local targetAlpha = indicatorsEnabled and self.scopeAlpha or 0
-        self.indicatorsAlpha = mathematic.lerp(self.indicatorsAlpha or 0, targetAlpha, fadeSpeedSetting)
+        self.indicatorsAlpha = mathematic.lerp(self.indicatorsAlpha or 0, targetAlpha, fade_lerp_t)
         
         if self.indicatorsAlpha < 1 then 
             return
@@ -3629,8 +3640,6 @@ visuals = {} do
         local isDT = ui.get(ui_references.double_tap[1]) and ui.get(ui_references.double_tap[2])
         local isDMG = ui.get(ui_references.minimum_damage_override[1]) and ui.get(ui_references.minimum_damage_override[2])
 
-        local style = (interface.visuals.crosshair_style and interface.visuals.crosshair_style:get()) or 'default'
-        local isEmoji = (style == 'emoji')
         local align_text = ((style == 'center') or isEmoji) and 'c' or 'l'
         local align_title = ((style == 'center') or isEmoji) and 'cb' or 'lb'
 
@@ -3674,8 +3683,8 @@ visuals = {} do
             end
         end
 
-        self.rapidAlpha = mathematic.lerp(self.rapidAlpha or 0, targetRapidAlpha, fadeSpeedSetting)
-        self.reloadAlpha = mathematic.lerp(self.reloadAlpha or 0, targetReloadAlpha, fadeSpeedSetting)
+        self.rapidAlpha = mathematic.lerp(self.rapidAlpha or 0, targetRapidAlpha, fade_lerp_t)
+        self.reloadAlpha = mathematic.lerp(self.reloadAlpha or 0, targetReloadAlpha, fade_lerp_t)
         self.rapidAlpha = mathematic.clamp(self.rapidAlpha, 0, 255)
         self.reloadAlpha = mathematic.clamp(self.reloadAlpha, 0, 255)
 
@@ -3690,7 +3699,7 @@ visuals = {} do
             self.element_target_positions.osaa = self.element_target_positions.state + 10
         end
 
-        self.osaaAlpha = mathematic.lerp(self.osaaAlpha or 0, isOS and 255 or 0, fadeSpeedSetting)
+        self.osaaAlpha = mathematic.lerp(self.osaaAlpha or 0, isOS and 255 or 0, fade_lerp_t)
         local smoothOsaaAlpha = (self.osaaAlpha / 255) * self.indicatorsAlpha
 
         if smoothOsaaAlpha >= 1 then
@@ -3701,14 +3710,14 @@ visuals = {} do
             self.element_target_positions.dmg = self.element_target_positions.state + 10
         end
 
-        self.dmgAlpha = mathematic.lerp(self.dmgAlpha or 0, isDMG and 255 or 0, fadeSpeedSetting)
+        self.dmgAlpha = mathematic.lerp(self.dmgAlpha or 0, isDMG and 255 or 0, fade_lerp_t)
         local smoothDmgAlpha = (self.dmgAlpha / 255) * self.indicatorsAlpha
 
-        self.element_positions.noctua = mathematic.lerp(self.element_positions.noctua, self.element_target_positions.noctua, fadeSpeedSetting)
-        self.element_positions.state = mathematic.lerp(self.element_positions.state, self.element_target_positions.state, fadeSpeedSetting)
-        self.element_positions.rapid = mathematic.lerp(self.element_positions.rapid, self.element_target_positions.rapid, fadeSpeedSetting)
-        self.element_positions.osaa = mathematic.lerp(self.element_positions.osaa, self.element_target_positions.osaa, fadeSpeedSetting)
-        self.element_positions.dmg = mathematic.lerp(self.element_positions.dmg, self.element_target_positions.dmg, fadeSpeedSetting)
+        self.element_positions.noctua = mathematic.lerp(self.element_positions.noctua, self.element_target_positions.noctua, position_lerp_t)
+        self.element_positions.state = mathematic.lerp(self.element_positions.state, self.element_target_positions.state, position_lerp_t)
+        self.element_positions.rapid = mathematic.lerp(self.element_positions.rapid, self.element_target_positions.rapid, position_lerp_t)
+        self.element_positions.osaa = mathematic.lerp(self.element_positions.osaa, self.element_target_positions.osaa, position_lerp_t)
+        self.element_positions.dmg = mathematic.lerp(self.element_positions.dmg, self.element_target_positions.dmg, position_lerp_t)
 
         local animate_on_scope = (interface.visuals.crosshair_animate_scope and interface.visuals.crosshair_animate_scope:get()) or false
         local use_scope_lerp = ((style == 'center') or isEmoji) and animate_on_scope
@@ -3748,7 +3757,7 @@ visuals = {} do
 
         local scope_pos = self.scope_pos or 0
         local target_scope = is_scoped and 1 or 0
-        scope_pos = mathematic.lerp(scope_pos, target_scope, fadeSpeedSetting)
+        scope_pos = mathematic.lerp(scope_pos, target_scope, position_lerp_t)
         self.scope_pos = scope_pos
         if (not is_scoped) and (scope_pos < 0.001) then
             self._unscoping_side = nil
@@ -5548,6 +5557,8 @@ end
 
 --@region: buybot
 buybot = {} do
+    buybot.current_round_number = 0
+
     buybot.primary_console = {
         ["-"] = "",
         ["autosnipers"] = "scar20",
@@ -5573,6 +5584,36 @@ buybot = {} do
         ["smoke"] = "smokegrenade"
     }
 
+    buybot.get_next_round_number = function()
+        local game_rules = entity.get_all("CCSGameRulesProxy")[1]
+        if not game_rules then
+            return 0
+        end
+
+        if entity.get_prop(game_rules, "m_bWarmupPeriod") == 1 then
+            return 0
+        end
+
+        local rounds_played = entity.get_prop(game_rules, "m_totalRoundsPlayed") or 0
+        return rounds_played + 1
+    end
+
+    buybot.is_pistol_round = function()
+        local next_round = buybot.current_round_number
+        if next_round == nil or next_round <= 0 then
+            next_round = buybot.get_next_round_number()
+        end
+
+        if next_round <= 0 then
+            return false
+        end
+
+        local max_rounds = tonumber(client.get_cvar("mp_maxrounds")) or 30
+        local rounds_per_half = math.max(1, math.floor(max_rounds / 2))
+
+        return next_round == 1 or next_round == (rounds_per_half + 1)
+    end
+
     buybot.has_primary_weapon = function()
         local local_player = entity.get_local_player()
         if not local_player then return false end
@@ -5597,56 +5638,73 @@ buybot = {} do
         if client.userid_to_entindex(e.userid) ~= entity.get_local_player() then
             return
         end
-        
-        local money = entity.get_prop(entity.get_local_player(), "m_iAccount")
+    end
 
-        -- if not interface.utility.buybot:get() or (money >= 800 and money <= 1000) then
-        --     return
-        -- end
+    buybot.try_buy = function()
+        client.delay_call(0.25, function()
+            local local_player = entity.get_local_player()
+            if not local_player then
+                return
+            end
 
-        if not interface.utility.buybot:get() or money <= 1000 then
-            return
-        end
+            local money = entity.get_prop(local_player, "m_iAccount") or 0
+            if not interface.utility.buybot:get() or money <= 1000 or buybot.is_pistol_round() then
+                return
+            end
 
-        local primary_item = buybot.primary_console[interface.utility.buybot_primary:get()]
-        local primary_fallback_item = buybot.primary_console[interface.utility.buybot_primary_fallback:get()]
-        local secondary_item = buybot.secondary_console[interface.utility.buybot_secondary:get()]
-        local selected_utilities = interface.utility.buybot_utility:get()
-        local command_queue = ""
+            local primary_item = buybot.primary_console[interface.utility.buybot_primary:get()]
+            local primary_fallback_item = buybot.primary_console[interface.utility.buybot_primary_fallback:get()]
+            local secondary_item = buybot.secondary_console[interface.utility.buybot_secondary:get()]
+            local selected_utilities = interface.utility.buybot_utility:get()
+            local command_queue = ""
 
-        if secondary_item and secondary_item ~= "" then
-            command_queue = command_queue .. "buy " .. secondary_item .. ";"
-        end
+            if secondary_item and secondary_item ~= "" then
+                command_queue = command_queue .. "buy " .. secondary_item .. ";"
+            end
 
-        if selected_utilities then
-            for _, utility in ipairs(selected_utilities) do
-                local utility_item = buybot.utility_console[utility]
-                if utility_item and utility_item ~= "" then
-                    command_queue = command_queue .. "buy " .. utility_item .. ";"
+            if selected_utilities then
+                for _, utility in ipairs(selected_utilities) do
+                    local utility_item = buybot.utility_console[utility]
+                    if utility_item and utility_item ~= "" then
+                        command_queue = command_queue .. "buy " .. utility_item .. ";"
+                    end
                 end
             end
-        end
 
-        if primary_item and primary_item ~= "" then
-            command_queue = command_queue .. "buy " .. primary_item .. ";"
-            
-            if primary_fallback_item and primary_fallback_item ~= "" then
-                client.delay_call(0.4, function() 
-                    if not buybot.has_primary_weapon() then
-                        client.exec("buy " .. primary_fallback_item)
-                    end
-                end)
+            if primary_item and primary_item ~= "" then
+                command_queue = command_queue .. "buy " .. primary_item .. ";"
+
+                if primary_fallback_item and primary_fallback_item ~= "" then
+                    client.delay_call(0.4, function()
+                        if not buybot.has_primary_weapon() then
+                            client.exec("buy " .. primary_fallback_item)
+                        end
+                    end)
+                end
+            elseif primary_fallback_item and primary_fallback_item ~= "" then
+                command_queue = command_queue .. "buy " .. primary_fallback_item .. ";"
             end
-        elseif primary_fallback_item and primary_fallback_item ~= "" then
-            command_queue = command_queue .. "buy " .. primary_fallback_item .. ";"
-        end
 
-        if command_queue ~= "" then
-            client.exec(command_queue)
+            if command_queue ~= "" then
+                client.exec(command_queue)
+            end
+        end)
+    end
+
+    buybot.on_round_prestart = function()
+        buybot.current_round_number = buybot.get_next_round_number()
+        if buybot.current_round_number > 0 then
+            buybot.try_buy()
         end
     end
+
+    buybot.reset_round_cache = function()
+        buybot.current_round_number = 0
+    end
     
-    client.set_event_callback("player_spawn", buybot.on_player_spawn)
+    client.set_event_callback("round_prestart", buybot.on_round_prestart)
+    client.set_event_callback("cs_game_disconnected", buybot.reset_round_cache)
+    client.set_event_callback("game_newmap", buybot.reset_round_cache)
 end
 --@endregion
 
@@ -6576,41 +6634,80 @@ killsay = {} do
 
     killsay.kill_json_url = "https://raw.githubusercontent.com/wraithsoul/noctua-gs/refs/heads/main/phrases/kill.json"
     killsay.death_json_url = "https://raw.githubusercontent.com/wraithsoul/noctua-gs/refs/heads/main/phrases/death.json"
+    killsay.kill_json_path = "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Counter-Strike Global Offensive\\phrases\\kill.json"
+    killsay.death_json_path = "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Counter-Strike Global Offensive\\phrases\\death.json"
     killsay.multi_phrases_kill = {}
     killsay.multi_phrases_death = {}
 
-    killsay.load_phrases_from_url = function(url, target_table, phrase_type)
+    killsay.apply_phrases = function(decoded, target_table, phrase_type, source_name)
+        if type(decoded) ~= "table" then
+            logMessage('noctua · killsay', '', 'invalid ' .. phrase_type .. ' phrases payload from ' .. source_name)
+            return false
+        end
+
+        for i = #target_table, 1, -1 do
+            target_table[i] = nil
+        end
+
+        for i, phrase_set in ipairs(decoded) do
+            target_table[i] = {}
+            for j, line in ipairs(phrase_set) do
+                target_table[i][j] = tostring(line)
+            end
+        end
+
+        logMessage('noctua · killsay', '', 'loaded ' .. #target_table .. ' ' .. phrase_type .. ' phrase sets from ' .. source_name)
+        return true
+    end
+
+    killsay.load_phrases_from_file = function(path, target_table, phrase_type)
+        if not path or path == "" then
+            logMessage('noctua · killsay', '', 'no file path set for ' .. phrase_type .. ' phrases')
+            return false
+        end
+
+        local body = readfile(path)
+        if not body then
+            logMessage('noctua · killsay', '', 'failed to read ' .. phrase_type .. ' phrases file: ' .. path)
+            return false
+        end
+
+        local ok, decoded = pcall(json.decode, body)
+        if ok and killsay.apply_phrases(decoded, target_table, phrase_type, "file") then
+            return true
+        end
+
+        logMessage('noctua · killsay', '', 'failed to parse JSON for ' .. phrase_type .. ' phrases file')
+        return false
+    end
+
+    killsay.load_phrases_from_url = function(url, fallback_path, target_table, phrase_type)
         if not url or url == "" then
-            logMessage('noctua · killsay', '', 'no URL set for ' .. phrase_type .. ' phrases')
+            logMessage('noctua · killsay', '', 'no URL set for ' .. phrase_type .. ' phrases, using local file')
+            killsay.load_phrases_from_file(fallback_path, target_table, phrase_type)
             return
         end
-    
+
         http.get(url, function(success, response)
             if success and response and response.status == 200 then
                 local ok, decoded = pcall(json.decode, response.body)
-                if ok and decoded and type(decoded) == "table" then
-                    for i = #target_table, 1, -1 do
-                        target_table[i] = nil
-                    end
-                    for i, phrase_set in ipairs(decoded) do
-                        target_table[i] = {}
-                        for j, line in ipairs(phrase_set) do
-                            target_table[i][j] = tostring(line)
-                        end
-                    end
-                    logMessage('noctua · killsay', '', 'loaded ' .. #target_table .. ' ' .. phrase_type .. ' phrase sets')
-                else
-                    logMessage('noctua · killsay', '', 'failed to parse JSON for ' .. phrase_type .. ' phrases')
+                if ok and killsay.apply_phrases(decoded, target_table, phrase_type, "url") then
+                    return
                 end
+
+                logMessage('noctua · killsay', '', 'failed to parse JSON for ' .. phrase_type .. ' phrases from URL, using local file')
             else
-                logMessage('noctua · killsay', '', 'failed to load ' .. phrase_type .. ' phrases (' .. (success and response.status or 'no response') .. ')')
+                local status = (response and response.status) or 'no response'
+                logMessage('noctua · killsay', '', 'failed to load ' .. phrase_type .. ' phrases from URL (' .. status .. '), using local file')
             end
+
+            killsay.load_phrases_from_file(fallback_path, target_table, phrase_type)
         end)
     end
 
     killsay.load_all_phrases = function()
-        killsay.load_phrases_from_url(killsay.kill_json_url, killsay.multi_phrases_kill, "kill")
-        killsay.load_phrases_from_url(killsay.death_json_url, killsay.multi_phrases_death, "death")
+        killsay.load_phrases_from_url(killsay.kill_json_url, killsay.kill_json_path, killsay.multi_phrases_kill, "kill")
+        killsay.load_phrases_from_url(killsay.death_json_url, killsay.death_json_path, killsay.multi_phrases_death, "death")
     end
 
     killsay.get_random_phrase = function(phrase_type)
@@ -8162,31 +8259,141 @@ end
 --@region: auto !r8
 auto_r8 = {} do
     auto_r8.has_sent = false
+    auto_r8.used_r8_this_round = false
+    auto_r8.freeze_started_at = nil
+    auto_r8.active_pistol_round = 0
+
+    auto_r8.reset = function()
+        auto_r8.has_sent = false
+        auto_r8.used_r8_this_round = false
+        auto_r8.freeze_started_at = nil
+        auto_r8.active_pistol_round = 0
+    end
+
+    auto_r8.reset_freeze_state = function()
+        auto_r8.has_sent = false
+        auto_r8.freeze_started_at = nil
+    end
+
+    auto_r8.get_next_round_number = function(game_rules)
+        if not game_rules then
+            return 0
+        end
+
+        if entity.get_prop(game_rules, "m_bWarmupPeriod") == 1 then
+            return 0
+        end
+
+        local rounds_played = entity.get_prop(game_rules, "m_totalRoundsPlayed") or 0
+        return rounds_played + 1
+    end
+
+    auto_r8.is_pistol_round = function(round_number)
+        if not round_number or round_number <= 0 then
+            return false
+        end
+
+        local max_rounds = tonumber(client.get_cvar("mp_maxrounds")) or 30
+        local rounds_per_half = math.max(1, math.floor(max_rounds / 2))
+
+        return round_number == 1 or round_number == (rounds_per_half + 1)
+    end
+
+    auto_r8.can_send = function()
+        local local_player = entity.get_local_player()
+        if not local_player then
+            return false
+        end
+
+        local team = entity.get_prop(local_player, "m_iTeamNum") or 0
+        if team ~= 2 and team ~= 3 then
+            return false
+        end
+
+        if (entity.get_prop(local_player, "m_iHealth") or 0) <= 0 then
+            return false
+        end
+
+        local observer_mode = entity.get_prop(local_player, "m_iObserverMode") or 0
+        if observer_mode ~= 0 then
+            return false
+        end
+
+        local observer_target = entity.get_prop(local_player, "m_hObserverTarget") or -1
+        if observer_target ~= -1 and observer_target ~= 0 then
+            return false
+        end
+
+        return true
+    end
 
     auto_r8.on_paint = function()
-        if not interface.utility.auto_r8:get() then return end
-
-        local game_rules = entity.get_all("CCSGameRulesProxy")[1]
-        if not game_rules then return end
-        local game_phase = entity.get_prop(game_rules, "m_gamePhase")
-        local is_warmup = entity.get_prop(game_rules, "m_bWarmupPeriod") == 1
-        local rounds_played = entity.get_prop(game_rules, "m_totalRoundsPlayed") or 0
-        local is_freeze = entity.get_prop(game_rules, "m_bFreezePeriod") == 1
-
-        local is_halftime = (game_phase == 4)
-        local is_game_start = (rounds_played == 0 and is_freeze and not is_warmup)
-
-        if is_halftime or is_game_start then
-            if not auto_r8.has_sent then
-                client.exec("say_team !r8")
-                logging:push("swapped to revolver")
-                auto_r8.has_sent = true
-            end
-        else
-            auto_r8.has_sent = false
+        if not interface.utility.auto_r8:get() then
+            auto_r8.reset()
         end
     end
 
+    auto_r8.on_round_prestart = function()
+        auto_r8.reset()
+
+        if not interface.utility.auto_r8:get() then
+            return
+        end
+
+        local game_rules = entity.get_all("CCSGameRulesProxy")[1]
+        if not game_rules then
+            return
+        end
+
+        local round_number = auto_r8.get_next_round_number(game_rules)
+        if not auto_r8.is_pistol_round(round_number) then
+            return
+        end
+
+        client.delay_call(0.05, function()
+            if auto_r8.has_sent or not interface.utility.auto_r8:get() then
+                return
+            end
+
+            if not auto_r8.can_send() then
+                return
+            end
+
+            client.exec("say_team !r8")
+            logging:push("swapped to revolver")
+            auto_r8.has_sent = true
+            auto_r8.used_r8_this_round = true
+            auto_r8.active_pistol_round = round_number
+        end)
+    end
+
+    auto_r8.on_round_end = function()
+        if not interface.utility.auto_r8:get() then
+            auto_r8.used_r8_this_round = false
+            return
+        end
+
+        if not auto_r8.used_r8_this_round then
+            return
+        end
+
+        if not auto_r8.can_send() then
+            auto_r8.used_r8_this_round = false
+            auto_r8.active_pistol_round = 0
+            return
+        end
+
+        client.exec("say_team !deagle")
+        logging:push("swapped back to deagle")
+        auto_r8.used_r8_this_round = false
+        auto_r8.active_pistol_round = 0
+    end
+
+    client.set_event_callback("round_end", auto_r8.on_round_end)
+    client.set_event_callback("round_prestart", auto_r8.on_round_prestart)
+    client.set_event_callback("round_freeze_end", auto_r8.reset_freeze_state)
+    client.set_event_callback("cs_game_disconnected", auto_r8.reset)
+    client.set_event_callback("game_newmap", auto_r8.reset)
     client.set_event_callback("paint", auto_r8.on_paint)
 end
 --@endregion
