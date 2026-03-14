@@ -2103,9 +2103,85 @@ resolver = {} do
     resolver.safepoints  = {}
     resolver.cache       = {}
     resolver.history     = {}
+    resolver.feedback    = {}
     resolver.state_cache = {}
     resolver.layer_cache = {}
     resolver.precision   = {}
+
+    function resolver:get_feedback(idx)
+        if not idx then
+            return nil
+        end
+
+        local feedback = self.feedback[idx]
+        if feedback then
+            return feedback
+        end
+
+        feedback = {
+            miss_streak = 0,
+            hit_streak = 0,
+            brute_step = 0,
+            side_bias = 0,
+            amp_bias = 0,
+            last_side = 0,
+            last_yaw = 0,
+            last_amplitude = 0,
+            base_amplitude = 0
+        }
+
+        self.feedback[idx] = feedback
+        return feedback
+    end
+
+    function resolver:record_shot_result(idx, did_hit, reason)
+        if not idx then return end
+        if not (interface.aimbot.enabled_aimbot:get() and interface.aimbot.enabled_resolver_tweaks:get()) then return end
+        if interface.aimbot.resolver_mode:get() ~= 'experimental' then return end
+
+        local feedback = self:get_feedback(idx)
+        if not feedback then return end
+
+        if did_hit then
+            feedback.hit_streak = feedback.hit_streak + 1
+            feedback.miss_streak = 0
+            feedback.brute_step = 0
+
+            if feedback.last_side ~= 0 then
+                feedback.side_bias = feedback.last_side
+            end
+
+            local amplitude_delta = (feedback.last_amplitude or 0) - (feedback.base_amplitude or 0)
+            feedback.amp_bias = mathematic.clamp(amplitude_delta * 0.35, -10, 10)
+            return
+        end
+
+        if reason ~= "resolver" then
+            feedback.hit_streak = 0
+            feedback.amp_bias = feedback.amp_bias * 0.5
+            return
+        end
+
+        feedback.hit_streak = 0
+        feedback.miss_streak = feedback.miss_streak + 1
+        feedback.brute_step = (feedback.brute_step % 4) + 1
+
+        local last_side = feedback.last_side ~= 0 and feedback.last_side or 1
+
+        if feedback.brute_step == 1 then
+            feedback.side_bias = -last_side
+            feedback.amp_bias = 0
+        elseif feedback.brute_step == 2 then
+            feedback.side_bias = last_side
+            feedback.amp_bias = 12
+        elseif feedback.brute_step == 3 then
+            feedback.side_bias = -last_side
+            feedback.amp_bias = -8
+        else
+            feedback.side_bias = last_side
+            feedback.amp_bias = 18
+        end
+    end
     
     function resolver:calculate_layer_delta(idx)
         if not self.layers[idx] or not self.layers[idx][6] then return 0 end
@@ -2232,6 +2308,18 @@ resolver = {} do
         local enemy_state = utils.get_enemy_state(idx)
         local lby = entity.get_prop(idx, "m_flLowerBodyYawTarget") or 0
         local eye_yaw = animstate.flEyeYaw or 0
+        local feedback = self:get_feedback(idx)
+
+        local prev_state = self.state_cache[idx]
+        if prev_state ~= enemy_state then
+            self.history[idx] = nil
+            if feedback then
+                feedback.miss_streak = 0
+                feedback.brute_step = 0
+                feedback.amp_bias = 0
+            end
+            self.state_cache[idx] = enemy_state
+        end
 
         local layers = self.layers[idx] or {}
         local layer3 = layers[3]
@@ -2282,9 +2370,33 @@ resolver = {} do
         local layer_factor = 1 - mathematic.clamp(layer_activity * 2.0, 0, 0.4)
 
         local amplitude = cold_desync * vel_factor * duck_factor * layer_factor
-        
-        if amplitude < 10 then amplitude = 10 end
-        if amplitude > 58 then amplitude = 58 end
+        local history = self.history[idx]
+        if history and #history > 0 then
+            local history_sum = 0
+            for i = 1, #history do
+                history_sum = history_sum + history[i]
+            end
+
+            local history_sign = mathematic.sign(history_sum)
+            if history_sign ~= 0 and (not feedback or feedback.miss_streak == 0) then
+                side = mathematic.sign(side * 0.65 + history_sign * 0.35)
+                if side == 0 then
+                    side = history_sign
+                end
+            end
+        end
+
+        amplitude = mathematic.clamp(amplitude, 10, 58)
+
+        if feedback then
+            feedback.base_amplitude = amplitude
+
+            if feedback.side_bias ~= 0 then
+                side = feedback.side_bias
+            end
+
+            amplitude = mathematic.clamp(amplitude + feedback.amp_bias, 8, 58)
+        end
 
         local yaw = side * amplitude
 
@@ -2302,6 +2414,12 @@ resolver = {} do
         table.insert(self.history[idx], yaw)
         if #self.history[idx] > 5 then
             table.remove(self.history[idx], 1)
+        end
+
+        if feedback then
+            feedback.last_side = mathematic.sign(yaw)
+            feedback.last_yaw = yaw
+            feedback.last_amplitude = math.abs(yaw)
         end
 
         player_list.SetForceBodyYawCheckbox(player_list, idx, true)
@@ -4770,6 +4888,7 @@ logging = {} do
 
     logging.handleAimHit = function(self, e)
         if not e then return end
+        resolver:record_shot_result(e.target, true, "hit")
         if not interface.visuals.logging:get() then return end
         
         local logOptions = interface.visuals.logging_options:get()
@@ -4989,6 +5108,8 @@ logging = {} do
         }
     
         if noYawReasons[reason] then showYaw = false end
+
+        resolver:record_shot_result(e.target, false, reason)
     
         if not interface.visuals.logging:get() then return end
         
