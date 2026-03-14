@@ -1205,24 +1205,69 @@ end
 
 --@region: player_list
 player_list = {} do
+    local SAFE_POINT_OVERRIDE_DEFAULT = "-"
+    local PREFER_BODY_AIM_OVERRIDE_DEFAULT = "-"
+
+    local function get_checkbox(field, default)
+        return function(self, ent)
+            if not ent then
+                return default
+            end
+
+            local value = plist.get(ent, field)
+            if value == nil then
+                return default
+            end
+
+            return value
+        end
+    end
+
+    local function set_checkbox(self, ent, cache_key, field, val)
+        if not ent or self.values[cache_key][ent] == val then
+            return
+        end
+
+        plist.set(ent, field, val)
+        self.values[cache_key][ent] = val
+    end
+
+    local function update_override(self, ent, cache_key, field, val)
+        if not ent or self.values[cache_key][ent] == val then
+            return
+        end
+
+        plist.set(ent, field, val)
+        self.values[cache_key][ent] = val
+        client.update_player_list()
+    end
+
     player_list.reset = {
+        Whitelist = {},
+        SharedESPUpdates = {},
+        DisableVisuals = {},
+        HighPriority = {},
         ForceBodyYaw = {},
         ForceBodyYawCheckbox = {},
         CorrectionActive = {},
         ForcePitch = {},
         ForcePitchCheckbox = {},
-        SafePointOverrideState = {},
-        SafePointOverrideValue = {}
+        SafePointOverride = {},
+        PreferBodyAimOverride = {}
     }
     
     player_list.values = {
+        Whitelist = {},
+        SharedESPUpdates = {},
+        DisableVisuals = {},
+        HighPriority = {},
         ForceBodyYaw = {},
         ForceBodyYawCheckbox = {},
         CorrectionActive = {},
         ForcePitch = {},
         ForcePitchCheckbox = {},
-        SafePointOverrideState = {},
-        SafePointOverrideValue = {}
+        SafePointOverride = {},
+        PreferBodyAimOverride = {}
     }
     
     player_list.ref = {
@@ -1232,13 +1277,35 @@ player_list = {} do
     player_list.GetPlayer = function(self)
         return ui.get(self.ref.selected_player)
     end
-    
-    player_list.GetCorrection = function(self, ent)
-        return plist.get(ent, 'Correction active')
+
+    player_list.GetWhitelist = get_checkbox('Add to whitelist', false)
+
+    player_list.SetWhitelist = function(self, ent, val)
+        set_checkbox(self, ent, 'Whitelist', 'Add to whitelist', val)
+    end
+
+    player_list.GetSharedESPUpdates = get_checkbox('Allow shared ESP updates', false)
+
+    player_list.SetSharedESPUpdates = function(self, ent, val)
+        set_checkbox(self, ent, 'SharedESPUpdates', 'Allow shared ESP updates', val)
+    end
+
+    player_list.GetDisableVisuals = get_checkbox('Disable visuals', false)
+
+    player_list.SetDisableVisuals = function(self, ent, val)
+        set_checkbox(self, ent, 'DisableVisuals', 'Disable visuals', val)
+    end
+
+    player_list.GetHighPriority = get_checkbox('High priority', false)
+
+    player_list.SetHighPriority = function(self, ent, val)
+        set_checkbox(self, ent, 'HighPriority', 'High priority', val)
     end
     
+    player_list.GetCorrection = get_checkbox('Correction active', false)
+    
     player_list.SetCorrection = function(self, ent, val)
-        return plist.set(ent, 'Correction active', val)
+        set_checkbox(self, ent, 'CorrectionActive', 'Correction active', val)
     end
     
     player_list.SetForceBodyYawCheckbox = function(self, ent, val)
@@ -1281,24 +1348,28 @@ player_list = {} do
         self.values.ForcePitchCheckbox[ent] = val
     end
     
-    player_list.GetSafePointOverrideState = function(self, ent)
-        if not ent then return false end
+    player_list.GetSafePointOverride = function(self, ent)
+        if not ent then
+            return SAFE_POINT_OVERRIDE_DEFAULT
+        end
+
         return plist.get(ent, 'Override safe point')
     end
     
-    player_list.SetSafePointOverrideState = function(self, ent, val)
-        if not ent then return end
-        plist.set(ent, 'Override safe point', val)
+    player_list.SetSafePointOverride = function(self, ent, val)
+        update_override(self, ent, 'SafePointOverride', 'Override safe point', val)
     end
     
-    player_list.GetSafePointOverrideValue = function(self, ent)
-        if not ent then return "Off" end
-        return plist.get(ent, 'Override safe point value') or "Off"
+    player_list.GetPreferBodyAimOverride = function(self, ent)
+        if not ent then
+            return PREFER_BODY_AIM_OVERRIDE_DEFAULT
+        end
+
+        return plist.get(ent, 'Override prefer body aim')
     end
-    
-    player_list.SetSafePointOverrideValue = function(self, ent, val)
-        if not ent then return end
-        plist.set(ent, 'Override safe point value', val)
+
+    player_list.SetPreferBodyAimOverride = function(self, ent, val)
+        update_override(self, ent, 'PreferBodyAimOverride', 'Override prefer body aim', val)
     end
 end
 -- @endregion
@@ -7165,13 +7236,16 @@ shutdown_handler = {} do
 
     local function reset_player_plist(idx)
         if not idx or not entity.is_enemy(idx) then return end
+        plist.set(idx, 'Add to whitelist', false)
+        plist.set(idx, 'Allow shared ESP updates', false)
+        plist.set(idx, 'Disable visuals', false)
+        plist.set(idx, 'High priority', false)
         plist.set(idx, 'Force body yaw', false)
         plist.set(idx, 'Force body yaw value', 0)
         plist.set(idx, 'Force pitch', false)
         plist.set(idx, 'Force pitch value', 0)
         plist.set(idx, 'Correction active', false)
         plist.set(idx, 'Override safe point', "-")
-        plist.set(idx, 'Override safe point value', "Off")
         plist.set(idx, 'Override prefer body aim', "-")
     end
 
