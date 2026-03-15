@@ -9613,14 +9613,21 @@ dormant_aimbot = {} do
                                 local _, yaw_to = calc_angle(ex, ey, ez, pred_x, pred_y, vz)
                                 local rad = math.rad(yaw_to + 90)
                                 
-                                local safe_scale = box.scale * 0.8
-                                local off_x = math.cos(rad) * safe_scale
-                                local off_y = math.sin(rad) * safe_scale
+                                local side_scale = box.scale * 0.8
+                                local forward_scale = box.scale * 0.55
+                                local off_x = math.cos(rad) * side_scale
+                                local off_y = math.sin(rad) * side_scale
+                                local fwd_x = math.cos(rad - math.pi / 2) * forward_scale
+                                local fwd_y = math.sin(rad - math.pi / 2) * forward_scale
                                 
                                 local points = {
-                                    { x = pred_x, y = pred_y, z = vz },
-                                    { x = pred_x + off_x, y = pred_y + off_y, z = vz },
-                                    { x = pred_x - off_x, y = pred_y - off_y, z = vz }
+                                    { x = pred_x, y = pred_y, z = vz, weight = 40, center = true },
+                                    { x = pred_x + off_x, y = pred_y + off_y, z = vz, weight = 28 },
+                                    { x = pred_x - off_x, y = pred_y - off_y, z = vz, weight = 28 },
+                                    { x = pred_x + fwd_x, y = pred_y + fwd_y, z = vz, weight = 22 },
+                                    { x = pred_x - fwd_x, y = pred_y - fwd_y, z = vz, weight = 22 },
+                                    { x = pred_x, y = pred_y, z = vz + 2, weight = 18 },
+                                    { x = pred_x, y = pred_y, z = vz - 2, weight = 18 }
                                 }
 
                                 local points_hit = 0
@@ -9628,20 +9635,23 @@ dormant_aimbot = {} do
                                 local center_dmg = 0
                                 local valid_point_coords = nil
                                 local side_hits = 0
+                                local best_point_score = 0
 
-                                for p = 1, 3 do
+                                for p = 1, #points do
                                     local pt = points[p]
                                     local _, dmg = client.trace_bullet(lp, ex, ey, ez, pt.x, pt.y, pt.z, true)
                                     
                                     if dmg > min_dmg_cfg then
                                         points_hit = points_hit + 1
-                                        if p == 1 then
+                                        local point_score = dmg + pt.weight
+                                        if pt.center then
                                             center_hit = true
                                             center_dmg = dmg + center_damage_bonus
                                         else
                                             side_hits = side_hits + 1
                                         end
-                                        if p == 1 or not valid_point_coords then
+                                        if point_score > best_point_score then
+                                            best_point_score = point_score
                                             valid_point_coords = pt
                                         end
                                     end
@@ -9649,7 +9659,10 @@ dormant_aimbot = {} do
 
                                 local min_points_needed = require_full_confirmation and 3 or (alpha > 0.72 and 2 or 3)
                                 local confirmation_ok = center_hit and points_hit >= min_points_needed
-                                if require_full_confirmation then
+                                if not confirmation_ok and points_hit >= 4 and side_hits >= 3 and best_point_score > (min_dmg_cfg + 24) then
+                                    confirmation_ok = true
+                                end
+                                if require_full_confirmation or alpha <= 0.88 then
                                     confirmation_ok = confirmation_ok and side_hits >= 2
                                 end
 
@@ -9674,30 +9687,38 @@ dormant_aimbot = {} do
 
         _G.noctua_runtime.dormant_state = "working"
 
-        local inaccuracy = entity.get_prop(weapon, "m_fAccuracyPenalty") or 0
         local spread_limit = 0.02
+        local vel_x = entity.get_prop(lp, "m_vecVelocity[0]") or 0
+        local vel_y = entity.get_prop(lp, "m_vecVelocity[1]") or 0
+        local velocity_2d = math.sqrt(vel_x * vel_x + vel_y * vel_y)
+        local flags = entity.get_prop(lp, "m_fFlags") or 0
+        local on_ground = bit.band(flags, 1) == 1
 
         if w_type == "sniperrifle" and entity.get_prop(lp, "m_bIsScoped") == 0 then
             cmd.in_attack2 = 1
             return
         end
 
-        if entity.get_prop(lp, "m_hGroundEntity") == 0 and inaccuracy > (spread_limit * 1.2) then
+        if not on_ground then
             _G.noctua_runtime.dormant_state = "waiting"
             return
         end
 
-        if inaccuracy > spread_limit then
-            local is_scoped = entity.get_prop(lp, "m_bIsScoped") == 1
-            local max_spd = is_scoped and w_data.max_player_speed_alt or w_data.max_player_speed
-            local stop_spd = max_spd * 0.33
-            
-            local v = math.sqrt(cmd.forwardmove*cmd.forwardmove + cmd.sidemove*cmd.sidemove)
-            if v > stop_spd then
-                local f = stop_spd / v
-                cmd.forwardmove = cmd.forwardmove * f
-                cmd.sidemove = cmd.sidemove * f
+        local inaccuracy = entity.get_prop(weapon, "m_fAccuracyPenalty") or 0
+        local is_scoped = entity.get_prop(lp, "m_bIsScoped") == 1
+        local max_spd = (is_scoped and w_data.max_player_speed_alt or w_data.max_player_speed) or 250
+        local stop_speed_limit = math.min(52, max_spd * 0.24)
+
+        if velocity_2d > stop_speed_limit or inaccuracy > spread_limit then
+            local move_speed = math.sqrt(cmd.forwardmove * cmd.forwardmove + cmd.sidemove * cmd.sidemove)
+            if move_speed > stop_speed_limit and move_speed > 0 then
+                local scale = stop_speed_limit / move_speed
+                cmd.forwardmove = cmd.forwardmove * scale
+                cmd.sidemove = cmd.sidemove * scale
             end
+            cmd.in_attack = 0
+            cmd.buttons = bit.band(cmd.buttons, bit.bnot(1))
+            return
         end
 
         local curtime = globals.curtime()
