@@ -4226,6 +4226,7 @@ visuals = {} do
         dmg_state.current_value = dmg_state.current_value or damage_value
         dmg_state.current_value = mathematic.lerp(dmg_state.current_value, damage_value, frameTime * 30)
 
+        local animation_delta = math.abs(dmg_state.current_value - damage_value)
         local display_value = math.floor(dmg_state.current_value + 0.5)
         local text = ""
         if display_value > 100 then
@@ -4246,7 +4247,17 @@ visuals = {} do
             return
         end
 
-        local r, g, b, a = 255, 255, 255, dmg_state.alpha
+        local base_color = is_override and 255 or 215
+        local r, g, b, a = base_color, base_color, base_color, dmg_state.alpha
+
+        if animation_delta > 0.05 then
+            local blur_alpha = math.min(a * 0.18, animation_delta * 8)
+
+            renderer.text(x - 1, y, r, g, b, blur_alpha, 'c', 1000, text)
+            renderer.text(x + 1, y, r, g, b, blur_alpha, 'c', 1000, text)
+            renderer.text(x, y - 1, r, g, b, blur_alpha * 0.65, 'c', 1000, text)
+            renderer.text(x, y + 1, r, g, b, blur_alpha * 0.65, 'c', 1000, text)
+        end
 
         renderer.text(x, y, r, g, b, a, 'c', 1000, text)
     end
