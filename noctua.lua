@@ -4878,7 +4878,38 @@ logging = {} do
     logging.preview_alpha = 0
     logging.ui_alpha = 1
 
-    logging.push = function(self, text, duration, is_preview)
+    logging.build_segments = function(self, fmt, ...)
+        local white = {255, 255, 255}
+        local gray = {212, 212, 212}
+        local args = { ... }
+        local segments = {}
+        local pos = 1
+        local arg_index = 1
+
+        while true do
+            local s, e, conv = string.find(fmt, "(%%[%-%+%.%d]*[sdf])", pos)
+            if not s then
+                local tail = fmt:sub(pos)
+                if tail ~= "" then
+                    table.insert(segments, { text = tail, color = gray, flags = "" })
+                end
+                break
+            end
+
+            if s > pos then
+                table.insert(segments, { text = fmt:sub(pos, s - 1), color = gray, flags = "" })
+            end
+
+            local argVal = args[arg_index]
+            arg_index = arg_index + 1
+            table.insert(segments, { text = string.format(conv, argVal), color = white, flags = "" })
+            pos = e + 1
+        end
+
+        return segments
+    end
+
+    logging.push = function(self, text, duration, is_preview, segments)
         duration = duration or 3
         for i = 1, #self.animatedMessages do
             if not self.animatedMessages[i].targetY then
@@ -4889,6 +4920,7 @@ logging = {} do
         
         table.insert(self.animatedMessages, 1, {
             text = text,
+            segments = segments,
             duration = duration,
             startTime = globals.realtime(),
             currentY = 0,
@@ -4913,6 +4945,57 @@ logging = {} do
     logging.clearCache = function(self)
         self.animatedMessages = {}
         self.cache = {}
+    end
+
+    logging.push_format = function(self, fmt, duration, is_preview, ...)
+        self:push(string.format(fmt, ...), duration, is_preview, self:build_segments(fmt, ...))
+    end
+
+    logging.get_reason_color = function(self, reason)
+        local palette = {
+            ["resolver"] = {255, 70, 70},
+            ["prediction error"] = {255, 130, 80},
+            ["spread"] = {180, 130, 255},
+            ["high inaccuracy"] = {180, 130, 255},
+            ["lagcomp break"] = {120, 200, 255},
+            ["backtrack failure"] = {120, 200, 255},
+            ["extrapolation failure"] = {120, 200, 255},
+            ["occlusion"] = {200, 200, 200},
+            ["death"] = {200, 200, 200},
+            ["player death"] = {200, 200, 200},
+            ["unknown"] = {255, 120, 190}
+        }
+
+        return palette[reason] or {255, 120, 190}
+    end
+
+    logging.push_miss_format = function(self, fmt, duration, is_preview, ...)
+        local segments = self:build_segments(fmt, ...)
+        local reason = select(select("#", ...), ...)
+        if segments[#segments] then
+            segments[#segments].color = self:get_reason_color(reason)
+        end
+        self:push(string.format(fmt, ...), duration, is_preview, segments)
+    end
+
+    logging.console_miss_log = function(self, fmt, ...)
+        local gray = {212, 212, 212}
+        local reason = select(select("#", ...), ...)
+        local reason_color = self:get_reason_color(reason)
+        local segments = self:build_segments(fmt, ...)
+        local r, g, b = unpack(interface.visuals.accent.color.value)
+
+        if segments[#segments] then
+            segments[#segments].color = reason_color
+        end
+
+        client.color_log(r, g, b, "noctua · \0")
+        for i = 1, #segments do
+            local seg = segments[i]
+            local color = seg.color or gray
+            local ending = (i == #segments) and "\n\0" or "\0"
+            client.color_log(color[1], color[2], color[3], seg.text .. ending)
+        end
     end
 
     logging.drawAnimatedMessages = function(self, base_x, base_y, edit_mode)
@@ -4952,6 +5035,35 @@ logging = {} do
         local function easeInOutQuad(t)
             return t < 0.5 and 2 * t * t or -1 + (4 - 2 * t) * t
         end
+
+        local function render_segments(center_x, y, alpha, segments, blur_alpha)
+            local total_w = 0
+            local max_h = 0
+
+            for i = 1, #segments do
+                local seg = segments[i]
+                local w, h = renderer.measure_text(seg.flags or "", seg.text or "")
+                total_w = total_w + (w or 0)
+                max_h = math.max(max_h, h or 0)
+            end
+
+            local draw_x = math.floor(center_x - (total_w / 2) + 0.5)
+            for i = 1, #segments do
+                local seg = segments[i]
+                local seg_w, seg_h = renderer.measure_text(seg.flags or "", seg.text or "")
+                local draw_y = math.floor(y - ((seg_h or max_h) / 2) + (max_h / 2) + 0.5)
+
+                if blur_alpha > 0 then
+                    renderer.text(draw_x - 1, draw_y, seg.color[1], seg.color[2], seg.color[3], blur_alpha, seg.flags or "", 0, seg.text)
+                    renderer.text(draw_x + 1, draw_y, seg.color[1], seg.color[2], seg.color[3], blur_alpha, seg.flags or "", 0, seg.text)
+                    renderer.text(draw_x, draw_y - 1, seg.color[1], seg.color[2], seg.color[3], blur_alpha * 0.65, seg.flags or "", 0, seg.text)
+                    renderer.text(draw_x, draw_y + 1, seg.color[1], seg.color[2], seg.color[3], blur_alpha * 0.65, seg.flags or "", 0, seg.text)
+                end
+
+                renderer.text(draw_x, draw_y, seg.color[1], seg.color[2], seg.color[3], alpha, seg.flags or "", 0, seg.text)
+                draw_x = draw_x + (seg_w or 0)
+            end
+        end
         
         for i = 1, #self.animatedMessages do
             local msg = self.animatedMessages[i]
@@ -4975,14 +5087,18 @@ logging = {} do
                 local alpha = msg.alpha or 255
                 local y = math.floor(base_y + msg.currentY + msg.offset + 0.5)
                 local blur_amount = math.min(46, math.abs(msg.offset or 0) * 5.5 + math.abs(255 - alpha) * 0.08)
-                if blur_amount > 1 then
-                    local blur_alpha = math.min(alpha * 0.22, blur_amount * 0.75)
-                    renderer.text(base_x - 1, y, 255, 255, 255, blur_alpha, "c", 0, msg.text)
-                    renderer.text(base_x + 1, y, 255, 255, 255, blur_alpha, "c", 0, msg.text)
-                    renderer.text(base_x, y - 1, 255, 255, 255, blur_alpha * 0.65, "c", 0, msg.text)
-                    renderer.text(base_x, y + 1, 255, 255, 255, blur_alpha * 0.65, "c", 0, msg.text)
+                if msg.segments and #msg.segments > 0 then
+                    render_segments(base_x, y, alpha, msg.segments, blur_amount > 1 and math.min(alpha * 0.22, blur_amount * 0.75) or 0)
+                else
+                    if blur_amount > 1 then
+                        local blur_alpha = math.min(alpha * 0.22, blur_amount * 0.75)
+                        renderer.text(base_x - 1, y, 255, 255, 255, blur_alpha, "c", 0, msg.text)
+                        renderer.text(base_x + 1, y, 255, 255, 255, blur_alpha, "c", 0, msg.text)
+                        renderer.text(base_x, y - 1, 255, 255, 255, blur_alpha * 0.65, "c", 0, msg.text)
+                        renderer.text(base_x, y + 1, 255, 255, 255, blur_alpha * 0.65, "c", 0, msg.text)
+                    end
+                    renderer.text(base_x, y, 255, 255, 255, alpha, "c", 0, msg.text)
                 end
-                renderer.text(base_x, y, 255, 255, 255, alpha, "c", 0, msg.text)
             else
                 local holdTime = math.max(0, tonumber(msg.duration) or 3)
                 local totalDuration = animTime + holdTime + animTime
@@ -5020,14 +5136,18 @@ logging = {} do
                     local alpha = msg.alpha or 255
                     local y = math.floor(base_y + msg.currentY + msg.offset + 0.5)
                     local blur_amount = math.min(46, math.abs(msg.offset or 0) * 5.5 + math.abs(targetAlpha - alpha) * 0.08)
-                    if blur_amount > 1 then
-                        local blur_alpha = math.min(alpha * 0.22, blur_amount * 0.75)
-                        renderer.text(base_x - 1, y, 255, 255, 255, blur_alpha, "c", 0, msg.text)
-                        renderer.text(base_x + 1, y, 255, 255, 255, blur_alpha, "c", 0, msg.text)
-                        renderer.text(base_x, y - 1, 255, 255, 255, blur_alpha * 0.65, "c", 0, msg.text)
-                        renderer.text(base_x, y + 1, 255, 255, 255, blur_alpha * 0.65, "c", 0, msg.text)
+                    if msg.segments and #msg.segments > 0 then
+                        render_segments(base_x, y, alpha, msg.segments, blur_amount > 1 and math.min(alpha * 0.22, blur_amount * 0.75) or 0)
+                    else
+                        if blur_amount > 1 then
+                            local blur_alpha = math.min(alpha * 0.22, blur_amount * 0.75)
+                            renderer.text(base_x - 1, y, 255, 255, 255, blur_alpha, "c", 0, msg.text)
+                            renderer.text(base_x + 1, y, 255, 255, 255, blur_alpha, "c", 0, msg.text)
+                            renderer.text(base_x, y - 1, 255, 255, 255, blur_alpha * 0.65, "c", 0, msg.text)
+                            renderer.text(base_x, y + 1, 255, 255, 255, blur_alpha * 0.65, "c", 0, msg.text)
+                        end
+                        renderer.text(base_x, y, 255, 255, 255, alpha, "c", 0, msg.text)
                     end
-                    renderer.text(base_x, y, 255, 255, 255, alpha, "c", 0, msg.text)
                 end
             end
         end
@@ -5078,8 +5198,7 @@ logging = {} do
         end
 
         if doScreen then
-            local msg = string.format("fired at %s's %s for %d / lc: %d - yaw: %s°", playerName, hitbox, damage, lagComp, tostring(desiredYaw))
-            self:push(msg) 
+            self:push_format("fired at %s's %s for %d / lc: %d - yaw: %s°", nil, false, playerName, hitbox, damage, lagComp, tostring(desiredYaw))
         end
     end
 
@@ -5127,15 +5246,16 @@ logging = {} do
             end
     
             if doScreen then
-                msg = string.format(
+                self:push_format(
                     "hit %s's %s for %d / exp: %s (%d) - lc: %d - yaw: %s - reason: %s",
+                    nil,
+                    false,
                     playerName, hitbox, damage,
                     cached.hitbox, cached.damage,
                     lagComp,
                     type(desiredYaw) == "number" and desiredYaw.."°" or desiredYaw.."°",
                     mismatchReason
                 )
-                self:push(msg)
             end
 
             if doConsole then
@@ -5150,11 +5270,12 @@ logging = {} do
             end
         else
             if doScreen then
-                msg = string.format(
+                self:push_format(
                     "hit %s's %s for %d / lc: %d - yaw: %s",
+                    nil,
+                    false,
                     playerName, hitbox, damage, lagComp, type(desiredYaw) == "number" and desiredYaw.."°" or desiredYaw.."°"
                 )
-                self:push(msg)
             end
 
             if doConsole then
@@ -5184,13 +5305,11 @@ logging = {} do
         
         local remainingHealth = math.max(0, currentHealth - damage)
         
-        local msg = string.format("naded %s for %d damage (%d left)", playerName, damage, remainingHealth)
-        
         if doConsole then
             argLog("naded %s for %d damage (%d left)", playerName, damage, remainingHealth)
         end
         
-        if doScreen then self:push(msg) end
+        if doScreen then self:push_format("naded %s for %d damage (%d left)", nil, false, playerName, damage, remainingHealth) end
     end
     
     logging.handleKnifed = function(self, e)
@@ -5215,13 +5334,11 @@ logging = {} do
         
         local remainingHealth = math.max(0, currentHealth - damage)
         
-        local msg = string.format("knifed %s's %s for %d damage (%d left)", playerName, hitbox, damage, remainingHealth)
-        
         if doConsole then
             argLog("knifed %s's %s for %d damage (%d left)", playerName, hitbox, damage, remainingHealth)
         end
         
-        if doScreen then self:push(msg) end
+        if doScreen then self:push_format("knifed %s's %s for %d damage (%d left)", nil, false, playerName, hitbox, damage, remainingHealth) end
     end
 
     logging.handleAimMiss = function(self, e)
@@ -5323,17 +5440,18 @@ logging = {} do
     
         if doConsole then
             if showYaw then
-                argLog("missed %s's %s / lc: %d - yaw: %s - hc: %s - reason: %s", playerName, hitgroup, lagComp, yawStr, hcStr, reason)
+                self:console_miss_log("missed %s's %s / lc: %d - yaw: %s - hc: %s - reason: %s", playerName, hitgroup, lagComp, yawStr, hcStr, reason)
             else
-                argLog("missed %s's %s / lc: %d - hc: %s - reason: %s", playerName, hitgroup, lagComp, hcStr, reason)
+                self:console_miss_log("missed %s's %s / lc: %d - hc: %s - reason: %s", playerName, hitgroup, lagComp, hcStr, reason)
             end
         end
         
         if doScreen then 
-            local msg = showYaw and 
-                string.format("missed %s's %s / lc: %d - yaw: %s - hc: %s - reason: %s", playerName, hitgroup, lagComp, yawStr, hcStr, reason) or
-                string.format("missed %s's %s / lc: %d - hc: %s - reason: %s", playerName, hitgroup, lagComp, hcStr, reason)
-            self:push(msg) 
+            if showYaw then
+                self:push_miss_format("missed %s's %s / lc: %d - yaw: %s - hc: %s - reason: %s", nil, false, playerName, hitgroup, lagComp, yawStr, hcStr, reason)
+            else
+                self:push_miss_format("missed %s's %s / lc: %d - hc: %s - reason: %s", nil, false, playerName, hitgroup, lagComp, hcStr, reason)
+            end
         end
     
         if _G.noctua_session and _G.noctua_session.active then
