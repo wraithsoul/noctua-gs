@@ -4974,6 +4974,14 @@ logging = {} do
                 msg.offset = mathematic.lerp(msg.offset, targetOffset, globals.frametime() * 10)
                 local alpha = msg.alpha or 255
                 local y = math.floor(base_y + msg.currentY + msg.offset + 0.5)
+                local blur_amount = math.min(46, math.abs(msg.offset or 0) * 5.5 + math.abs(255 - alpha) * 0.08)
+                if blur_amount > 1 then
+                    local blur_alpha = math.min(alpha * 0.22, blur_amount * 0.75)
+                    renderer.text(base_x - 1, y, 255, 255, 255, blur_alpha, "c", 0, msg.text)
+                    renderer.text(base_x + 1, y, 255, 255, 255, blur_alpha, "c", 0, msg.text)
+                    renderer.text(base_x, y - 1, 255, 255, 255, blur_alpha * 0.65, "c", 0, msg.text)
+                    renderer.text(base_x, y + 1, 255, 255, 255, blur_alpha * 0.65, "c", 0, msg.text)
+                end
                 renderer.text(base_x, y, 255, 255, 255, alpha, "c", 0, msg.text)
             else
                 local holdTime = math.max(0, tonumber(msg.duration) or 3)
@@ -5011,7 +5019,14 @@ logging = {} do
             
                     local alpha = msg.alpha or 255
                     local y = math.floor(base_y + msg.currentY + msg.offset + 0.5)
-            
+                    local blur_amount = math.min(46, math.abs(msg.offset or 0) * 5.5 + math.abs(targetAlpha - alpha) * 0.08)
+                    if blur_amount > 1 then
+                        local blur_alpha = math.min(alpha * 0.22, blur_amount * 0.75)
+                        renderer.text(base_x - 1, y, 255, 255, 255, blur_alpha, "c", 0, msg.text)
+                        renderer.text(base_x + 1, y, 255, 255, 255, blur_alpha, "c", 0, msg.text)
+                        renderer.text(base_x, y - 1, 255, 255, 255, blur_alpha * 0.65, "c", 0, msg.text)
+                        renderer.text(base_x, y + 1, 255, 255, 255, blur_alpha * 0.65, "c", 0, msg.text)
+                    end
                     renderer.text(base_x, y, 255, 255, 255, alpha, "c", 0, msg.text)
                 end
             end
