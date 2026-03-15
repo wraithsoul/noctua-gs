@@ -3719,8 +3719,10 @@ visuals = {} do
             local dormant_state = _G.noctua_runtime.dormant_state or "waiting"
             local state_color = dormant_state == "active" and {140, 200, 140} or {215, 215, 215}
             renderer.text(base_x + state_w, y, state_color[1], state_color[2], state_color[3], self.windowAlpha, "l", 0, dormant_state)
+            y = y + line_spacing + 6
+        else
+            y = y + 6
         end
-        y = y + line_spacing + 6
 
         if t_yaw ~= "off" then
             renderer.text(base_x, y, 255, 255, 255, self.windowAlpha, align, 0, "resolver")
