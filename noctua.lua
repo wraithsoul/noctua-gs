@@ -8034,6 +8034,10 @@ end
 killsay = {} do
     killsay.last_say_time = 0
     killsay.cooldown = 2.0
+    killsay.last_phrase_index = {
+        kill = nil,
+        death = nil
+    }
 
     killsay.kill_json_url = "https://raw.githubusercontent.com/wraithsoul/noctua-gs/refs/heads/main/phrases/kill.json"
     killsay.death_json_url = "https://raw.githubusercontent.com/wraithsoul/noctua-gs/refs/heads/main/phrases/death.json"
@@ -8044,6 +8048,25 @@ killsay = {} do
 
     local function killsay_log(fmt, ...)
         argLogWithPrefix("noctua · killsay", fmt, ...)
+    end
+
+    local function select_phrase_index(phrase_type, phrase_count)
+        local last_index = killsay.last_phrase_index[phrase_type]
+
+        if phrase_count <= 1 then
+            return 1
+        end
+
+        if not last_index or last_index < 1 or last_index > phrase_count then
+            return client.random_int(1, phrase_count)
+        end
+
+        local index = client.random_int(1, phrase_count - 1)
+        if index >= last_index then
+            index = index + 1
+        end
+
+        return index
     end
 
     killsay.apply_phrases = function(decoded, target_table, phrase_type, source_name)
@@ -8118,28 +8141,28 @@ killsay = {} do
     end
 
     killsay.get_random_phrase = function(phrase_type)
-        local current_time = globals.realtime()
-        math.randomseed(current_time * 9182)
-        
         local phrases_table = phrase_type == "death" and killsay.multi_phrases_death or killsay.multi_phrases_kill
         if #phrases_table == 0 then return { "Error: No phrases loaded" } end
-        local index = math.random(1, #phrases_table)
-        
+
+        local index = select_phrase_index(phrase_type, #phrases_table)
+        killsay.last_phrase_index[phrase_type] = index
+
         return phrases_table[index]
     end
     
     killsay.calculate_delay = function(text)
-        local base_delay = 0.03
-        local char_delay = 0.035
-        local human_randomness = 1 + (math.random() * 0.4 - 0.2)
-        return base_delay + (string.len(text) * char_delay * human_randomness)
+        local text_length = string.len(text)
+        local reaction_delay = client.random_float(0.10, 0.18)
+        local reading_delay = math.sqrt(text_length) * client.random_float(0.035, 0.055)
+        local typing_delay = text_length * client.random_float(0.003, 0.006)
+        return reaction_delay + reading_delay + typing_delay
     end
     
     killsay.send_phrases = function(phrase_type)
-        local initial_delay = 1.0 + math.random() * 0.40
+        local initial_delay = client.random_float(0.45, 0.75)
         
         if phrase_type == "death" then
-            initial_delay = initial_delay + 1.75
+            initial_delay = initial_delay + client.random_float(0.45, 0.75)
         end
         
         local phrases = killsay.get_random_phrase(phrase_type)
@@ -8148,14 +8171,14 @@ killsay = {} do
         local cumulative_delay = initial_delay
         for i = 1, phrase_count do
             local phrase_delay = killsay.calculate_delay(phrases[i])
-            local min_between_delay = 0.70
+            local min_between_delay = client.random_float(0.24, 0.40)
             
             if string.len(phrases[i]) < 10 then
-                min_between_delay = 1.00
+                min_between_delay = client.random_float(0.32, 0.48)
             end
             
             if phrase_type == "death" then
-                min_between_delay = min_between_delay + 1.20
+                min_between_delay = min_between_delay + client.random_float(0.20, 0.35)
             end
             
             if i > 1 then
@@ -9487,8 +9510,7 @@ dormant_aimbot = {} do
         { scale = 3.8, hitbox = "pelvis",      z = 28, duck_sub = 6,  priority = 1 },
         { scale = 3.5, hitbox = "stomach",     z = 38, duck_sub = 8,  priority = 2 },
         { scale = 3.6, hitbox = "thorax",      z = 45, duck_sub = 10, priority = 3 },
-        { scale = 3.2, hitbox = "chest",       z = 51, duck_sub = 12, priority = 4 },
-        { scale = 1.8, hitbox = "head",        z = 51, duck_sub = 12, priority = 5 }
+        { scale = 3.2, hitbox = "chest",       z = 51, duck_sub = 12, priority = 4 }
     }
 
     local function calc_angle(src_x, src_y, src_z, dst_x, dst_y, dst_z)
@@ -9515,6 +9537,7 @@ dormant_aimbot = {} do
         
         local w_type = w_data.type
         if w_type == "grenade" or w_type == "knife" or w_type == "c4" then return end
+        local hc_val = interface.aimbot.dormant_hitchance:get()
 
         local ex, ey, ez = client.eye_position()
         local min_dmg_cfg = interface.aimbot.dormant_damage:get()
@@ -9522,7 +9545,27 @@ dormant_aimbot = {} do
         local resource = entity.get_player_resource()
         local best_safety_score = 0
         local best_x, best_y, best_z
-        
+
+        if hc_val == 50 then
+            local w_idx = bit.band(entity.get_prop(weapon, "m_iItemDefinitionIndex") or 0, 0xFFFF)
+
+            if w_idx == 11 or w_idx == 38 then
+                hc_val = 84
+            elseif w_idx == 64 then
+                hc_val = 65
+            elseif w_idx == 9 then
+                hc_val = 90
+            elseif w_idx == 40 then
+                hc_val = 85
+            else 
+                hc_val = 80
+            end
+        end
+
+        local alpha_threshold = 0.40 + ((hc_val - 50) / 50) * 0.30
+        local point_score_threshold = 170 + ((hc_val - 50) * 3)
+        local center_damage_bonus = math.floor((hc_val - 50) / 8)
+        local require_full_confirmation = hc_val >= 78
         local ping = math.max(0.0, client.latency())
         local lerp = math.max(0.0, client.get_cvar("cl_interp") or 0.031)
 
@@ -9535,7 +9578,7 @@ dormant_aimbot = {} do
                 
                 local x1, y1, x2, y2, alpha = entity.get_bounding_box(idx)
                 
-                if alpha and alpha > 0.3 then
+                if alpha and alpha > alpha_threshold then
                     local ox, oy, oz = entity.get_origin(idx)
                     local vx = entity.get_prop(idx, "m_vecVelocity[0]") or 0
                     local vy = entity.get_prop(idx, "m_vecVelocity[1]") or 0
@@ -9570,8 +9613,10 @@ dormant_aimbot = {} do
                                 }
 
                                 local points_hit = 0
-                                local total_dmg = 0
+                                local center_hit = false
+                                local center_dmg = 0
                                 local valid_point_coords = nil
+                                local side_hits = 0
 
                                 for p = 1, 3 do
                                     local pt = points[p]
@@ -9579,16 +9624,28 @@ dormant_aimbot = {} do
                                     
                                     if dmg > min_dmg_cfg then
                                         points_hit = points_hit + 1
-                                        total_dmg = total_dmg + dmg
+                                        if p == 1 then
+                                            center_hit = true
+                                            center_dmg = dmg + center_damage_bonus
+                                        else
+                                            side_hits = side_hits + 1
+                                        end
                                         if p == 1 or not valid_point_coords then
                                             valid_point_coords = pt
                                         end
                                     end
                                 end
 
-                                if points_hit >= 2 then
-                                    if points_hit > best_safety_score then
-                                        best_safety_score = points_hit
+                                local min_points_needed = require_full_confirmation and 3 or (alpha > 0.72 and 2 or 3)
+                                local confirmation_ok = center_hit and points_hit >= min_points_needed
+                                if require_full_confirmation then
+                                    confirmation_ok = confirmation_ok and side_hits >= 2
+                                end
+
+                                if confirmation_ok then
+                                    local score = (points_hit * 100) + center_dmg - (box.priority * 5)
+                                    if score >= point_score_threshold and score > best_safety_score then
+                                        best_safety_score = score
                                         best_x, best_y, best_z = valid_point_coords.x, valid_point_coords.y, valid_point_coords.z
                                     end
                                 end
@@ -9605,29 +9662,17 @@ dormant_aimbot = {} do
         end
 
         _G.noctua_runtime.dormant_state = "working"
-        local hc_val = interface.aimbot.dormant_hitchance:get()
-        
-        if hc_val == 50 then
-            local w_idx = bit.band(entity.get_prop(weapon, "m_iItemDefinitionIndex") or 0, 0xFFFF)
-
-            if w_idx == 11 or w_idx == 38 then -- autosnipers
-                hc_val = 90
-            elseif w_idx == 64 then -- r8
-                hc_val = 65
-            elseif w_idx == 9 then -- awp
-                hc_val = 90
-            elseif w_idx == 40 then -- scout
-                hc_val = 85
-            else 
-                hc_val = 80
-            end
-        end
 
         local inaccuracy = entity.get_prop(weapon, "m_fAccuracyPenalty") or 0
-        local spread_limit = (100 - hc_val) * 0.0006
+        local spread_limit = 0.02
 
         if w_type == "sniperrifle" and entity.get_prop(lp, "m_bIsScoped") == 0 then
             cmd.in_attack2 = 1
+            return
+        end
+
+        if entity.get_prop(lp, "m_hGroundEntity") == 0 and inaccuracy > (spread_limit * 1.2) then
+            _G.noctua_runtime.dormant_state = "waiting"
             return
         end
 
