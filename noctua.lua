@@ -8163,17 +8163,17 @@ killsay = {} do
     
     killsay.calculate_delay = function(text)
         local text_length = string.len(text)
-        local reaction_delay = client.random_float(0.10, 0.18)
-        local reading_delay = math.sqrt(text_length) * client.random_float(0.035, 0.055)
-        local typing_delay = text_length * client.random_float(0.003, 0.006)
+        local reaction_delay = client.random_float(0.28, 0.55)
+        local reading_delay = math.sqrt(text_length) * client.random_float(0.075, 0.120)
+        local typing_delay = text_length * client.random_float(0.020, 0.035)
         return reaction_delay + reading_delay + typing_delay
     end
     
     killsay.send_phrases = function(phrase_type)
-        local initial_delay = client.random_float(0.45, 0.75)
+        local initial_delay = client.random_float(0.95, 1.45)
         
         if phrase_type == "death" then
-            initial_delay = initial_delay + client.random_float(0.45, 0.75)
+            initial_delay = initial_delay + client.random_float(0.55, 0.95)
         end
         
         local phrases = killsay.get_random_phrase(phrase_type)
@@ -8182,14 +8182,14 @@ killsay = {} do
         local cumulative_delay = initial_delay
         for i = 1, phrase_count do
             local phrase_delay = killsay.calculate_delay(phrases[i])
-            local min_between_delay = client.random_float(0.24, 0.40)
+            local min_between_delay = client.random_float(0.75, 1.20)
             
             if string.len(phrases[i]) < 10 then
-                min_between_delay = client.random_float(0.32, 0.48)
+                min_between_delay = client.random_float(0.90, 1.35)
             end
             
             if phrase_type == "death" then
-                min_between_delay = min_between_delay + client.random_float(0.20, 0.35)
+                min_between_delay = min_between_delay + client.random_float(0.30, 0.60)
             end
             
             if i > 1 then
@@ -9889,6 +9889,7 @@ end
 art = {} do
     local changelog = [[
     Changelog:
+    - Added known alias system
     - Added streamer mode
     - Added animation breakers
     - Added buybot fallback option
@@ -9900,11 +9901,15 @@ art = {} do
     - Added compatibility mode
     - Added dormant aimbot
     - Added auto r8
+    - Added animated text blur for damage indicator
     - Reworked miss reasons
     - Reworked buybot
     - Reworked experimental yaw correction
     - Reworked debug window
+    - Reworked dormant aimbot safe point detection
+    - Reworked killsay delays
     - Fixed buybot fallback purchasing after primary items
+    - Fixed damage indicator color brightening during animation
     - Fixed shutdown restoration
     - Fixed config synchronization
     ]]
