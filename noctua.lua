@@ -532,7 +532,7 @@ interface = {} do
         empty = '⠀'
     }
  
-    interface.search = interface.header.general:combobox(pui.macros.title .. ' - '.. _version, 'home', 'aimbot', 'visuals', 'utility', 'config', 'other')
+    interface.search = interface.header.general:combobox(pui.macros.title .. ' - '.. _version, 'home', 'kas', 'aimbot', 'visuals', 'utility', 'config', 'other')
 
     interface.home = {
         title = interface.header.fake_lag:label('your stats:'),
@@ -551,9 +551,46 @@ interface = {} do
         compatibility_mode = interface.header.other:checkbox('noctua · compatibility mode')
     }
 
-    -- interface.home.show_updates:override(true)
-    -- interface.home.show_updates:set_enabled(false)
+    interface.kas = {
+        enabled = interface.header.general:checkbox('enable kas'),
+        player_list = interface.header.general:listbox('player list', 220),
+        status = interface.header.general:label(' · selected: none'),
+        database_status = interface.header.general:label(' · in database: no'),
+        add_button = interface.header.general:button('add'),
+        edit_button = interface.header.general:button('edit'),
+        remove_button = interface.header.general:button('remove'),
+        view_source = interface.header.other:label(' · source: -'),
+        view_alias = interface.header.other:label(' · alias: -'),
+        view_alternative = interface.header.other:label(' · alternative: -'),
+        view_group = interface.header.other:label(' · group: -'),
+        view_note = interface.header.other:label(' · note: -'),
+        options = interface.header.other:multiselect('options', 'alias', 'alternative', 'source', 'group', 'note'),
+        source = interface.header.other:combobox('source', {'manual', 'public', 'community', 'league', 'report'}),
+        alias_label = interface.header.other:label('alias'),
+        alias = (interface.header.other.textbox and interface.header.other:textbox('alias')) or interface.header.other:combobox('alias', ''),
+        alternative_label = interface.header.other:label('alternative aliases'),
+        alternative = (interface.header.other.textbox and interface.header.other:textbox('alternative aliases')) or interface.header.other:combobox('alternative aliases', ''),
+        group_label = interface.header.other:label('group'),
+        group = (interface.header.other.textbox and interface.header.other:textbox('group')) or interface.header.other:combobox('group', ''),
+        note_label = interface.header.other:label('note'),
+        note = (interface.header.other.textbox and interface.header.other:textbox('note')) or interface.header.other:combobox('note', ''),
+        add_submit = interface.header.other:button('add'),
+        save_submit = interface.header.other:button('save')
+    }
+
+    interface.kas_runtime = {
+        mode = 'idle',
+        has_record = false,
+        selected_supported = false,
+        show_source = false,
+        show_alias = false,
+        show_alternative = false,
+        show_group = false,
+        show_note = false
+    }
+
     interface.home.menu_snow:override(true)
+    interface.kas.enabled:override(true)
 
     interface.aimbot = {
         enabled_aimbot = interface.header.general:checkbox('enable aimbot'),
@@ -707,6 +744,7 @@ interface = {} do
         local selection = interface.search:get()
         local groups = {
             home = interface.home,
+            kas = interface.kas,
             aimbot = interface.aimbot,
             visuals = interface.visuals,
             utility = interface.utility,
@@ -731,11 +769,137 @@ interface = {} do
         local visibility_config = {
             home = {
                 groups_to_show = { groups.home },
-                groups_to_hide = { groups.aimbot, groups.visuals, groups.models, groups.utility, groups.config }
+                groups_to_hide = { groups.kas, groups.aimbot, groups.visuals, groups.models, groups.utility, groups.config }
+            },
+            kas = {
+                groups_to_show = { groups.kas },
+                groups_to_hide = { groups.home, groups.aimbot, groups.visuals, groups.models, groups.utility, groups.config },
+                element_visibility_logic = function(element, path)
+                    local key = path[#path]
+                    local enabled = interface.kas.enabled:get()
+                    local runtime = interface.kas_runtime or {}
+                    local is_idle = runtime.mode == 'idle'
+                    local is_add = runtime.mode == 'add'
+                    local is_edit = runtime.mode == 'edit'
+                    local has_record = runtime.has_record == true
+                    local supported = runtime.selected_supported == true
+
+                    if key == 'enabled' then
+                        element:set_visible(true)
+                        return
+                    end
+
+                    if not enabled then
+                        element:set_visible(false)
+                        return
+                    end
+
+                    if key == 'player_list' or key == 'status' or key == 'database_status' then
+                        element:set_visible(true)
+                        return
+                    end
+
+                    if key == 'add_button' then
+                        element:set_visible(supported and is_idle and not has_record)
+                        return
+                    end
+
+                    if key == 'edit_button' or key == 'remove_button' then
+                        element:set_visible(supported and is_idle and has_record)
+                        return
+                    end
+
+                    if key == 'view_source' then
+                        element:set_visible(supported and is_idle and has_record and runtime.show_source == true)
+                        return
+                    end
+
+                    if key == 'view_alias' then
+                        element:set_visible(supported and is_idle and has_record and runtime.show_alias == true)
+                        return
+                    end
+
+                    if key == 'view_alternative' then
+                        element:set_visible(supported and is_idle and has_record and runtime.show_alternative == true)
+                        return
+                    end
+
+                    if key == 'view_group' then
+                        element:set_visible(supported and is_idle and has_record and runtime.show_group == true)
+                        return
+                    end
+
+                    if key == 'view_note' then
+                        element:set_visible(supported and is_idle and has_record and runtime.show_note == true)
+                        return
+                    end
+
+                    if key == 'options' then
+                        element:set_visible(supported and (is_add or is_edit))
+                        return
+                    end
+
+                    if key == 'source' then
+                        element:set_visible(supported and (is_add or is_edit) and runtime.show_source == true)
+                        return
+                    end
+
+                    if key == 'alias' then
+                        element:set_visible(supported and (is_add or is_edit) and runtime.show_alias == true)
+                        return
+                    end
+
+                    if key == 'alias_label' then
+                        element:set_visible(supported and (is_add or is_edit) and runtime.show_alias == true)
+                        return
+                    end
+
+                    if key == 'alternative' then
+                        element:set_visible(supported and (is_add or is_edit) and runtime.show_alternative == true)
+                        return
+                    end
+
+                    if key == 'alternative_label' then
+                        element:set_visible(supported and (is_add or is_edit) and runtime.show_alternative == true)
+                        return
+                    end
+
+                    if key == 'group' then
+                        element:set_visible(supported and (is_add or is_edit) and runtime.show_group == true)
+                        return
+                    end
+
+                    if key == 'group_label' then
+                        element:set_visible(supported and (is_add or is_edit) and runtime.show_group == true)
+                        return
+                    end
+
+                    if key == 'note' then
+                        element:set_visible(supported and (is_add or is_edit) and runtime.show_note == true)
+                        return
+                    end
+
+                    if key == 'note_label' then
+                        element:set_visible(supported and (is_add or is_edit) and runtime.show_note == true)
+                        return
+                    end
+
+                    if key == 'add_submit' then
+                        element:set_visible(supported and is_add)
+                        return
+                    end
+
+                    if key == 'save_submit' then
+                        element:set_visible(supported and is_edit)
+                        return
+                    end
+
+                    element:set_visible(false)
+                end
             },
             aimbot = {
                 groups_to_show = { groups.aimbot },
-                groups_to_hide = { groups.home, groups.visuals, groups.models, groups.utility, groups.config },
+                groups_to_hide = { groups.home, groups.kas, groups.visuals, groups.models, groups.utility, groups.config },
                 element_visibility_logic = function(element, path)
                     local key = path[#path]
                     local enabled = (interface.aimbot.enabled_aimbot:get() == true)
@@ -768,7 +932,7 @@ interface = {} do
             },
             visuals = {
                 groups_to_show = { groups.visuals },
-                groups_to_hide = { groups.home, groups.aimbot, groups.models, groups.utility, groups.config },
+                groups_to_hide = { groups.home, groups.kas, groups.aimbot, groups.models, groups.utility, groups.config },
                 element_visibility_logic = function(element, path)
                     local key = path[#path]
                     local visuals_enabled = interface.visuals.enabled_visuals:get()
@@ -889,7 +1053,7 @@ interface = {} do
             },
             utility = {
                 groups_to_show = { groups.utility },
-                groups_to_hide = { groups.home, groups.aimbot, groups.visuals, groups.models, groups.config },
+                groups_to_hide = { groups.home, groups.kas, groups.aimbot, groups.visuals, groups.models, groups.config },
                 element_visibility_logic = function(element, path)
                     local key = path[#path]
 
@@ -958,7 +1122,7 @@ interface = {} do
             },
             config = {
                 groups_to_show = { groups.config },
-                groups_to_hide = { groups.home, groups.aimbot, groups.visuals, groups.models, groups.utility },
+                groups_to_hide = { groups.home, groups.kas, groups.aimbot, groups.visuals, groups.models, groups.utility },
                 element_visibility_logic = function(element, path)
                     element:set_visible(true)
                 end,
@@ -967,7 +1131,7 @@ interface = {} do
                 end
             },
             default = {
-                groups_to_hide = { groups.home, groups.aimbot, groups.visuals, groups.models, groups.utility, groups.config }
+                groups_to_hide = { groups.home, groups.kas, groups.aimbot, groups.visuals, groups.models, groups.utility, groups.config }
             }
         }
 
@@ -1097,7 +1261,7 @@ end
 --@endregion
 
 --@region: logging with arguments
-local function argLog(fmt, ...)    
+local function argLogWithPrefix(prefix, fmt, ...)
     local white = {255, 255, 255}
     local gray  = {212, 212, 212}
     local args  = { ... }
@@ -1107,7 +1271,7 @@ local function argLog(fmt, ...)
 
     local r, g, b = unpack(interface.visuals.accent.color.value)
     
-    client.color_log(r, g, b, "noctua · \0")
+    client.color_log(r, g, b, prefix .. " \0")
 
     while true do
         local s, e, conv = string.find(fmt, "(%%[%-%+%.%d]*[sdf])", pos)
@@ -1133,6 +1297,10 @@ local function argLog(fmt, ...)
             client.color_log(gray[1], gray[2], gray[3], seg.text .. ending)
         end
     end
+end
+
+local function argLog(fmt, ...)
+    argLogWithPrefix("noctua ·", fmt, ...)
 end
 --@endregion
 
@@ -4767,8 +4935,6 @@ logging = {} do
         local line_spacing = 15
 
         local animTime = 0.2
-        local holdTime = 3
-        local totalDuration = animTime + holdTime + animTime
         
         local function easeInOutQuad(t)
             return t < 0.5 and 2 * t * t or -1 + (4 - 2 * t) * t
@@ -4797,6 +4963,9 @@ logging = {} do
                 local y = math.floor(base_y + msg.currentY + msg.offset + 0.5)
                 renderer.text(base_x, y, 255, 255, 255, alpha, "c", 0, msg.text)
             else
+                local holdTime = math.max(0, tonumber(msg.duration) or 3)
+                local totalDuration = animTime + holdTime + animTime
+
                 if (elapsedTime >= totalDuration and not msg.removing) or msg.removing then
                     if not msg.removing then
                         msg.removing = true
@@ -6627,6 +6796,1046 @@ end
 
 --@endregion
 
+--@region: known alias system
+local kas = {} do
+    kas.file_path = "kas.json"
+    kas.source_presets = { "manual", "public", "community", "league", "report" }
+    local menu_color_reference = ui.reference("misc", "settings", "menu color")
+
+    kas.state = {
+        database = {
+            last_update = "",
+            players = {}
+        },
+        list_items = {},
+        list_lookup = {},
+        selected_steam_id = nil,
+        last_refresh = 0,
+        last_notify_refresh = 0,
+        notified_players = {}
+    }
+
+    local function default_database()
+        return {
+            last_update = "",
+            players = {}
+        }
+    end
+
+    local function trim(value)
+        return tostring(value or ""):gsub("^%s+", ""):gsub("%s+$", "")
+    end
+
+    local function contains_value(tbl, value)
+        for i = 1, #tbl do
+            if tostring(tbl[i]) == tostring(value) then
+                return true
+            end
+        end
+        return false
+    end
+
+    local function copy_array(values)
+        local out = {}
+        for i = 1, #(values or {}) do
+            out[i] = values[i]
+        end
+        return out
+    end
+
+    local normalize_entry
+
+    local function get_secondary_alternatives(entry)
+        local normalized = normalize_entry(entry)
+        local alternatives = {}
+
+        for i = 1, #normalized.alternative do
+            local alt = trim(normalized.alternative[i])
+            if alt ~= "" and alt ~= normalized.primary_alias and not contains_value(alternatives, alt) then
+                alternatives[#alternatives + 1] = alt
+            end
+        end
+
+        return alternatives
+    end
+
+    local function parse_alternative_input(value)
+        local out = {}
+        value = tostring(value or "")
+
+        for item in value:gmatch("[^,]+") do
+            local alias_name = trim(item)
+            if alias_name ~= "" and not contains_value(out, alias_name) then
+                out[#out + 1] = alias_name
+            end
+        end
+
+        return out
+    end
+
+    local function color_to_hex(r, g, b, a)
+        return string.format("%02x%02x%02x%02x", r or 255, g or 255, b or 255, a or 255)
+    end
+
+    local function get_kas_highlight_prefix()
+        if not menu_color_reference then
+            return ""
+        end
+
+        local r, g, b, a = ui.get(menu_color_reference)
+        return "\a" .. color_to_hex(r, g, b, a)
+    end
+
+    local function is_generated_storage_key(value)
+        value = trim(value)
+        return value:match("^steam_") ~= nil or value:match("^player_") ~= nil or value:match("^entry_") ~= nil
+    end
+
+    local function get_calendar_parts_from_unix(unix_time)
+        local total_seconds = math.max(0, math.floor(tonumber(unix_time) or 0))
+        local day_seconds = total_seconds % 86400
+        local days = math.floor(total_seconds / 86400)
+        local year = 1970
+
+        local function is_leap_year(value)
+            if value % 400 == 0 then
+                return true
+            end
+
+            if value % 100 == 0 then
+                return false
+            end
+
+            return value % 4 == 0
+        end
+
+        while true do
+            local days_in_year = is_leap_year(year) and 366 or 365
+            if days < days_in_year then
+                break
+            end
+
+            days = days - days_in_year
+            year = year + 1
+        end
+
+        local month_lengths = {
+            31,
+            is_leap_year(year) and 29 or 28,
+            31,
+            30,
+            31,
+            30,
+            31,
+            31,
+            30,
+            31,
+            30,
+            31
+        }
+
+        local month = 1
+        while days >= month_lengths[month] do
+            days = days - month_lengths[month]
+            month = month + 1
+        end
+
+        local day = days + 1
+        local hour = math.floor(day_seconds / 3600)
+        local minute = math.floor((day_seconds % 3600) / 60)
+        local second = day_seconds % 60
+
+        return year, month, day, hour, minute, second
+    end
+
+    local function current_timestamp_utc()
+        local year, month, day, hour, minute, second = get_calendar_parts_from_unix(client.unix_time())
+        return string.format("%04d-%02d-%02dT%02d:%02d:%02dZ", year, month, day, hour, minute, second)
+    end
+
+    local function current_date_utc()
+        local year, month, day = get_calendar_parts_from_unix(client.unix_time())
+        return string.format("%04d-%02d-%02d", year, month, day)
+    end
+
+    local function resolve_storage_key(entry, fallback_steam_id, current_key)
+        local alias_name = trim(entry and entry.primary_alias or "")
+        if alias_name ~= "" then
+            return alias_name
+        end
+
+        local steam_id = trim(fallback_steam_id)
+        if steam_id ~= "" then
+            return "steam_" .. steam_id
+        end
+
+        current_key = trim(current_key)
+        if current_key ~= "" then
+            return current_key
+        end
+
+        return "entry_" .. tostring(client.unix_time())
+    end
+
+    local function push_kas(text, duration, console_format, console_args)
+        local message = tostring(text or "")
+        if message:sub(1, 5) ~= "KAS: " then
+            message = "KAS: " .. message
+        end
+
+        logging:push(message:gsub("^KAS:%s*", ""), duration)
+        if console_format then
+            argLogWithPrefix("noctua · KAS", console_format, unpack(console_args or {}))
+            return
+        end
+
+        logMessage("noctua · KAS", "", message:gsub("^KAS:%s*", ""))
+    end
+
+    local function join_clauses(clauses)
+        if #clauses == 0 then
+            return ""
+        end
+
+        if #clauses == 1 then
+            return clauses[1]
+        end
+
+        if #clauses == 2 then
+            return clauses[1] .. " and " .. clauses[2]
+        end
+
+        return table.concat(clauses, ", ", 1, #clauses - 1) .. ", and " .. clauses[#clauses]
+    end
+
+    local function append_clauses(base_text, clauses, single_joiner, multi_joiner)
+        if #clauses == 0 then
+            return base_text .. "."
+        end
+
+        if #clauses == 1 then
+            return base_text .. " " .. single_joiner .. " " .. clauses[1] .. "."
+        end
+
+        return base_text .. multi_joiner .. join_clauses(clauses) .. "."
+    end
+
+    local function build_log_message(player_name, entry)
+        local normalized = normalize_entry(entry)
+        local display_name = trim(player_name)
+        local alias_name = trim(normalized.primary_alias)
+        local source_name = trim(normalized.source)
+        local group_name = trim(normalized.group)
+        local note_text = trim(normalized.note)
+        local clauses = {}
+
+        local function add_clause(text, ...)
+            clauses[#clauses + 1] = {
+                text = text,
+                args = { ... }
+            }
+        end
+
+        local function format_clauses()
+            local parts = {}
+            local args = {}
+
+            if #clauses == 0 then
+                return "", args
+            end
+
+            for i = 1, #clauses do
+                local clause = clauses[i]
+                local prefix = ""
+
+                if i > 1 then
+                    if #clauses == 2 then
+                        prefix = " and "
+                    elseif i == #clauses then
+                        prefix = ", and "
+                    else
+                        prefix = ", "
+                    end
+                end
+
+                parts[#parts + 1] = prefix .. clause.text
+                for j = 1, #(clause.args or {}) do
+                    args[#args + 1] = clause.args[j]
+                end
+            end
+
+            return table.concat(parts), args
+        end
+
+        if display_name == "" then
+            display_name = "unknown"
+        end
+
+        if source_name ~= "" then
+            add_clause('was added from "%s"', source_name)
+        end
+
+        if group_name ~= "" then
+            add_clause('belongs to "%s" group', group_name)
+        end
+
+        if note_text ~= "" then
+            add_clause('has a note "%s"', note_text)
+        end
+
+        if alias_name ~= "" then
+            local screen_clauses = {}
+            for i = 1, #clauses do
+                screen_clauses[i] = string.format(clauses[i].text, unpack(clauses[i].args or {}))
+            end
+
+            local message = append_clauses(
+                string.format('KAS: The player "%s" commonly known as "%s"', display_name, alias_name),
+                screen_clauses,
+                "and",
+                ", "
+            )
+            local clause_format, clause_args = format_clauses()
+            local console_args = { display_name, alias_name }
+            for i = 1, #clause_args do
+                console_args[#console_args + 1] = clause_args[i]
+            end
+
+            local console_suffix = ""
+            if #clauses == 1 then
+                console_suffix = " and " .. clause_format
+            elseif #clauses > 1 then
+                console_suffix = ", " .. clause_format
+            end
+
+            return message, 'The player "%s" commonly known as "%s"' .. console_suffix .. ".", console_args
+        end
+
+        if #clauses == 0 then
+            return nil
+        end
+
+        local screen_clauses = {}
+        for i = 1, #clauses do
+            screen_clauses[i] = string.format(clauses[i].text, unpack(clauses[i].args or {}))
+        end
+
+        local message = append_clauses(
+            string.format('KAS: The player "%s" is not in base', display_name),
+            screen_clauses,
+            "but",
+            ", but "
+        )
+        local clause_format, clause_args = format_clauses()
+        local console_args = { display_name }
+        for i = 1, #clause_args do
+            console_args[#console_args + 1] = clause_args[i]
+        end
+
+        return message, 'The player "%s" is not in base, but ' .. clause_format:gsub("^ and ", "") .. ".", console_args
+    end
+
+    normalize_entry = function(entry, alias_key)
+        if type(entry) ~= "table" then
+            return {
+                primary_alias = trim(alias_key),
+                id = {},
+                alternative = trim(alias_key) ~= "" and { trim(alias_key) } or {},
+                added_date = "",
+                source = "",
+                group = "",
+                note = ""
+            }
+        end
+
+        local primary_alias = trim(entry.primary_alias or entry.alias or "")
+        local normalized_key = trim(alias_key)
+        if primary_alias == "" and normalized_key ~= "" and not is_generated_storage_key(normalized_key) and not normalized_key:match("^%d+$") then
+            primary_alias = normalized_key
+        end
+
+        local ids = {}
+        if type(entry.id) == "table" then
+            for i = 1, #entry.id do
+                local normalized_id = trim(entry.id[i])
+                if normalized_id ~= "" and not contains_value(ids, normalized_id) then
+                    ids[#ids + 1] = normalized_id
+                end
+            end
+        end
+
+        local alternative = {}
+        if type(entry.alternative) == "table" then
+            for i = 1, #entry.alternative do
+                local alt = trim(entry.alternative[i])
+                if alt ~= "" and not contains_value(alternative, alt) then
+                    alternative[#alternative + 1] = alt
+                end
+            end
+        elseif trim(entry.alias or "") ~= "" then
+            alternative[1] = trim(entry.alias)
+        end
+
+        if primary_alias ~= "" then
+            local reordered = { primary_alias }
+            for i = 1, #alternative do
+                if alternative[i] ~= primary_alias and not contains_value(reordered, alternative[i]) then
+                    reordered[#reordered + 1] = alternative[i]
+                end
+            end
+            alternative = reordered
+        end
+
+        return {
+            primary_alias = primary_alias,
+            id = ids,
+            alternative = alternative,
+            added_date = trim(entry.added_date),
+            source = tostring(entry.source or ""),
+            group = tostring(entry.group or ""),
+            note = tostring(entry.note or "")
+        }
+    end
+
+    local function migrate_legacy_players(players)
+        local migrated = {}
+
+        for key, entry in pairs(players or {}) do
+            local normalized = normalize_entry(entry, key)
+
+            if #normalized.id == 0 and tostring(key):match("^%d+$") then
+                normalized.id[1] = tostring(key)
+            end
+
+            if normalized.primary_alias ~= "" and #normalized.alternative == 0 then
+                normalized.alternative = { normalized.primary_alias }
+            end
+
+            if normalized.added_date == "" then
+                normalized.added_date = current_date_utc()
+            end
+
+            migrated[resolve_storage_key(normalized, normalized.id[1], tostring(key))] = normalized
+        end
+
+        return migrated
+    end
+
+    local function save_database()
+        kas.state.database.last_update = current_timestamp_utc()
+        local ok, encoded = pcall(json.encode, kas.state.database, true)
+        if not ok or not encoded then
+            return nil, "failed to encode kas database"
+        end
+
+        writefile(kas.file_path, encoded)
+        return true
+    end
+
+    local function load_database()
+        local body = readfile(kas.file_path)
+        if not body or body == "" then
+            kas.state.database = default_database()
+            local ok, err = save_database()
+            if not ok then
+                push_kas(err, 4)
+            end
+            return
+        end
+
+        local ok, data = pcall(json.decode, body)
+        if not ok or type(data) ~= "table" or type(data.players) ~= "table" then
+            kas.state.database = default_database()
+            push_kas("failed to parse kas.json, file was left untouched", 4)
+            return
+        end
+
+        kas.state.database = {
+            last_update = trim(data.last_update),
+            players = migrate_legacy_players(data.players)
+        }
+    end
+
+    local function get_empty_entry(player_name)
+        return {
+            primary_alias = "",
+            id = {},
+            alternative = {},
+            added_date = "",
+            source = "",
+            group = "",
+            note = ""
+        }
+    end
+
+    local function find_entry_by_steam_id(steam_id)
+        local target_id = trim(steam_id)
+        if target_id == "" then
+            return nil, nil
+        end
+
+        for alias_key, entry in pairs(kas.state.database.players or {}) do
+            local normalized = normalize_entry(entry, alias_key)
+            if contains_value(normalized.id, target_id) then
+                return alias_key, normalized
+            end
+        end
+
+        return nil, nil
+    end
+
+    local function find_entry_by_alias(alias_name)
+        local target_alias = trim(alias_name)
+        if target_alias == "" then
+            return nil, nil
+        end
+
+        for alias_key, entry in pairs(kas.state.database.players or {}) do
+            local normalized = normalize_entry(entry, alias_key)
+            if normalized.primary_alias == target_alias or contains_value(normalized.alternative, target_alias) then
+                return alias_key, normalized
+            end
+        end
+
+        return nil, nil
+    end
+
+    local function get_connected_players()
+        local items = {}
+        local entries = {}
+        local player_resource = entity.get_player_resource()
+        local kas_color = get_kas_highlight_prefix()
+
+        if not player_resource then
+            return items, entries
+        end
+
+        for ent = 1, globals.maxplayers() do
+            if entity.get_prop(player_resource, "m_bConnected", ent) == 1 then
+                local name = entity.get_player_name(ent)
+                if name and name ~= "unknown" then
+                    local steam_id = entity.get_steam64(ent)
+                    local label = steam_id and string.format("%s [%s]", name, tostring(steam_id)) or (name .. " [bot]")
+                    if steam_id and find_entry_by_steam_id(tostring(steam_id)) then
+                        label = kas_color .. label
+                    end
+                    entries[#entries + 1] = {
+                        ent = ent,
+                        steam_id = steam_id and tostring(steam_id) or nil,
+                        name = name,
+                        label = label
+                    }
+                end
+            end
+        end
+
+        table.sort(entries, function(a, b)
+            return a.label:lower() < b.label:lower()
+        end)
+
+        for i = 1, #entries do
+            items[i] = entries[i].label
+        end
+
+        return items, entries
+    end
+
+    local function get_selected_player()
+        local idx = tonumber(interface.kas.player_list:get())
+        if not idx or idx < 0 then
+            return nil
+        end
+
+        idx = idx + 1
+        return kas.state.list_lookup[idx]
+    end
+
+    local function get_selected_options()
+        local options = interface.kas.options:get() or {}
+        if type(options) == "string" then
+            return { options }
+        end
+
+        if type(options) ~= "table" then
+            return {}
+        end
+
+        return options
+    end
+
+    local function set_selected_options(options)
+        if type(options) ~= "table" or #options == 0 then
+            interface.kas.options:set()
+            return
+        end
+
+        interface.kas.options:set(options)
+    end
+
+    local function get_options_from_entry(entry)
+        local normalized = normalize_entry(entry)
+        local options = {}
+
+        if normalized.primary_alias ~= "" then
+            options[#options + 1] = "alias"
+        end
+        if #get_secondary_alternatives(normalized) > 0 then
+            options[#options + 1] = "alternative"
+        end
+        if normalized.source ~= "" then
+            options[#options + 1] = "source"
+        end
+        if normalized.group ~= "" then
+            options[#options + 1] = "group"
+        end
+        if normalized.note ~= "" then
+            options[#options + 1] = "note"
+        end
+
+        return options
+    end
+
+    local function set_form_from_entry(entry)
+        local normalized = normalize_entry(entry)
+        local source_value = normalized.source
+
+        if not utils.contains(kas.source_presets, source_value) then
+            source_value = "manual"
+        end
+
+        interface.kas.source:set(source_value)
+        interface.kas.alias:set(normalized.primary_alias)
+        interface.kas.alternative:set(table.concat(get_secondary_alternatives(normalized), ", "))
+        interface.kas.group:set(normalized.group)
+        interface.kas.note:set(normalized.note)
+    end
+
+    local function set_runtime(mode, selected_supported, has_record, entry)
+        local runtime = interface.kas_runtime
+        local normalized = normalize_entry(entry)
+
+        runtime.mode = mode
+        runtime.selected_supported = selected_supported == true
+        runtime.has_record = has_record == true
+        runtime.show_source = normalized.source ~= ""
+        runtime.show_alias = normalized.primary_alias ~= ""
+        runtime.show_alternative = #get_secondary_alternatives(normalized) > 0
+        runtime.show_group = normalized.group ~= ""
+        runtime.show_note = normalized.note ~= ""
+
+        interface.kas.view_source:set(" · source: " .. (normalized.source ~= "" and normalized.source or "-"))
+        interface.kas.view_alias:set(" · alias: " .. (normalized.primary_alias ~= "" and normalized.primary_alias or "-"))
+        interface.kas.view_alternative:set(" · alternative: " .. (#get_secondary_alternatives(normalized) > 0 and table.concat(get_secondary_alternatives(normalized), ", ") or "-"))
+        interface.kas.view_group:set(" · group: " .. (normalized.group ~= "" and normalized.group or "-"))
+        interface.kas.view_note:set(" · note: " .. (normalized.note ~= "" and normalized.note or "-"))
+    end
+
+    local function update_editor_visibility()
+        local runtime = interface.kas_runtime
+        if runtime.mode ~= "add" and runtime.mode ~= "edit" then
+            runtime.show_source = false
+            runtime.show_alias = false
+            runtime.show_alternative = false
+            runtime.show_group = false
+            runtime.show_note = false
+            return
+        end
+
+        local options = get_selected_options()
+        runtime.show_source = utils.contains(options, "source")
+        runtime.show_alias = utils.contains(options, "alias")
+        runtime.show_alternative = utils.contains(options, "alternative")
+        runtime.show_group = utils.contains(options, "group")
+        runtime.show_note = utils.contains(options, "note")
+    end
+
+    local function enter_idle_mode()
+        local selected = get_selected_player()
+        if not selected then
+            kas.state.selected_steam_id = nil
+            interface.kas.status:set(" · selected: none")
+            interface.kas.database_status:set(" · in database: no")
+            set_selected_options()
+            set_form_from_entry(get_empty_entry())
+            set_runtime("idle", false, false, get_empty_entry())
+            return
+        end
+
+        kas.state.selected_steam_id = selected.steam_id
+        interface.kas.status:set(" · selected: " .. selected.name)
+
+        if not selected.steam_id then
+            interface.kas.database_status:set(" · in database: bots are not supported")
+            set_selected_options()
+            set_form_from_entry(get_empty_entry(selected.name))
+            set_runtime("idle", false, false, get_empty_entry())
+            return
+        end
+
+        local alias_key, entry = find_entry_by_steam_id(selected.steam_id)
+        if entry then
+            interface.kas.database_status:set(" · in database: yes")
+            set_selected_options()
+            set_form_from_entry(normalize_entry(entry, alias_key))
+            set_runtime("idle", true, true, entry)
+            return
+        end
+
+        interface.kas.database_status:set(" · in database: no")
+        set_selected_options()
+        set_form_from_entry(get_empty_entry(selected.name))
+        set_runtime("idle", true, false, get_empty_entry())
+    end
+
+    local function enter_add_mode()
+        local selected = get_selected_player()
+        if not selected or not selected.steam_id then
+            return
+        end
+
+        set_selected_options()
+        set_form_from_entry(get_empty_entry(selected.name))
+        set_runtime("add", true, false, get_empty_entry())
+        update_editor_visibility()
+    end
+
+    local function enter_edit_mode()
+        local selected = get_selected_player()
+        if not selected or not selected.steam_id then
+            return
+        end
+
+        local alias_key, entry = find_entry_by_steam_id(selected.steam_id)
+        if not entry then
+            return
+        end
+
+        entry = normalize_entry(entry, alias_key)
+        set_selected_options(get_options_from_entry(entry))
+        set_form_from_entry(entry)
+        set_runtime("edit", true, true, entry)
+        update_editor_visibility()
+    end
+
+    local function update_player_list_ui()
+        local previous_steam_id = kas.state.selected_steam_id
+        local previous_mode = interface.kas_runtime.mode
+        local items, entries = get_connected_players()
+        local changed = false
+
+        if #items == 0 then
+            items = { "no players" }
+            entries = {}
+        end
+
+        if #items ~= #kas.state.list_items then
+            changed = true
+        else
+            for i = 1, #items do
+                if items[i] ~= kas.state.list_items[i] then
+                    changed = true
+                    break
+                end
+            end
+        end
+
+        if not changed and previous_steam_id then
+            for i = 1, #entries do
+                if entries[i].steam_id == previous_steam_id then
+                    kas.state.list_lookup = entries
+                    if interface.kas_runtime.mode == "idle" then
+                        enter_idle_mode()
+                    end
+                    return
+                end
+            end
+            changed = true
+        end
+
+        if not changed and not previous_steam_id then
+            kas.state.list_lookup = entries
+            if interface.kas_runtime.mode == "idle" then
+                enter_idle_mode()
+            end
+            return
+        end
+
+        kas.state.list_items = items
+        kas.state.list_lookup = entries
+        interface.kas.player_list:update(items)
+
+        local selected_index = 0
+        local selected_found = false
+        if previous_steam_id then
+            for i = 1, #entries do
+                if entries[i].steam_id == previous_steam_id then
+                    selected_index = i - 1
+                    selected_found = true
+                    break
+                end
+            end
+        end
+
+        pcall(function() interface.kas.player_list:set(selected_index) end)
+
+        if previous_mode ~= "idle" and selected_found then
+            return
+        end
+
+        enter_idle_mode()
+    end
+
+    local function build_entry_from_form(selected)
+        local options = get_selected_options()
+        local current_alias_key, current_entry = find_entry_by_steam_id(selected.steam_id)
+        local normalized_current = normalize_entry(current_entry, current_alias_key)
+        local next_entry = {
+            primary_alias = normalized_current.primary_alias,
+            id = copy_array(normalized_current.id),
+            alternative = copy_array(normalized_current.alternative),
+            added_date = normalized_current.added_date,
+            source = normalized_current.source,
+            group = normalized_current.group,
+            note = normalized_current.note
+        }
+
+        if utils.contains(options, "alias") then
+            next_entry.primary_alias = trim(interface.kas.alias:get())
+        end
+        if utils.contains(options, "alternative") then
+            next_entry.alternative = parse_alternative_input(interface.kas.alternative:get())
+        end
+        if utils.contains(options, "source") then
+            next_entry.source = tostring(interface.kas.source:get() or "manual")
+        end
+        if utils.contains(options, "group") then
+            next_entry.group = tostring(interface.kas.group:get() or "")
+        end
+        if utils.contains(options, "note") then
+            next_entry.note = tostring(interface.kas.note:get() or "")
+        end
+
+        if next_entry.primary_alias == "" then
+            next_entry.primary_alias = trim(interface.kas.alias:get())
+        end
+
+        if next_entry.primary_alias ~= "" and not contains_value(next_entry.alternative, next_entry.primary_alias) then
+            table.insert(next_entry.alternative, 1, next_entry.primary_alias)
+        end
+
+        local reordered = {}
+        if next_entry.primary_alias ~= "" then
+            reordered[1] = next_entry.primary_alias
+        end
+        for i = 1, #next_entry.alternative do
+            local alt = trim(next_entry.alternative[i])
+            if alt ~= "" and alt ~= next_entry.primary_alias and not contains_value(reordered, alt) then
+                reordered[#reordered + 1] = alt
+            end
+        end
+        next_entry.alternative = reordered
+
+        if selected.steam_id and not contains_value(next_entry.id, selected.steam_id) then
+            next_entry.id[#next_entry.id + 1] = tostring(selected.steam_id)
+        end
+
+        if next_entry.added_date == "" then
+            next_entry.added_date = current_date_utc()
+        end
+
+        return normalize_entry(next_entry, next_entry.primary_alias)
+    end
+
+    local function apply_selected_player()
+        local selected = get_selected_player()
+        if not selected or not selected.steam_id then
+            push_kas("select a real player first", 4)
+            return
+        end
+
+        local options = get_selected_options()
+        if #options == 0 then
+            local action = interface.kas_runtime.mode == "edit" and "save" or "add"
+            push_kas("select at least one option before " .. action, 4)
+            return
+        end
+
+        local built_entry = build_entry_from_form(selected)
+        local old_alias_key = find_entry_by_steam_id(selected.steam_id)
+        local alias_match_key, alias_match_entry = find_entry_by_alias(built_entry.primary_alias)
+
+        if alias_match_key and alias_match_key ~= old_alias_key then
+            local merged = normalize_entry(alias_match_entry, alias_match_key)
+
+            for i = 1, #built_entry.id do
+                if not contains_value(merged.id, built_entry.id[i]) then
+                    merged.id[#merged.id + 1] = built_entry.id[i]
+                end
+            end
+
+            for i = 1, #built_entry.alternative do
+                if not contains_value(merged.alternative, built_entry.alternative[i]) then
+                    merged.alternative[#merged.alternative + 1] = built_entry.alternative[i]
+                end
+            end
+
+            if utils.contains(options, "source") then
+                merged.source = built_entry.source
+            end
+            if utils.contains(options, "group") then
+                merged.group = built_entry.group
+            end
+            if utils.contains(options, "note") then
+                merged.note = built_entry.note
+            end
+
+            merged.primary_alias = built_entry.primary_alias
+            if merged.added_date == "" then
+                merged.added_date = built_entry.added_date
+            end
+
+            built_entry = normalize_entry(merged, built_entry.primary_alias)
+            kas.state.database.players[alias_match_key] = nil
+        end
+
+        local storage_key = resolve_storage_key(built_entry, selected.steam_id, old_alias_key)
+        if old_alias_key and old_alias_key ~= storage_key then
+            kas.state.database.players[old_alias_key] = nil
+        end
+
+        kas.state.database.players[storage_key] = built_entry
+
+        local ok, err = save_database()
+        if not ok then
+            push_kas(err, 4)
+            return
+        end
+
+        enter_idle_mode()
+        push_kas("saved " .. selected.name .. " to kas.json", 3)
+    end
+
+    local function remove_selected_player()
+        local selected = get_selected_player()
+        if not selected or not selected.steam_id then
+            push_kas("select a real player first", 4)
+            return
+        end
+
+        local alias_key = find_entry_by_steam_id(selected.steam_id)
+        if not alias_key then
+            push_kas("selected player is not in kas.json", 4)
+            return
+        end
+
+        kas.state.database.players[alias_key] = nil
+
+        local ok, err = save_database()
+        if not ok then
+            push_kas(err, 4)
+            return
+        end
+
+        enter_idle_mode()
+        push_kas("removed " .. selected.name .. " from kas.json", 3)
+    end
+
+    local function update_runtime_after_option_change()
+        update_editor_visibility()
+    end
+
+    local function reset_notification_cache()
+        kas.state.notified_players = {}
+    end
+
+    local function notify_known_players()
+        if not interface.kas.enabled:get() then
+            reset_notification_cache()
+            return
+        end
+
+        local player_resource = entity.get_player_resource()
+        if not player_resource then
+            return
+        end
+
+        for ent = 1, globals.maxplayers() do
+            if entity.get_prop(player_resource, "m_bConnected", ent) == 1 then
+                local steam_id = entity.get_steam64(ent)
+                if steam_id then
+                    steam_id = tostring(steam_id)
+                    if not kas.state.notified_players[steam_id] then
+                        local _, entry = find_entry_by_steam_id(steam_id)
+                        if entry then
+                            local message, console_format, console_args = build_log_message(entity.get_player_name(ent), entry)
+                            if message then
+                                kas.state.notified_players[steam_id] = true
+                                push_kas(message, 8, console_format, console_args)
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    kas.on_paint = function(self)
+        local current_time = globals.realtime()
+        if current_time - kas.state.last_notify_refresh >= 1 then
+            kas.state.last_notify_refresh = current_time
+            notify_known_players()
+        end
+
+        if interface.search:get() ~= "kas" then
+            return
+        end
+
+        if current_time - kas.state.last_refresh < 1 then
+            return
+        end
+
+        kas.state.last_refresh = current_time
+        update_player_list_ui()
+    end
+
+    kas.setup = function(self)
+        load_database()
+        set_runtime("idle", false, false, get_empty_entry())
+        set_selected_options()
+        set_form_from_entry(get_empty_entry())
+        update_player_list_ui()
+
+        interface.kas.player_list:set_callback(function()
+            enter_idle_mode()
+        end)
+        interface.kas.add_button:set_callback(function()
+            enter_add_mode()
+        end)
+        interface.kas.edit_button:set_callback(function()
+            enter_edit_mode()
+        end)
+        interface.kas.remove_button:set_callback(function()
+            remove_selected_player()
+        end)
+        interface.kas.options:set_callback(function()
+            update_runtime_after_option_change()
+        end)
+        interface.kas.add_submit:set_callback(function()
+            apply_selected_player()
+        end)
+        interface.kas.save_submit:set_callback(function()
+            apply_selected_player()
+        end)
+
+        client.set_event_callback("paint", function()
+            kas:on_paint()
+        end)
+    end
+
+    kas:setup()
+end
+--@endregion
+
 --@region: stats (home)
 stats = {} do
     local DB_KEY = 'noctua.stats'
@@ -6831,9 +8040,13 @@ killsay = {} do
     killsay.multi_phrases_kill = {}
     killsay.multi_phrases_death = {}
 
+    local function killsay_log(fmt, ...)
+        argLogWithPrefix("noctua · killsay", fmt, ...)
+    end
+
     killsay.apply_phrases = function(decoded, target_table, phrase_type, source_name)
         if type(decoded) ~= "table" then
-            logMessage('noctua · killsay', '', 'invalid ' .. phrase_type .. ' phrases payload from ' .. source_name)
+            killsay_log("invalid %s phrases payload from %s", phrase_type, source_name)
             return false
         end
 
@@ -6848,19 +8061,19 @@ killsay = {} do
             end
         end
 
-        logMessage('noctua · killsay', '', 'loaded ' .. #target_table .. ' ' .. phrase_type .. ' phrase sets from ' .. source_name)
+        killsay_log("loaded %d %s phrase sets from %s", #target_table, phrase_type, source_name)
         return true
     end
 
     killsay.load_phrases_from_file = function(path, target_table, phrase_type)
         if not path or path == "" then
-            logMessage('noctua · killsay', '', 'no file path set for ' .. phrase_type .. ' phrases')
+            killsay_log("no file path set for %s phrases", phrase_type)
             return false
         end
 
         local body = readfile(path)
         if not body then
-            logMessage('noctua · killsay', '', 'failed to read ' .. phrase_type .. ' phrases file: ' .. path)
+            killsay_log("failed to read %s phrases file %s", phrase_type, path)
             return false
         end
 
@@ -6869,13 +8082,13 @@ killsay = {} do
             return true
         end
 
-        logMessage('noctua · killsay', '', 'failed to parse JSON for ' .. phrase_type .. ' phrases file')
+        killsay_log("failed to parse JSON for %s phrases file", phrase_type)
         return false
     end
 
     killsay.load_phrases_from_url = function(url, fallback_path, target_table, phrase_type)
         if not url or url == "" then
-            logMessage('noctua · killsay', '', 'no URL set for ' .. phrase_type .. ' phrases, using local file')
+            killsay_log("no URL set for %s phrases, using local file", phrase_type)
             killsay.load_phrases_from_file(fallback_path, target_table, phrase_type)
             return
         end
@@ -6887,10 +8100,10 @@ killsay = {} do
                     return
                 end
 
-                logMessage('noctua · killsay', '', 'failed to parse JSON for ' .. phrase_type .. ' phrases from URL, using local file')
+                killsay_log("failed to parse JSON for %s phrases from URL, using local file", phrase_type)
             else
                 local status = (response and response.status) or 'no response'
-                logMessage('noctua · killsay', '', 'failed to load ' .. phrase_type .. ' phrases from URL (' .. status .. '), using local file')
+                killsay_log("failed to load %s phrases from URL (%s), using local file", phrase_type, status)
             end
 
             killsay.load_phrases_from_file(fallback_path, target_table, phrase_type)
