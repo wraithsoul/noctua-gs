@@ -677,6 +677,12 @@ interface = {} do
         buybot_secondary = interface.header.general:combobox('secondary weapon', '-', 'r8 / deagle', 'tec-9 / five-s / cz-75', 'duals', 'p-250'),
         buybot_utility = interface.header.general:multiselect('utility', 'kevlar', 'helmet', 'defuser', 'taser', 'he', 'molotov', 'smoke'),
         auto_r8 = interface.header.general:checkbox('automatic !r8'),
+        unlock_fd_speed = interface.header.general:checkbox('unlock fd speed'),
+        unlock_fd_speed_scale = interface.header.general:slider('scale', 15, 150, 150, true, '', 1, {
+            [15] = 'slow',
+            [80] = 'default',
+            [150] = 'fast'
+        }),
         party_mode = interface.header.other:checkbox('party mode'),
         animation_breakers = interface.header.other:multiselect('animation breakers', 'zero on land', 'earthquake', 'sliding slow motion', 'sliding crouch', 'on ground', 'on air', 'quick peek legs', 'keus scale', 'body lean'),
         on_ground_options = interface.header.other:combobox('on ground', {'frozen', 'walking', 'jitter', 'sliding', 'star'}),
@@ -1064,6 +1070,11 @@ interface = {} do
 
                         if key == "killsay_modes" then
                             element:set_visible(interface.utility.killsay:get())
+                            return
+                        end
+
+                        if key == "unlock_fd_speed_scale" then
+                            element:set_visible(interface.utility.unlock_fd_speed:get())
                             return
                         end
 
@@ -5948,6 +5959,42 @@ client.set_event_callback("setup_command", function(cmd)
         cmd.in_attack = 0
     end
 end)
+--@endregion
+
+--@region: unlock fd speed
+unlock_fd_speed = {} do
+    unlock_fd_speed.on_setup_command = function(cmd)
+        if not interface.utility.unlock_fd_speed:get() then
+            return
+        end
+
+        if not ui.get(ui_references.fakeduck) then
+            return
+        end
+
+        local lp = entity.get_local_player()
+        if not lp or not entity.is_alive(lp) then
+            return
+        end
+
+        local vel_x = entity.get_prop(lp, "m_vecVelocity[0]") or 0
+        local vel_y = entity.get_prop(lp, "m_vecVelocity[1]") or 0
+        if math.abs(vel_x) <= 10 and math.abs(vel_y) <= 10 then
+            return
+        end
+
+        local move_len = math.sqrt(cmd.forwardmove * cmd.forwardmove + cmd.sidemove * cmd.sidemove)
+        if move_len <= 0 then
+            return
+        end
+
+        local scale = interface.utility.unlock_fd_speed_scale:get()
+        cmd.forwardmove = (cmd.forwardmove / move_len) * scale
+        cmd.sidemove = (cmd.sidemove / move_len) * scale
+    end
+
+    client.set_event_callback("setup_command", unlock_fd_speed.on_setup_command)
+end
 --@endregion
 
 --@region: item anti-crash
