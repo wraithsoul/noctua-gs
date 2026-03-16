@@ -2286,13 +2286,17 @@ resolver = {} do
     resolver.state_cache = {}
     resolver.layer_cache = {}
     resolver.precision   = {}
+    resolver.shot_state  = {}
 
-    function resolver:get_feedback(idx)
+    function resolver:get_feedback(idx, state)
         if not idx then
             return nil
         end
 
-        local feedback = self.feedback[idx]
+        local state_key = state or self.state_cache[idx] or "unknown"
+        self.feedback[idx] = self.feedback[idx] or {}
+
+        local feedback = self.feedback[idx][state_key]
         if feedback then
             return feedback
         end
@@ -2309,7 +2313,7 @@ resolver = {} do
             base_amplitude = 0
         }
 
-        self.feedback[idx] = feedback
+        self.feedback[idx][state_key] = feedback
         return feedback
     end
 
@@ -2318,7 +2322,8 @@ resolver = {} do
         if not (interface.aimbot.enabled_aimbot:get() and interface.aimbot.enabled_resolver_tweaks:get()) then return end
         if interface.aimbot.resolver_mode:get() ~= 'experimental' then return end
 
-        local feedback = self:get_feedback(idx)
+        local state_key = self.shot_state[idx] or self.state_cache[idx] or "unknown"
+        local feedback = self:get_feedback(idx, state_key)
         if not feedback then return end
 
         if did_hit then
@@ -2332,12 +2337,14 @@ resolver = {} do
 
             local amplitude_delta = (feedback.last_amplitude or 0) - (feedback.base_amplitude or 0)
             feedback.amp_bias = mathematic.clamp(amplitude_delta * 0.35, -10, 10)
+            self.shot_state[idx] = nil
             return
         end
 
         if reason ~= "resolver" then
             feedback.hit_streak = 0
             feedback.amp_bias = feedback.amp_bias * 0.5
+            self.shot_state[idx] = nil
             return
         end
 
@@ -2360,6 +2367,8 @@ resolver = {} do
             feedback.side_bias = last_side
             feedback.amp_bias = 18
         end
+
+        self.shot_state[idx] = nil
     end
     
     function resolver:calculate_layer_delta(idx)
@@ -2487,18 +2496,8 @@ resolver = {} do
         local enemy_state = utils.get_enemy_state(idx)
         local lby = entity.get_prop(idx, "m_flLowerBodyYawTarget") or 0
         local eye_yaw = animstate.flEyeYaw or 0
-        local feedback = self:get_feedback(idx)
-
-        local prev_state = self.state_cache[idx]
-        if prev_state ~= enemy_state then
-            self.history[idx] = nil
-            if feedback then
-                feedback.miss_streak = 0
-                feedback.brute_step = 0
-                feedback.amp_bias = 0
-            end
-            self.state_cache[idx] = enemy_state
-        end
+        self.state_cache[idx] = enemy_state
+        local feedback = self:get_feedback(idx, enemy_state)
 
         local layers = self.layers[idx] or {}
         local layer3 = layers[3]
@@ -2549,7 +2548,10 @@ resolver = {} do
         local layer_factor = 1 - mathematic.clamp(layer_activity * 2.0, 0, 0.4)
 
         local amplitude = cold_desync * vel_factor * duck_factor * layer_factor
-        local history = self.history[idx]
+        self.history[idx] = self.history[idx] or {}
+        self.history[idx][enemy_state] = self.history[idx][enemy_state] or {}
+
+        local history = self.history[idx][enemy_state]
         if history and #history > 0 then
             local history_sum = 0
             for i = 1, #history do
@@ -2589,10 +2591,9 @@ resolver = {} do
 
         self.cache[idx] = yaw
 
-        self.history[idx] = self.history[idx] or {}
-        table.insert(self.history[idx], yaw)
-        if #self.history[idx] > 5 then
-            table.remove(self.history[idx], 1)
+        table.insert(history, yaw)
+        if #history > 5 then
+            table.remove(history, 1)
         end
 
         if feedback then
@@ -5207,6 +5208,8 @@ logging = {} do
             start_speed = speed,
             hitChance = hitChance
         }
+
+        resolver.shot_state[e.target] = utils.get_enemy_state(e.target) or resolver.state_cache[e.target] or "unknown"
 
         if not interface.visuals.logging:get() then return end
         
