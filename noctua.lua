@@ -9785,6 +9785,9 @@ dormant_aimbot = {} do
                entity.is_enemy(idx) and 
                entity.is_dormant(idx) and
                entity.get_prop(idx, "m_lifeState") == 0 then
+                if player_list.GetWhitelist(player_list, idx) then
+                    goto continue_dormant_target
+                end
                 
                 local x1, y1, x2, y2, alpha = entity.get_bounding_box(idx)
                 
@@ -9877,6 +9880,8 @@ dormant_aimbot = {} do
                     end
                 end
             end
+
+            ::continue_dormant_target::
         end
 
         if not best_x then 
