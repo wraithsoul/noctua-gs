@@ -3565,6 +3565,7 @@ visuals = {} do
 
     visuals.window = function(self, base_x, base_y, align)
         self.windowAlpha = self.windowAlpha or 0
+        self._ping_spike_blink_phase = self._ping_spike_blink_phase or 0
 
         local frameTime = globals.frametime()
         local fadeSpeedSetting = 10 * frameTime
@@ -3680,6 +3681,8 @@ visuals = {} do
         
         local scoreboard_ping = utils.get_scoreboard_ping()
         local ping_diff = math.floor(scoreboard_ping - latency_ms + 0.5)
+        local ping_spike_enabled = ui.get(ui_references.ps[1])
+        local ping_spike_active = ping_spike_enabled and (#ui_references.ps < 2 or ui.get(ui_references.ps[2]))
         
         local latency_x = base_x
         if align == 'c' then
@@ -3708,8 +3711,21 @@ visuals = {} do
             
             local diff_text = " (+" .. ping_diff .. "ms)"
             local full_w = select(1, renderer.measure_text("l", full_latency_text))
+            local diff_alpha = self.windowAlpha
+
+            if not ping_spike_active then
+                local clamped_diff = math.min(math.max(ping_diff, 0), 120)
+                local fade_ratio = 1 - (clamped_diff / 120)
+                local blink_speed = 0.7 + (fade_ratio * 1.6)
+                self._ping_spike_blink_phase = (self._ping_spike_blink_phase + (frameTime * blink_speed * math.pi * 2)) % (math.pi * 2)
+                local pulse = (math.sin(self._ping_spike_blink_phase) + 1) * 0.5
+                local alpha_ratio = 0.3 + (pulse * 0.7)
+                diff_alpha = self.windowAlpha * alpha_ratio
+            else
+                self._ping_spike_blink_phase = 0
+            end
             
-            renderer.text(latency_x + full_w, y, r, g, b, self.windowAlpha, "l", 0, diff_text)
+            renderer.text(latency_x + full_w, y, r, g, b, diff_alpha, "l", 0, diff_text)
         end
         y = y + line_spacing
         
