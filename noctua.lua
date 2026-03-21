@@ -729,6 +729,14 @@ interface = {} do
         world_damage_type = interface.header.other:combobox('type', {'static', 'dynamic'}),
         enemy_ping_warn = interface.header.other:checkbox('enemy ping warning'),
         enemy_ping_minimum = interface.header.other:slider('minimum latency to show', 10, 100, 80, true, 'ms'),
+        predict_box = interface.header.other:checkbox('predict box'),
+        predict_box_show_box = interface.header.other:checkbox('prediction box'),
+        predict_box_show_tickbase = interface.header.other:checkbox('tickbase indicator'),
+        predict_box_always_show = interface.header.other:checkbox('always show box'),
+        predict_box_debug_line = interface.header.other:checkbox('debug line'),
+        predict_box_text_color = interface.header.other:label('text color', {255, 45, 45, 255}),
+        predict_box_box_color = interface.header.other:label('box color', {47, 117, 221, 255}),
+        predict_box_strength = interface.header.other:slider('prediction strength', 1, 16, 8, true, '', 1),
         grenade_radius = interface.header.other:multiselect('grenade radius', 'smoke', 'molotov'),
         grenade_radius_smoke_color = interface.header.other:label('smoke color', {173, 216, 230, 255}),
         grenade_radius_molotov_color = interface.header.other:label('molotov color', {255, 204, 203, 255})
@@ -777,6 +785,9 @@ interface = {} do
     }
 
     -- interface.utility.item_anti_crash:override(true) -- uncomment later
+    interface.visuals.predict_box_show_box:set(true)
+    interface.visuals.predict_box_show_tickbase:set(true)
+    interface.visuals.predict_box_always_show:set(true)
 
     interface.hide_references = {
         pui.reference("AA", "Anti-Aimbot angles", "Enabled"),
@@ -1194,6 +1205,16 @@ interface = {} do
                     interface.visuals.zoom_animation_value:set_visible(show_zoom_settings)
 
                     interface.visuals.spawn_zoom:set_visible(visuals_enabled)
+
+                    interface.visuals.predict_box:set_visible(visuals_enabled)
+                    local show_predict_box = visuals_enabled and interface.visuals.predict_box:get()
+                    interface.visuals.predict_box_show_box:set_visible(show_predict_box)
+                    interface.visuals.predict_box_show_tickbase:set_visible(show_predict_box)
+                    interface.visuals.predict_box_always_show:set_visible(show_predict_box)
+                    interface.visuals.predict_box_debug_line:set_visible(show_predict_box)
+                    interface.visuals.predict_box_text_color:set_visible(show_predict_box)
+                    interface.visuals.predict_box_box_color:set_visible(show_predict_box)
+                    interface.visuals.predict_box_strength:set_visible(show_predict_box)
                 end
             },
             utility = {
@@ -9368,6 +9389,450 @@ end
 client.set_event_callback('paint', function()
     enemy_ping.draw()
 end)
+--@endregion
+
+--@region: predict box
+predict_box = {} do
+    predict_box.esp_data = {}
+    predict_box.sim_ticks = {}
+    predict_box.net_data = {}
+    predict_box.default_box_color = {47, 117, 221, 255}
+
+    local function reset_player(idx)
+        predict_box.esp_data[idx] = nil
+        predict_box.sim_ticks[idx] = nil
+        predict_box.net_data[idx] = nil
+    end
+
+    function predict_box.reset()
+        predict_box.esp_data = {}
+        predict_box.sim_ticks = {}
+        predict_box.net_data = {}
+    end
+
+    local function new_vec(x, y, z)
+        return {
+            x = x or 0,
+            y = y or 0,
+            z = z or 0
+        }
+    end
+
+    local function vec_add(a, b)
+        return new_vec(a.x + b.x, a.y + b.y, a.z + b.z)
+    end
+
+    local function vec_sub(a, b)
+        return new_vec(a.x - b.x, a.y - b.y, a.z - b.z)
+    end
+
+    local function vec_length_2d(v)
+        return math.sqrt((v.x * v.x) + (v.y * v.y))
+    end
+
+    local function vec_distance(a, b)
+        local dx = a.x - b.x
+        local dy = a.y - b.y
+        local dz = a.z - b.z
+        return math.sqrt((dx * dx) + (dy * dy) + (dz * dz))
+    end
+
+    local function time_to_ticks(t)
+        return math.floor(0.5 + (t / globals.tickinterval()))
+    end
+
+    local function get_prediction_color(distance)
+        if distance < 10 then
+            return 47, 117, 221, 255
+        elseif distance < 50 then
+            return 255, 165, 0, 255
+        end
+
+        return 255, 0, 0, 255
+    end
+
+    local function draw_3d_box(mins, maxs, r, g, b, a)
+        local points = {
+            {mins.x, mins.y, mins.z},
+            {mins.x, maxs.y, mins.z},
+            {maxs.x, maxs.y, mins.z},
+            {maxs.x, mins.y, mins.z},
+            {mins.x, mins.y, maxs.z},
+            {mins.x, maxs.y, maxs.z},
+            {maxs.x, maxs.y, maxs.z},
+            {maxs.x, mins.y, maxs.z}
+        }
+
+        local edges = {
+            {1, 2}, {2, 3}, {3, 4}, {4, 1},
+            {5, 6}, {6, 7}, {7, 8}, {8, 5},
+            {1, 5}, {2, 6}, {3, 7}, {4, 8}
+        }
+
+        for i = 1, #edges do
+            local p1 = points[edges[i][1]]
+            local p2 = points[edges[i][2]]
+            local x1, y1 = renderer.world_to_screen(p1[1], p1[2], p1[3])
+            local x2, y2 = renderer.world_to_screen(p2[1], p2[2], p2[3])
+
+            if x1 and y1 and x2 and y2 then
+                renderer.line(x1, y1, x2, y2, r, g, b, a)
+            end
+        end
+    end
+
+    local function extrapolate(idx, origin, flags, ticks)
+        local tick_interval = globals.tickinterval()
+        local gravity_step = cvar.sv_gravity:get_float() * tick_interval
+        local jump_step = cvar.sv_jump_impulse:get_float() * tick_interval
+        local vel_x = entity.get_prop(idx, "m_vecVelocity[0]") or 0
+        local vel_y = entity.get_prop(idx, "m_vecVelocity[1]") or 0
+        local vel_z = entity.get_prop(idx, "m_vecVelocity[2]") or 0
+        local velocity = new_vec(vel_x, vel_y, vel_z)
+        local on_ground = bit.band(flags or 0, 1) == 1
+        local gravity = 0
+        local position = new_vec(origin.x, origin.y, origin.z)
+
+        if not on_ground then
+            gravity = -gravity_step
+        elseif velocity.z > 1 then
+            gravity = jump_step
+        end
+
+        for _ = 1, ticks do
+            local previous = new_vec(position.x, position.y, position.z)
+
+            position = new_vec(
+                position.x + (velocity.x * tick_interval),
+                position.y + (velocity.y * tick_interval),
+                position.z + ((velocity.z + gravity) * tick_interval)
+            )
+
+            if not on_ground then
+                velocity.z = velocity.z + gravity
+            end
+
+            local fraction = client.trace_line(
+                idx,
+                previous.x, previous.y, previous.z,
+                position.x, position.y, position.z
+            )
+
+            if fraction < 1 then
+                if fraction > 0 then
+                    return new_vec(
+                        previous.x + ((position.x - previous.x) * fraction),
+                        previous.y + ((position.y - previous.y) * fraction),
+                        previous.z + ((position.z - previous.z) * fraction)
+                    )
+                end
+
+                return previous
+            end
+        end
+
+        return position
+    end
+
+    local function get_active_players(local_player)
+        local observer_mode = entity.get_prop(local_player, "m_iObserverMode") or 0
+
+        if observer_mode == 0 or observer_mode == 1 or observer_mode == 2 or observer_mode == 6 then
+            return entity.get_players(true) or {}
+        end
+
+        if observer_mode ~= 4 and observer_mode ~= 5 then
+            return {}
+        end
+
+        local observer_target = entity.get_prop(local_player, "m_hObserverTarget") or -1
+        if observer_target == -1 or observer_target == 0 then
+            return {}
+        end
+
+        local observer_team = entity.get_prop(observer_target, "m_iTeamNum")
+        if not observer_team then
+            return {}
+        end
+
+        local players = entity.get_players(false) or {}
+        local result = {}
+
+        for i = 1, #players do
+            local idx = players[i]
+            if idx ~= local_player and entity.get_prop(idx, "m_iTeamNum") ~= observer_team then
+                result[#result + 1] = idx
+            end
+        end
+
+        return result
+    end
+
+    function predict_box.on_net_update()
+        if not interface.visuals.enabled_visuals:get() or not interface.visuals.predict_box:get() then
+            predict_box.reset()
+            return
+        end
+
+        local local_player = entity.get_local_player()
+        if not local_player or not entity.is_alive(local_player) then
+            predict_box.reset()
+            return
+        end
+
+        local players = entity.get_players(true) or {}
+        local prediction_strength = interface.visuals.predict_box_strength:get()
+        local seen = {}
+
+        for i = 1, #players do
+            local idx = players[i]
+            seen[idx] = true
+
+            if entity.is_dormant(idx) or not entity.is_alive(idx) then
+                reset_player(idx)
+                goto continue
+            end
+
+            local origin_x, origin_y, origin_z = entity.get_origin(idx)
+            local sim_time = entity.get_prop(idx, "m_flSimulationTime")
+
+            if not origin_x or not sim_time then
+                goto continue
+            end
+
+            local origin = new_vec(origin_x, origin_y, origin_z)
+            local vel_x = entity.get_prop(idx, "m_vecVelocity[0]") or 0
+            local vel_y = entity.get_prop(idx, "m_vecVelocity[1]") or 0
+            local vel_z = entity.get_prop(idx, "m_vecVelocity[2]") or 0
+            local velocity = new_vec(vel_x, vel_y, vel_z)
+            local simulation_tick = time_to_ticks(sim_time)
+            local previous = predict_box.sim_ticks[idx]
+
+            if previous ~= nil then
+                local delta = simulation_tick - previous.tick
+                local force_predict = delta <= 1 or delta > 64
+
+                if delta < 0 or (delta > 0 and delta <= 64) or force_predict then
+                    local flags = entity.get_prop(idx, "m_fFlags") or 0
+                    local diff_origin = vec_sub(origin, previous.origin)
+                    local teleport_distance = vec_length_2d(diff_origin)
+                    local ticks_to_predict = delta < 0 and 1 or delta
+                    local velocity_length = vec_length_2d(velocity)
+                    local normal_prediction_ticks = 2
+
+                    if velocity_length > 100 then
+                        normal_prediction_ticks = math.min(prediction_strength, math.floor(velocity_length / 50))
+                    end
+
+                    local normal_prediction = delta >= 0 and teleport_distance <= 64
+                    local final_prediction_ticks = force_predict and prediction_strength
+                        or (normal_prediction and normal_prediction_ticks or ticks_to_predict)
+                    local extrapolated = extrapolate(idx, origin, flags, final_prediction_ticks)
+                    local is_tickbase = delta < 0
+                    local is_fakelag = teleport_distance > 64
+                    local rapid_direction_change = false
+
+                    if previous.velocity then
+                        local previous_xy = math.sqrt((previous.velocity.x * previous.velocity.x) + (previous.velocity.y * previous.velocity.y))
+                        local current_xy = math.sqrt((velocity.x * velocity.x) + (velocity.y * velocity.y))
+
+                        if previous_xy > 0 and current_xy > 0 then
+                            local dot = ((previous.velocity.x * velocity.x) + (previous.velocity.y * velocity.y))
+                                / ((previous_xy * current_xy) + 0.001)
+                            rapid_direction_change = dot < 0.7 and velocity_length > 150
+                        end
+                    end
+
+                    local is_defensive_peek = (is_fakelag or is_tickbase or force_predict) and rapid_direction_change
+
+                    if is_tickbase then
+                        predict_box.esp_data[idx] = 1
+                    elseif is_fakelag and (predict_box.esp_data[idx] or 0) == 0 then
+                        predict_box.esp_data[idx] = 0.8
+                    elseif is_defensive_peek or force_predict then
+                        predict_box.esp_data[idx] = 0.9
+                    end
+
+                    predict_box.net_data[idx] = {
+                        tick = final_prediction_ticks,
+                        origin = origin,
+                        predicted_origin = extrapolated,
+                        tickbase = is_tickbase,
+                        lagcomp = is_fakelag,
+                        normal_prediction = normal_prediction,
+                        defensive_peek = is_defensive_peek,
+                        force_predict = force_predict
+                    }
+                end
+            end
+
+            if predict_box.esp_data[idx] == nil then
+                predict_box.esp_data[idx] = 0
+            end
+
+            predict_box.sim_ticks[idx] = {
+                tick = simulation_tick,
+                origin = origin,
+                velocity = velocity
+            }
+
+            ::continue::
+        end
+
+        for idx in pairs(predict_box.sim_ticks) do
+            if not seen[idx] then
+                reset_player(idx)
+            end
+        end
+    end
+
+    function predict_box.on_paint()
+        if not interface.visuals.enabled_visuals:get() or not interface.visuals.predict_box:get() then
+            return
+        end
+
+        local local_player = entity.get_local_player()
+        if not local_player then
+            return
+        end
+
+        local active_players = get_active_players(local_player)
+        if #active_players == 0 then
+            return
+        end
+
+        local active_lookup = {}
+        for i = 1, #active_players do
+            active_lookup[active_players[i]] = true
+        end
+
+        local show_box = interface.visuals.predict_box_show_box:get()
+        local show_tickbase = interface.visuals.predict_box_show_tickbase:get()
+        local always_show = interface.visuals.predict_box_always_show:get()
+        local debug_line = interface.visuals.predict_box_debug_line:get()
+        local box_color = interface.visuals.predict_box_box_color.color.value
+        local text_color = interface.visuals.predict_box_text_color.color.value
+
+        for idx, player_data in pairs(predict_box.net_data) do
+            if not active_lookup[idx] or not entity.is_alive(idx) or entity.is_dormant(idx) then
+                goto continue
+            end
+
+            local predicted = player_data.predicted_origin
+            if not predicted then
+                goto continue
+            end
+
+            local origin_x, origin_y, origin_z = entity.get_origin(idx)
+            if not origin_x then
+                goto continue
+            end
+
+            local origin = new_vec(origin_x, origin_y, origin_z)
+            local distance = vec_distance(origin, predicted)
+            local r, g, b, a = get_prediction_color(distance)
+
+            if box_color[1] ~= predict_box.default_box_color[1]
+                or box_color[2] ~= predict_box.default_box_color[2]
+                or box_color[3] ~= predict_box.default_box_color[3]
+                or box_color[4] ~= predict_box.default_box_color[4] then
+                r, g, b, a = unpack(box_color)
+            end
+
+            if show_box and (always_show or player_data.lagcomp or player_data.normal_prediction or player_data.force_predict) then
+                local min_x, min_y, min_z = entity.get_prop(idx, "m_vecMins")
+                local max_x, max_y, max_z = entity.get_prop(idx, "m_vecMaxs")
+
+                if min_x and max_x then
+                    local mins = vec_add(new_vec(min_x, min_y, min_z), predicted)
+                    local maxs = vec_add(new_vec(max_x, max_y, max_z), predicted)
+                    draw_3d_box(mins, maxs, r, g, b, a)
+
+                    if debug_line then
+                        local screen_x1, screen_y1 = renderer.world_to_screen(origin.x, origin.y, origin.z)
+                        local screen_x2, screen_y2 = renderer.world_to_screen(predicted.x, predicted.y, predicted.z)
+
+                        if screen_x1 and screen_y1 and screen_x2 and screen_y2 then
+                            renderer.line(screen_x1, screen_y1, screen_x2, screen_y2, 255, 255, 0, 200)
+                        end
+                    end
+                end
+            end
+
+            local x1, y1, x2, y2, alpha_mult = entity.get_bounding_box(idx)
+            if not x1 or alpha_mult <= 0 then
+                goto continue
+            end
+
+            local pulse_alpha = 0
+            local stored_alpha = predict_box.esp_data[idx] or 0
+
+            if stored_alpha > 0 then
+                stored_alpha = stored_alpha - (globals.frametime() * 2)
+                if stored_alpha < 0 then
+                    stored_alpha = 0
+                end
+
+                predict_box.esp_data[idx] = stored_alpha
+                pulse_alpha = stored_alpha
+            end
+
+            local tickbase = player_data.tickbase or stored_alpha > 0
+            local lagcomp = player_data.lagcomp
+            local normal_prediction = player_data.normal_prediction or false
+            local defensive_peek = player_data.defensive_peek or false
+            local force_predict = player_data.force_predict or false
+
+            if not tickbase and not lagcomp and not normal_prediction and not defensive_peek and not force_predict and not always_show then
+                goto continue
+            end
+
+            if not tickbase or lagcomp then
+                pulse_alpha = alpha_mult
+            end
+
+            if pulse_alpha <= 0 then
+                goto continue
+            end
+
+            local center_x = x1 + ((x2 - x1) / 2)
+            local name = entity.get_player_name(idx) or ""
+            local y_add = name == "" and -8 or 0
+            local text_alpha = math.floor((text_color[4] or 255) * math.min(pulse_alpha, 1))
+
+            if show_tickbase and tickbase then
+                renderer.text(center_x, y1 - 18 + y_add, text_color[1], text_color[2], text_color[3], text_alpha, 'c', 0, 'TICKBASE')
+            end
+
+            if lagcomp and show_box then
+                renderer.text(center_x, y1 - 28 + y_add, text_color[1], text_color[2], text_color[3], text_alpha, 'c', 0, 'LAG COMP')
+            elseif normal_prediction and show_box and not defensive_peek then
+                renderer.text(center_x, y1 - 28 + y_add, text_color[1], text_color[2], text_color[3], text_alpha, 'c', 0, 'PREDICTION')
+            elseif defensive_peek and show_box then
+                local pulse = math.floor((math.sin(globals.realtime() * 5) * 0.5 + 0.5) * 255)
+                renderer.text(center_x, y1 - 28 + y_add, 255, 20, 20, pulse, 'c', 0, 'DEFENSIVE PEEK')
+            elseif force_predict and show_box then
+                renderer.text(center_x, y1 - 28 + y_add, 0, 255, 0, text_alpha, 'c', 0, 'FORCE PREDICT')
+            end
+
+            if show_box and distance > 5 then
+                renderer.text(center_x, y1 - 38 + y_add, text_color[1], text_color[2], text_color[3], text_alpha, 'c', 0, string.format("Pred: %.1f", distance))
+            end
+
+            ::continue::
+        end
+    end
+
+    interface.visuals.predict_box:set_callback(function()
+        if not interface.visuals.predict_box:get() then
+            predict_box.reset()
+        end
+    end)
+
+    client.set_event_callback('net_update_end', predict_box.on_net_update)
+    client.set_event_callback('paint', predict_box.on_paint)
+    client.set_event_callback('shutdown', predict_box.reset)
+end
 --@endregion
 
 summary = {} do
