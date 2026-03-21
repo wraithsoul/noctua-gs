@@ -203,6 +203,7 @@ dependencies = {} do
             { name = "images",        path = "gamesense/images",         msg = "Failed to require images" },
             { name = "csgo_weapons",  path = "gamesense/csgo_weapons",   msg = "Failed to require csgo_weapons" },
             { name = "base64",        path = "gamesense/base64",         msg = "Failed to require base64" },
+            { name = "chat",          path = "gamesense/chat",           msg = "Failed to require chat" },
         }
 
         for _, dep in ipairs(dependency_list) do
@@ -396,10 +397,22 @@ viewmodel = {} do
     viewmodel.current_x = cvar.viewmodel_offset_x:get_float()
     viewmodel.current_y = cvar.viewmodel_offset_y:get_float()
     viewmodel.current_z = cvar.viewmodel_offset_z:get_float()
+    viewmodel.hand_override_active = false
+    viewmodel.saved_righthand = cvar.cl_righthand:get_int()
+
+    local function restore_knife_hand()
+        if viewmodel.hand_override_active then
+            cvar.cl_righthand:set_int(viewmodel.saved_righthand)
+            viewmodel.hand_override_active = false
+        end
+    end
 
     viewmodel.setup = function()
-        if not (interface.visuals.enabled_visuals:get() and interface.visuals.viewmodel:get()) then return end
-        
+        if not (interface.visuals.enabled_visuals:get() and interface.visuals.viewmodel:get()) then
+            restore_knife_hand()
+            return
+        end
+
         local target_fov = interface.visuals.viewmodel_fov:get()
         local target_x = interface.visuals.viewmodel_x:get() * 0.01
         local target_y = interface.visuals.viewmodel_y:get() * 0.01
@@ -414,6 +427,34 @@ viewmodel = {} do
         cvar.viewmodel_offset_x:set_raw_float(viewmodel.current_x)
         cvar.viewmodel_offset_y:set_raw_float(viewmodel.current_y)
         cvar.viewmodel_offset_z:set_raw_float(viewmodel.current_z)
+
+        if not interface.visuals.opposite_knife_hand:get() then
+            restore_knife_hand()
+            return
+        end
+
+        local me = entity.get_local_player()
+        if not me or not entity.is_alive(me) then
+            restore_knife_hand()
+            return
+        end
+
+        local weapon = entity.get_player_weapon(me)
+        local weapon_info = weapon and csgo_weapons(weapon) or nil
+        local is_knife = weapon_info ~= nil and weapon_info.type == 'knife'
+
+        if not is_knife then
+            restore_knife_hand()
+            return
+        end
+
+        local current_hand = cvar.cl_righthand:get_int()
+        if not viewmodel.hand_override_active then
+            viewmodel.saved_righthand = current_hand
+            viewmodel.hand_override_active = true
+        end
+
+        cvar.cl_righthand:set_int(viewmodel.saved_righthand == 1 and 0 or 1)
     end
 end
 
@@ -510,6 +551,12 @@ client.set_event_callback('paint', function()
     aspect_ratio.setup()
     thirdperson.setup()
     viewmodel.setup()
+end)
+
+client.set_event_callback('shutdown', function()
+    if viewmodel.hand_override_active then
+        cvar.cl_righthand:set_int(viewmodel.saved_righthand)
+    end
 end)
 
 client.set_event_callback('override_view', function(ctx)
@@ -672,6 +719,7 @@ interface = {} do
         viewmodel_x = interface.header.fake_lag:slider('x', -1000, 1000, cvar.viewmodel_offset_x:get_float(), true, '', 0.01),
         viewmodel_y = interface.header.fake_lag:slider('y', -1000, 1000, cvar.viewmodel_offset_y:get_float(), true, '', 0.01),
         viewmodel_z = interface.header.fake_lag:slider('z', -1000, 1000, cvar.viewmodel_offset_z:get_float(), true, '', 0.01),
+        opposite_knife_hand = interface.header.fake_lag:checkbox('opposite knife hand'),
         stickman = interface.header.other:checkbox('stickman', {255, 255, 255, 140}),
         zoom_animation = interface.header.other:checkbox('zoom animation'),
         zoom_animation_speed = interface.header.other:slider('speed', 10, 100, 50, true, '%'),
@@ -717,6 +765,7 @@ interface = {} do
             [150] = 'fast'
         }),
         party_mode = interface.header.other:checkbox('party mode'),
+        reveal_enemy_team_chat = interface.header.other:checkbox('reveal enemy chat'),
         animation_breakers = interface.header.other:multiselect('animation breakers', 'zero on land', 'earthquake', 'sliding slow motion', 'sliding crouch', 'on ground', 'on air', 'quick peek legs', 'keus scale', 'body lean'),
         on_ground_options = interface.header.other:combobox('on ground', {'frozen', 'walking', 'jitter', 'sliding', 'star'}),
         on_air_options = interface.header.other:combobox('on air', {'frozen', 'walking', 'kinguru'}),
@@ -1134,6 +1183,7 @@ interface = {} do
                     interface.visuals.viewmodel_x:set_visible(show_viewmodel_settings)
                     interface.visuals.viewmodel_y:set_visible(show_viewmodel_settings)
                     interface.visuals.viewmodel_z:set_visible(show_viewmodel_settings)
+                    interface.visuals.opposite_knife_hand:set_visible(show_viewmodel_settings)
 
                     interface.visuals.stickman:set_visible(visuals_enabled)
 
@@ -1163,7 +1213,7 @@ interface = {} do
                         end
 
                         if key == "unlock_fd_speed_scale" then
-                            element:set_visible(interface.utility.unlock_fd_speed:get())
+                            element:set_visible(false)
                             return
                         end
 
@@ -6300,6 +6350,8 @@ end)
 
 --@region: unlock fd speed
 unlock_fd_speed = {} do
+    local FAST_SPEED = 150
+
     unlock_fd_speed.on_setup_command = function(cmd)
         if not interface.utility.unlock_fd_speed:get() then
             return
@@ -6325,9 +6377,8 @@ unlock_fd_speed = {} do
             return
         end
 
-        local scale = interface.utility.unlock_fd_speed_scale:get()
-        cmd.forwardmove = (cmd.forwardmove / move_len) * scale
-        cmd.sidemove = (cmd.sidemove / move_len) * scale
+        cmd.forwardmove = (cmd.forwardmove / move_len) * FAST_SPEED
+        cmd.sidemove = (cmd.sidemove / move_len) * FAST_SPEED
     end
 
     client.set_event_callback("setup_command", unlock_fd_speed.on_setup_command)
@@ -8784,7 +8835,84 @@ party_mode = {} do
         end
     end
     
-    client.set_event_callback("paint", party_mode.setup)
+client.set_event_callback("paint", party_mode.setup)
+end
+--@endregion
+
+--@region: reveal enemy team chat
+reveal_enemy_team_chat = {} do
+    local ref = interface.utility.reveal_enemy_team_chat
+    local game_state_api = panorama.open().GameStateAPI
+    local cl_mute_enemy_team = cvar.cl_mute_enemy_team
+    local cl_mute_all_but_friends_and_party = cvar.cl_mute_all_but_friends_and_party
+
+    reveal_enemy_team_chat.chat_data = {}
+
+    reveal_enemy_team_chat.on_player_say = function(e)
+        local entindex = client.userid_to_entindex(e.userid)
+        if not entity.is_enemy(entindex) then
+            return
+        end
+
+        local xuid = game_state_api.GetPlayerXuidStringFromEntIndex(entindex)
+
+        if game_state_api.IsSelectedPlayerMuted(xuid) then
+            return
+        end
+
+        if cl_mute_enemy_team:get_int() == 1 then
+            return
+        end
+
+        if cl_mute_all_but_friends_and_party:get_int() == 1 then
+            return
+        end
+
+        client.delay_call(0.2, function()
+            if reveal_enemy_team_chat.chat_data[entindex] ~= nil and math.abs(globals.realtime() - reveal_enemy_team_chat.chat_data[entindex]) < 0.4 then
+                return
+            end
+
+            local player_resource = entity.get_player_resource()
+            local last_place_name = entity.get_prop(entindex, 'm_szLastPlaceName')
+            local player_name = entity.get_player_name(entindex)
+
+            local team_literal = entity.get_prop(player_resource, 'm_iTeam', entindex) == 2 and 'T' or 'CT'
+            local state_literal = entity.is_alive(entindex) and 'Loc' or 'Dead'
+            local text = string.format('Cstrike_Chat_%s_%s', team_literal, state_literal)
+
+            local localized_text = localize(text, {
+                s1 = player_name,
+                s2 = e.text,
+                s3 = localize(last_place_name ~= "" and last_place_name or 'UI_Unknown')
+            })
+
+            chat.print_player(entindex, localized_text)
+        end)
+    end
+
+    reveal_enemy_team_chat.on_player_chat = function(e)
+        if not e.entity or not entity.is_enemy(e.entity) then
+            return
+        end
+
+        reveal_enemy_team_chat.chat_data[e.entity] = globals.realtime()
+    end
+
+    reveal_enemy_team_chat.setup = function()
+        if ref:get() then
+            client.set_event_callback('player_say', reveal_enemy_team_chat.on_player_say)
+            client.set_event_callback('player_chat', reveal_enemy_team_chat.on_player_chat)
+            return
+        end
+
+        reveal_enemy_team_chat.chat_data = {}
+        client.unset_event_callback('player_say', reveal_enemy_team_chat.on_player_say)
+        client.unset_event_callback('player_chat', reveal_enemy_team_chat.on_player_chat)
+    end
+
+    ref:set_callback(reveal_enemy_team_chat.setup)
+    reveal_enemy_team_chat.setup()
 end
 --@endregion
 
