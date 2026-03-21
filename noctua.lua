@@ -592,6 +592,28 @@ interface = {} do
     interface.home.menu_snow:override(true)
     interface.kas.enabled:override(true)
 
+    local function create_hitchance_profile(has_scope)
+        local options = { 'in air', 'hotkey', 'crouch', 'peek assist' }
+        if has_scope then
+            table.insert(options, 2, 'no scope')
+        end
+
+        local profile = {
+            options = interface.header.other:multiselect('conditions', unpack(options)),
+            in_air = interface.header.other:slider('in air hitchance', 0, 100, 0, true, '%', 1),
+            hotkey = interface.header.other:slider('hotkey hitchance', 0, 100, 0, true, '%', 1),
+            crouch = interface.header.other:slider('crouch hitchance', 0, 100, 0, true, '%', 1),
+            peek_assist = interface.header.other:slider('peek assist hitchance', 0, 100, 0, true, '%', 1)
+        }
+
+        if has_scope then
+            profile.no_scope = interface.header.other:slider('no scope hitchance', 0, 100, 0, true, '%', 1)
+            profile.no_scope_distance = interface.header.other:slider('no scope distance', 5, 3000, 450, true, 'u', 1)
+        end
+
+        return profile
+    end
+
     interface.aimbot = {
         enabled_aimbot = interface.header.general:checkbox('enable aimbot'),
         enabled_resolver_tweaks = interface.header.general:checkbox('\aa5ab55ffyaw correction'),
@@ -604,6 +626,17 @@ interface = {} do
         noscope_distance_scout = interface.header.general:slider('scout distance', 1, 800, 450, true, ''),
         noscope_distance_awp = interface.header.general:slider('awp distance', 1, 800, 450, true, ''),
         quick_stop = interface.header.general:checkbox('air stop', 0x00),
+        hitchance_override = interface.header.other:checkbox('hitchance override'),
+        hitchance_override_hotkey = interface.header.other:checkbox('override hotkey', 0x00),
+        hitchance_override_weapon = interface.header.other:combobox('weapon', 'autosnipers', 'deagle', 'revolver', 'pistols', 'scout', 'awp'),
+        hitchance_override_profiles = {
+            autosnipers = create_hitchance_profile(true),
+            deagle = create_hitchance_profile(false),
+            revolver = create_hitchance_profile(false),
+            pistols = create_hitchance_profile(false),
+            scout = create_hitchance_profile(true),
+            awp = create_hitchance_profile(true)
+        },
         dormant_enabled = interface.header.general:checkbox('dormant aimbot', 0x00),
         dormant_hitchance = interface.header.general:slider('hit chance', 50, 100, 50, true, '%', 1, {[50] = 'auto'}),
         dormant_damage = interface.header.general:slider('minimum damage', 1, 100, 7, true, '')
@@ -908,7 +941,59 @@ interface = {} do
                 groups_to_hide = { groups.home, groups.kas, groups.visuals, groups.models, groups.utility, groups.config },
                 element_visibility_logic = function(element, path)
                     local key = path[#path]
+                    local root = path[1]
                     local enabled = (interface.aimbot.enabled_aimbot:get() == true)
+                    local hitchance_enabled = enabled and interface.aimbot.hitchance_override:get()
+                    local selected_hitchance_weapon = interface.aimbot.hitchance_override_weapon:get()
+
+                    if root == 'hitchance_override_profiles' then
+                        local profile_key = path[2]
+                        local profile_field = path[3]
+                        local profile = interface.aimbot.hitchance_override_profiles[profile_key]
+                        local options = profile and profile.options:get() or {}
+                        local is_selected_weapon = (profile_key == selected_hitchance_weapon)
+
+                        if not (hitchance_enabled and is_selected_weapon and profile) then
+                            element:set_visible(false)
+                            return
+                        end
+
+                        if profile_field == 'options' then
+                            element:set_visible(true)
+                            return
+                        end
+
+                        if profile_field == 'in_air' then
+                            element:set_visible(type(options) == 'table' and utils.contains(options, 'in air'))
+                            return
+                        end
+
+                        if profile_field == 'hotkey' then
+                            element:set_visible(type(options) == 'table' and utils.contains(options, 'hotkey'))
+                            return
+                        end
+
+                        if profile_field == 'crouch' then
+                            element:set_visible(type(options) == 'table' and utils.contains(options, 'crouch'))
+                            return
+                        end
+
+                        if profile_field == 'peek_assist' then
+                            element:set_visible(type(options) == 'table' and utils.contains(options, 'peek assist'))
+                            return
+                        end
+
+                        if profile_field == 'no_scope' then
+                            element:set_visible(type(options) == 'table' and utils.contains(options, 'no scope'))
+                            return
+                        end
+
+                        if profile_field == 'no_scope_distance' then
+                            element:set_visible(type(options) == 'table' and utils.contains(options, 'no scope'))
+                            return
+                        end
+                    end
+
                     if key == 'enabled_aimbot' then
                         element:set_visible(true)
                     elseif key == 'resolver_mode' then
@@ -917,6 +1002,10 @@ interface = {} do
                         element:set_visible(enabled)
                     elseif key == 'noscope_weapons' then
                         element:set_visible(enabled and interface.aimbot.noscope_distance:get())
+                    elseif key == 'hitchance_override' then
+                        element:set_visible(enabled)
+                    elseif key == 'hitchance_override_hotkey' or key == 'hitchance_override_weapon' then
+                        element:set_visible(hitchance_enabled)
                     elseif key == 'noscope_distance_autosnipers' then
                         local v = (interface.aimbot.noscope_weapons:get() or {})
                         local has_auto = (type(v) == 'table') and utils.contains(v, 'autosnipers')
@@ -3104,6 +3193,213 @@ client.set_event_callback('shutdown', function()
 end)
 --@endregion
 
+--@region: hitchance override
+hitchance_override = {} do
+    local SCOPED_PROFILES = {
+        autosnipers = true,
+        scout = true,
+        awp = true
+    }
+
+    hitchance_override._active = false
+    hitchance_override._hotkey_active = false
+    hitchance_override._updated_this_tick = false
+    hitchance_override._saved_values = { }
+
+    local function set_override(self, value)
+        local weapon_type = ui.get(ui_references.weapon_type)
+        if weapon_type == nil then
+            return false
+        end
+
+        if self._saved_values[weapon_type] == nil then
+            self._saved_values[weapon_type] = ui.get(ui_references.minimum_hitchance)
+        end
+
+        ui.set(ui_references.minimum_hitchance, value)
+        self._active = true
+        return true
+    end
+
+    local function unset_override(self)
+        if not self._active and next(self._saved_values) == nil then
+            return
+        end
+
+        local weapon_type = ui.get(ui_references.weapon_type)
+
+        for saved_weapon_type, saved_value in pairs(self._saved_values) do
+            ui.set(ui_references.weapon_type, saved_weapon_type)
+            ui.set(ui_references.minimum_hitchance, saved_value)
+            self._saved_values[saved_weapon_type] = nil
+        end
+
+        if weapon_type ~= nil then
+            ui.set(ui_references.weapon_type, weapon_type)
+        end
+
+        self._active = false
+    end
+
+    local function reset_tick_state(self)
+        self._hotkey_active = false
+        self._updated_this_tick = false
+    end
+
+    local function get_weapon_profile(weapon)
+        local weapon_info = csgo_weapons(weapon)
+        if not weapon_info then return nil end
+
+        local weapon_type = weapon_info.type
+        local weapon_index = weapon_info.idx
+
+        if weapon_type == 'pistol' then
+            if weapon_index == 1 then
+                return 'deagle'
+            end
+
+            if weapon_index == 64 then
+                return 'revolver'
+            end
+
+            return 'pistols'
+        end
+
+        if weapon_type == 'sniperrifle' then
+            if weapon_index == 40 then
+                return 'scout'
+            end
+
+            if weapon_index == 9 then
+                return 'awp'
+            end
+
+            return 'autosnipers'
+        end
+
+        return nil
+    end
+
+    local function is_quickpeek_active()
+        return ui.get(ui_references.quickpeek[1]) and ui.get(ui_references.quickpeek[2])
+    end
+
+    local function get_distance_to_threat(lp)
+        local threat = client.current_threat()
+        if not threat or not entity.is_alive(threat) or entity.is_dormant(threat) then
+            return nil
+        end
+
+        local lx, ly, lz = entity.get_prop(lp, 'm_vecOrigin')
+        local tx, ty, tz = entity.get_prop(threat, 'm_vecOrigin')
+        if not (lx and ly and lz and tx and ty and tz) then
+            return nil
+        end
+
+        return player.distance3d(lx, ly, lz, tx, ty, tz)
+    end
+
+    local function get_override_value(lp, profile_key, profile)
+        local options = profile.options:get() or {}
+        local state = utils.get_state()
+        if type(options) ~= 'table' then
+            return nil
+        end
+
+        if utils.contains(options, 'hotkey') and interface.aimbot.hitchance_override_hotkey:get() and interface.aimbot.hitchance_override_hotkey.hotkey:get() then
+            return profile.hotkey:get(), true
+        end
+
+        if utils.contains(options, 'crouch') and (state == 'duck' or state == 'duck move') then
+            return profile.crouch:get(), false
+        end
+
+        if utils.contains(options, 'peek assist') and is_quickpeek_active() then
+            return profile.peek_assist:get(), false
+        end
+
+        if SCOPED_PROFILES[profile_key] and utils.contains(options, 'no scope') then
+            local distance = get_distance_to_threat(lp)
+            if distance and distance <= profile.no_scope_distance:get() then
+                return profile.no_scope:get(), false
+            end
+        end
+
+        if utils.contains(options, 'in air') and (state == 'air' or state == 'airc') then
+            return profile.in_air:get(), false
+        end
+
+        return nil, false
+    end
+
+    hitchance_override.on_setup_command = function(self)
+        reset_tick_state(self)
+
+        if not (interface.aimbot.enabled_aimbot:get() and interface.aimbot.hitchance_override:get()) then
+            unset_override(self)
+            return
+        end
+
+        local lp = entity.get_local_player()
+        if not lp or not entity.is_alive(lp) then
+            unset_override(self)
+            return
+        end
+
+        local weapon = entity.get_player_weapon(lp)
+        if not weapon then
+            unset_override(self)
+            return
+        end
+
+        local profile_key = get_weapon_profile(weapon)
+        if not profile_key then
+            unset_override(self)
+            return
+        end
+
+        local profile = interface.aimbot.hitchance_override_profiles[profile_key]
+        if not profile then
+            unset_override(self)
+            return
+        end
+
+        local value, hotkey_active = get_override_value(lp, profile_key, profile)
+        if value == nil then
+            unset_override(self)
+            return
+        end
+
+        if not set_override(self, value) then
+            unset_override(self)
+            return
+        end
+
+        self._hotkey_active = hotkey_active == true
+        self._updated_this_tick = true
+    end
+
+    hitchance_override.shutdown = function(self)
+        unset_override(self)
+        reset_tick_state(self)
+    end
+end
+
+client.set_event_callback('setup_command', function()
+    hitchance_override:on_setup_command()
+end)
+
+client.set_event_callback('paint', function()
+    if hitchance_override._hotkey_active and hitchance_override._updated_this_tick then
+        renderer.indicator(214, 214, 214, 255, 'HC')
+    end
+end)
+
+client.set_event_callback('shutdown', function()
+    hitchance_override:shutdown()
+end)
+--@endregion
+
 --@region: widgets
 widgets = {} do
     local SNAP = 12
@@ -4026,6 +4322,7 @@ visuals = {} do
         local isOS = ui.get(ui_references.on_shot_anti_aim[1]) and ui.get(ui_references.on_shot_anti_aim[2])
         local isDT = ui.get(ui_references.double_tap[1]) and ui.get(ui_references.double_tap[2])
         local isDMG = ui.get(ui_references.minimum_damage_override[1]) and ui.get(ui_references.minimum_damage_override[2])
+        local isHC = hitchance_override and hitchance_override._hotkey_active == true and hitchance_override._updated_this_tick == true
 
         local align_text = ((style == 'center') or isEmoji) and 'c' or 'l'
         local align_title = ((style == 'center') or isEmoji) and 'cb' or 'lb'
@@ -4037,14 +4334,16 @@ visuals = {} do
                 state = base_y + 20,
                 rapid = base_y + 30,
                 osaa = base_y + 40,
-                dmg = base_y + 50
+                dmg = base_y + 50,
+                hc = base_y + 60
             }
             self.element_target_positions = {
                 noctua = base_y + 10,
                 state = base_y + 20,
                 rapid = base_y + 30,
                 osaa = base_y + 40,
-                dmg = base_y + 50
+                dmg = base_y + 50,
+                hc = base_y + 60
             }
         end
 
@@ -4100,11 +4399,25 @@ visuals = {} do
         self.dmgAlpha = mathematic.lerp(self.dmgAlpha or 0, isDMG and 255 or 0, fade_lerp_t)
         local smoothDmgAlpha = (self.dmgAlpha / 255) * self.indicatorsAlpha
 
+        if smoothDmgAlpha >= 1 then
+            self.element_target_positions.hc = self.element_target_positions.dmg + 10
+        elseif smoothOsaaAlpha >= 1 then
+            self.element_target_positions.hc = self.element_target_positions.osaa + 10
+        elseif smoothRapidAlpha >= 1 or smoothReloadAlpha >= 1 then
+            self.element_target_positions.hc = self.element_target_positions.rapid + 10
+        else
+            self.element_target_positions.hc = self.element_target_positions.state + 10
+        end
+
+        self.hcAlpha = mathematic.lerp(self.hcAlpha or 0, isHC and 255 or 0, fade_lerp_t)
+        local smoothHcAlpha = (self.hcAlpha / 255) * self.indicatorsAlpha
+
         self.element_positions.noctua = mathematic.lerp(self.element_positions.noctua, self.element_target_positions.noctua, position_lerp_t)
         self.element_positions.state = mathematic.lerp(self.element_positions.state, self.element_target_positions.state, position_lerp_t)
         self.element_positions.rapid = mathematic.lerp(self.element_positions.rapid, self.element_target_positions.rapid, position_lerp_t)
         self.element_positions.osaa = mathematic.lerp(self.element_positions.osaa, self.element_target_positions.osaa, position_lerp_t)
         self.element_positions.dmg = mathematic.lerp(self.element_positions.dmg, self.element_target_positions.dmg, position_lerp_t)
+        self.element_positions.hc = mathematic.lerp(self.element_positions.hc, self.element_target_positions.hc, position_lerp_t)
 
         local animate_on_scope = (interface.visuals.crosshair_animate_scope and interface.visuals.crosshair_animate_scope:get()) or false
         local use_scope_lerp = ((style == 'center') or isEmoji) and animate_on_scope
@@ -4151,7 +4464,7 @@ visuals = {} do
         end
 
         local x_draw = base_x
-        local x_title, x_state, x_rapid, x_waiting, x_osaa, x_dmg
+        local x_title, x_state, x_rapid, x_waiting, x_osaa, x_dmg, x_hc
 
         if use_scope_lerp then
             local function lerp_x_centered(text, use_bold)
@@ -4169,6 +4482,7 @@ visuals = {} do
             x_waiting = lerp_x_centered("waiting", false)
             x_osaa   = lerp_x_centered("osaa", false)
             x_dmg    = lerp_x_centered("dmg", false)
+            x_hc     = lerp_x_centered("hc", false)
         end
 
         local state_r, state_g, state_b = 255, 255, 255
@@ -4212,6 +4526,10 @@ visuals = {} do
         
         if smoothDmgAlpha >= 1 then
             renderer.text((x_dmg or x_draw), self.element_positions.dmg, 255, 255, 255, smoothDmgAlpha, align_text, 1000, "dmg")
+        end
+
+        if smoothHcAlpha >= 1 then
+            renderer.text((x_hc or x_draw), self.element_positions.hc, 255, 255, 255, smoothHcAlpha, align_text, 1000, "hc")
         end
     end
 
@@ -5557,12 +5875,12 @@ widgets.register({
     defaults = { anchor_x = "center", anchor_y = "center", offset_x = 0, offset_y = 10 },
     get_size = function(st)
         local maxw, lineh = 0, select(2, renderer.measure_text("c", "A")) or 12
-        local samples = { "noctua", "freestand", "rapid", "reload", "osaa", "dmg" }
+        local samples = { "noctua", "freestand", "rapid", "reload", "osaa", "dmg", "hc" }
         for i = 1, #samples do
             local w = select(1, renderer.measure_text("c", samples[i])) or 0
             if w > maxw then maxw = w end
         end
-        local lines = 3.5
+        local lines = 4.5
         return math.max(maxw, 60), lineh * lines
     end,
     draw = function(ctx)
@@ -8424,7 +8742,7 @@ killsay = {} do
         if attacker == local_player and victim ~= local_player then
             if utils.contains(modes, "on kill") then
                 local kd = player.get_kd(local_player)
-                if kd ~= nil and kd <= 1.0 then return end
+                -- if kd ~= nil and kd <= 1.0 then return end
                 
                 killsay.last_say_time = now 
                 killsay.send_phrases("kill")
