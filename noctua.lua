@@ -1598,14 +1598,19 @@ interface = {} do
                     -- we'll handle this later
                 end
             },
+            other = {
+                groups_to_show = {},
+                groups_to_hide = { groups.home, groups.kas, groups.aimbot, groups.antiaim, groups.visuals, groups.models, groups.utility, groups.config }
+            },
             default = {
+                groups_to_show = {},
                 groups_to_hide = { groups.home, groups.kas, groups.aimbot, groups.antiaim, groups.visuals, groups.models, groups.utility, groups.config }
             }
         }
 
         local config = visibility_config[selection] or visibility_config.default
 
-        for _, group in pairs(config.groups_to_show) do
+        for _, group in pairs(config.groups_to_show or {}) do
             if group then
                 pui.traverse(group, function(element, path)
                     local proxy = element
@@ -1626,7 +1631,7 @@ interface = {} do
             end
         end
 
-        for _, group in pairs(config.groups_to_hide) do
+        for _, group in pairs(config.groups_to_hide or {}) do
             if group then
                 pui.traverse(group, function(element, path)
                     set_element_visible(element, false)
@@ -3212,6 +3217,9 @@ antiaim = {} do
     extensions.damage_received_until = 0
     extensions.flash_until = 0
     extensions.reload_until = 0
+    extensions.break_self_backtrack_cooldown = 0
+    extensions.vigilant_last_state = nil
+    extensions.vigilant_next_pulse = 0
 
     function extensions.is_enabled(name)
         return utils.multiselect_has(interface.antiaim.fake_lag.extensions:get(), name)
@@ -3229,6 +3237,9 @@ antiaim = {} do
         extensions.damage_received_until = 0
         extensions.flash_until = 0
         extensions.reload_until = 0
+        extensions.break_self_backtrack_cooldown = 0
+        extensions.vigilant_last_state = nil
+        extensions.vigilant_next_pulse = 0
         _G.noctua_runtime.safe_head_active = false
         exploit.restore()
         fakelag_refs.on[1]:override()
@@ -3243,21 +3254,6 @@ antiaim = {} do
         return cmd.weaponselect > 0
     end
 
-    function extensions.get_break_limit(local_player)
-        local vx = entity.get_prop(local_player, 'm_vecVelocity[0]') or 0
-        local vy = entity.get_prop(local_player, 'm_vecVelocity[1]') or 0
-        local speed = math.sqrt((vx * vx) + (vy * vy))
-
-        if speed < 5 then
-            return nil
-        end
-
-        local interval = globals.tickinterval()
-        local required = math.ceil(65 / math.max(speed * interval, 1))
-
-        return mathematic.clamp(required, 1, 15)
-    end
-
     function extensions.is_correct_exploit_active()
         local exploit_types = interface.antiaim.fake_lag.correct_lag_exploit_type:get()
         local is_double_tap = utils.multiselect_has(exploit_types, 'double tap') and ui.get(ui_references.double_tap[1]) and ui.get(ui_references.double_tap[2])
@@ -3266,29 +3262,159 @@ antiaim = {} do
         return is_double_tap or is_osaa
     end
 
+    function extensions.get_eye_position(idx)
+        local ox, oy, oz = entity.get_prop(idx, 'm_vecOrigin')
+        if ox == nil then
+            return nil
+        end
+
+        local view_z = entity.get_prop(idx, 'm_vecViewOffset[2]') or 64
+        return ox, oy, oz + view_z
+    end
+
+    function extensions.can_enemy_see_local(enemy, local_player)
+        if enemy == nil or not entity.is_alive(enemy) or entity.is_dormant(enemy) then
+            return false
+        end
+
+        local ex, ey, ez = extensions.get_eye_position(enemy)
+        if ex == nil then
+            return false
+        end
+
+        local hitboxes = { 0, 2, 4 }
+        for i = 1, #hitboxes do
+            local hx, hy, hz = entity.hitbox_position(local_player, hitboxes[i])
+            if hx ~= nil then
+                local fraction, entindex = client.trace_line(enemy, ex, ey, ez, hx, hy, hz)
+                if fraction == 1 or entindex == local_player then
+                    return true
+                end
+            end
+        end
+
+        return false
+    end
+
+    function extensions.get_backtrack_threat(local_player, mode)
+        local threat = client.current_threat()
+        if threat ~= nil and extensions.can_enemy_see_local(threat, local_player) then
+            return threat
+        end
+
+        if mode ~= 'auto' then
+            return nil
+        end
+
+        local enemies = entity.get_players(true)
+        for i = 1, #enemies do
+            local enemy = enemies[i]
+            if enemy ~= threat and extensions.can_enemy_see_local(enemy, local_player) then
+                return enemy
+            end
+        end
+
+        return nil
+    end
+
+    function extensions.should_break_self_backtrack_pulse(local_player, cmd)
+        if not extensions.is_enabled('break self backtrack') then
+            return false
+        end
+
+        local mode = interface.antiaim.fake_lag.break_self_backtrack_mode:get()
+        local threat = extensions.get_backtrack_threat(local_player, mode)
+        if threat == nil then
+            return false
+        end
+
+        local tick = globals.tickcount()
+        if tick < (extensions.break_self_backtrack_cooldown or 0) then
+            return false
+        end
+
+        local _, _, _, speed = player.get_velocity(local_player)
+        if speed < 70 then
+            return false
+        end
+
+        local base_limit = ui.get(ui_references.fakelag_limit) or 15
+        local choked = cmd.chokedcommands or 0
+        local interval = globals.tickinterval()
+        local estimated_shift = speed * interval * (choked + 1)
+        local close_to_flush = choked >= mathematic.clamp(base_limit - 4, 5, 12)
+        local meaningful_shift = estimated_shift >= 14
+        local threat_distance = nil
+
+        local lx, ly, lz = entity.get_origin(local_player)
+        local tx, ty, tz = entity.get_origin(threat)
+        if lx ~= nil and tx ~= nil then
+            threat_distance = player.distance3d(lx, ly, lz, tx, ty, tz)
+        end
+
+        local close_enemy = threat_distance ~= nil and threat_distance < 900
+        local dangerous_window = (meaningful_shift and close_to_flush) or (close_enemy and choked >= 5 and estimated_shift >= 10)
+
+        if not dangerous_window then
+            return false
+        end
+
+        extensions.break_self_backtrack_cooldown = tick + 3
+        return true
+    end
+
+    function extensions.should_vigilant_pulse()
+        if not extensions.is_enabled('vigilant lagcomp breaking') then
+            return false
+        end
+
+        local state = utils.get_state()
+        local decisive_controls = interface.antiaim.fake_lag.vigilant_controls:get()
+        local tick = globals.tickcount()
+        local has_threat = client.current_threat() ~= nil
+        local state_changed = extensions.vigilant_last_state ~= state
+
+        if state_changed then
+            extensions.vigilant_last_state = state
+        end
+
+        if not has_threat or not utils.multiselect_has(decisive_controls, state) then
+            return false
+        end
+
+        if state_changed then
+            extensions.vigilant_next_pulse = tick + 8
+            return true
+        end
+
+        if tick >= (extensions.vigilant_next_pulse or 0) then
+            extensions.vigilant_next_pulse = tick + 8
+            return true
+        end
+
+        return false
+    end
+
     function extensions.apply_fakelag(local_player, cmd)
         local limit_override = nil
+        local should_pulse = false
 
         if extensions.is_enabled('correct lag on exploit') and extensions.is_correct_exploit_active() then
             limit_override = 1
         else
-            if extensions.is_enabled('break self backtrack') then
-                local mode = interface.antiaim.fake_lag.break_self_backtrack_mode:get()
-                local has_threat = client.current_threat() ~= nil
-
-                if mode == 'auto' or has_threat then
-                    limit_override = extensions.get_break_limit(local_player)
-                end
+            if extensions.should_break_self_backtrack_pulse(local_player, cmd) then
+                limit_override = 1
+                should_pulse = true
             end
 
-            if extensions.is_enabled('vigilant lagcomp breaking') then
-                local decisive_controls = interface.antiaim.fake_lag.vigilant_controls:get()
-                local state = utils.get_state()
-
-                if utils.multiselect_has(decisive_controls, state) then
-                    limit_override = math.max(limit_override or 0, 15)
-                end
+            if extensions.should_vigilant_pulse() then
+                limit_override = 1
+                should_pulse = true
             end
+        end
+
+        if should_pulse then
+            cmd.no_choke = true
         end
 
         if limit_override == nil then
