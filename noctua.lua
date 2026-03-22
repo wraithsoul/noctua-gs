@@ -611,7 +611,7 @@ interface = {} do
         view_alternative = interface.header.other:label(' · alternative: -'),
         view_group = interface.header.other:label(' · group: -'),
         view_note = interface.header.other:label(' · note: -'),
-        options = interface.header.other:multiselect('options', 'alias', 'alternative', 'source', 'group', 'note'),
+        options = interface.header.other:multiselect('options\nkas.options', 'alias', 'alternative', 'source', 'group', 'note'),
         source = interface.header.other:combobox('source', {'manual', 'public', 'community', 'league', 'report'}),
         alias_label = interface.header.other:label('alias'),
         alias = (interface.header.other.textbox and interface.header.other:textbox('alias')) or interface.header.other:combobox('alias', ''),
@@ -639,23 +639,23 @@ interface = {} do
     interface.home.menu_snow:override(true)
     interface.kas.enabled:override(true)
 
-    local function create_hitchance_profile(has_scope)
+    local function create_hitchance_profile(profile_key, has_scope)
         local options = { 'in air', 'hotkey', 'crouch', 'peek assist' }
         if has_scope then
             table.insert(options, 2, 'no scope')
         end
 
         local profile = {
-            options = interface.header.other:multiselect('conditions', unpack(options)),
-            in_air = interface.header.other:slider('in air hitchance', 0, 100, 0, true, '%', 1),
-            hotkey = interface.header.other:slider('hotkey hitchance', 0, 100, 0, true, '%', 1),
-            crouch = interface.header.other:slider('crouch hitchance', 0, 100, 0, true, '%', 1),
-            peek_assist = interface.header.other:slider('peek assist hitchance', 0, 100, 0, true, '%', 1)
+            options = interface.header.other:multiselect('conditions\nhitchance_override.' .. profile_key .. '.options', unpack(options)),
+            in_air = interface.header.other:slider('in air hitchance\nhitchance_override.' .. profile_key .. '.in_air', 0, 100, 0, true, '%', 1),
+            hotkey = interface.header.other:slider('hotkey hitchance\nhitchance_override.' .. profile_key .. '.hotkey', 0, 100, 0, true, '%', 1),
+            crouch = interface.header.other:slider('crouch hitchance\nhitchance_override.' .. profile_key .. '.crouch', 0, 100, 0, true, '%', 1),
+            peek_assist = interface.header.other:slider('peek assist hitchance\nhitchance_override.' .. profile_key .. '.peek_assist', 0, 100, 0, true, '%', 1)
         }
 
         if has_scope then
-            profile.no_scope = interface.header.other:slider('no scope hitchance', 0, 100, 0, true, '%', 1)
-            profile.no_scope_distance = interface.header.other:slider('no scope distance', 5, 3000, 450, true, 'u', 1)
+            profile.no_scope = interface.header.other:slider('no scope hitchance\nhitchance_override.' .. profile_key .. '.no_scope', 0, 100, 0, true, '%', 1)
+            profile.no_scope_distance = interface.header.other:slider('no scope distance\nhitchance_override.' .. profile_key .. '.no_scope_distance', 5, 3000, 450, true, 'u', 1)
         end
 
         return profile
@@ -677,16 +677,17 @@ interface = {} do
         hitchance_override_hotkey = interface.header.other:checkbox('override hotkey', 0x00),
         hitchance_override_weapon = interface.header.other:combobox('weapon', 'autosnipers', 'deagle', 'revolver', 'pistols', 'scout', 'awp'),
         hitchance_override_profiles = {
-            autosnipers = create_hitchance_profile(true),
-            deagle = create_hitchance_profile(false),
-            revolver = create_hitchance_profile(false),
-            pistols = create_hitchance_profile(false),
-            scout = create_hitchance_profile(true),
-            awp = create_hitchance_profile(true)
+            autosnipers = create_hitchance_profile('autosnipers', true),
+            deagle = create_hitchance_profile('deagle', false),
+            revolver = create_hitchance_profile('revolver', false),
+            pistols = create_hitchance_profile('pistols', false),
+            scout = create_hitchance_profile('scout', true),
+            awp = create_hitchance_profile('awp', true)
         },
         dormant_enabled = interface.header.general:checkbox('dormant aimbot', 0x00),
         dormant_hitchance = interface.header.general:slider('hit chance', 50, 100, 50, true, '%', 1, {[50] = 'auto'}),
-        dormant_damage = interface.header.general:slider('minimum damage', 1, 100, 7, true, '')
+        dormant_damage = interface.header.general:slider('minimum damage', 1, 100, 7, true, ''),
+        predictive_shot = interface.header.fake_lag:checkbox('\aa5ab55ffpredictive shot (awp only, experimental)')
     }
 
     interface.visuals = {
@@ -706,7 +707,7 @@ interface = {} do
         -- shared = interface.header.general:checkbox('shared identity (wip)'),
         bomb_timer = interface.header.general:checkbox('bomb timer'),
         logging = interface.header.general:checkbox('logging'),
-        logging_options = interface.header.general:multiselect('options', 'console', 'screen'),
+        logging_options = interface.header.general:multiselect('options\nvisuals.logging_options', 'console', 'screen'),
         logging_options_console = interface.header.general:multiselect('console', 'fire', 'hit', 'miss', 'buy', 'aimbot'),
         logging_options_screen = interface.header.general:multiselect('screen', 'fire', 'hit', 'miss', 'aimbot'),
         logging_slider = interface.header.general:slider('slider', 40, 450, 240),
@@ -729,6 +730,9 @@ interface = {} do
         world_damage_type = interface.header.other:combobox('type', {'static', 'dynamic'}),
         enemy_ping_warn = interface.header.other:checkbox('enemy ping warning'),
         enemy_ping_minimum = interface.header.other:slider('minimum latency to show', 10, 100, 80, true, 'ms'),
+        grenade_radius = interface.header.other:multiselect('grenade radius', 'smoke', 'molotov'),
+        grenade_radius_smoke_color = interface.header.other:label('smoke color', {173, 216, 230, 255}),
+        grenade_radius_molotov_color = interface.header.other:label('molotov color', {255, 204, 203, 255}),
         predict_box = interface.header.other:checkbox('predict box'),
         predict_box_show_box = interface.header.other:checkbox('prediction box'),
         predict_box_show_tickbase = interface.header.other:checkbox('tickbase indicator'),
@@ -736,10 +740,7 @@ interface = {} do
         predict_box_debug_line = interface.header.other:checkbox('debug line'),
         predict_box_text_color = interface.header.other:label('text color', {255, 45, 45, 255}),
         predict_box_box_color = interface.header.other:label('box color', {47, 117, 221, 255}),
-        predict_box_strength = interface.header.other:slider('prediction strength', 1, 16, 8, true, '', 1),
-        grenade_radius = interface.header.other:multiselect('grenade radius', 'smoke', 'molotov'),
-        grenade_radius_smoke_color = interface.header.other:label('smoke color', {173, 216, 230, 255}),
-        grenade_radius_molotov_color = interface.header.other:label('molotov color', {255, 204, 203, 255})
+        predict_box_strength = interface.header.other:slider('prediction strength', 1, 16, 8, true, '', 1)
     }
 
     interface.config = {
@@ -1205,7 +1206,6 @@ interface = {} do
                     interface.visuals.zoom_animation_value:set_visible(show_zoom_settings)
 
                     interface.visuals.spawn_zoom:set_visible(visuals_enabled)
-
                     interface.visuals.predict_box:set_visible(visuals_enabled)
                     local show_predict_box = visuals_enabled and interface.visuals.predict_box:get()
                     interface.visuals.predict_box_show_box:set_visible(show_predict_box)
@@ -1891,6 +1891,196 @@ player = {} do
         return vel_x, vel_y, vel_z, vel_2d
     end
 
+    player.get_origin_vec = function(idx)
+        local origin_x, origin_y, origin_z = entity.get_origin(idx)
+        if not origin_x then
+            return nil
+        end
+
+        return {
+            x = origin_x,
+            y = origin_y,
+            z = origin_z
+        }
+    end
+
+    player.get_velocity_vec = function(idx)
+        local vel_x, vel_y, vel_z, vel_2d = player.get_velocity(idx)
+        return {
+            x = vel_x,
+            y = vel_y,
+            z = vel_z
+        }, vel_2d
+    end
+
+    player.get_weapon_max_speed = function(idx)
+        local weapon = entity.get_player_weapon(idx)
+        local weapon_info = weapon and csgo_weapons(weapon)
+        if not weapon_info then
+            return 250
+        end
+
+        local scoped = entity.get_prop(idx, "m_bIsScoped") == 1
+        return (scoped and weapon_info.max_player_speed_alt or weapon_info.max_player_speed) or 250
+    end
+
+    player.resolve_effective_speed = function(raw_speed, measured_speed, previous_speed)
+        if measured_speed and measured_speed > 0 and measured_speed < 600 then
+            return measured_speed
+        end
+
+        if raw_speed > 1000 and previous_speed and previous_speed < 600 then
+            return previous_speed
+        end
+
+        if raw_speed > 0 and raw_speed < 600 then
+            return raw_speed
+        end
+
+        return previous_speed or raw_speed
+    end
+
+    player.apply_friction = function(velocity, stop_speed, friction, surface_friction, tick_interval)
+        local speed = math.sqrt((velocity.x * velocity.x) + (velocity.y * velocity.y))
+        if speed < 0.1 then
+            velocity.x = 0
+            velocity.y = 0
+            return
+        end
+
+        local control = speed < stop_speed and stop_speed or speed
+        local drop = control * friction * surface_friction * tick_interval
+        local new_speed = speed - drop
+
+        if new_speed < 0 then
+            new_speed = 0
+        end
+
+        if new_speed ~= speed then
+            local scale = new_speed / speed
+            velocity.x = velocity.x * scale
+            velocity.y = velocity.y * scale
+        end
+    end
+
+    player.accelerate = function(velocity, wishdir_x, wishdir_y, wishspeed, accel, surface_friction, tick_interval)
+        local current_speed = (velocity.x * wishdir_x) + (velocity.y * wishdir_y)
+        local add_speed = wishspeed - current_speed
+        if add_speed <= 0 then
+            return
+        end
+
+        local accel_speed = accel * tick_interval * wishspeed * surface_friction
+        if accel_speed > add_speed then
+            accel_speed = add_speed
+        end
+
+        velocity.x = velocity.x + (accel_speed * wishdir_x)
+        velocity.y = velocity.y + (accel_speed * wishdir_y)
+    end
+
+    player.extrapolate_position = function(idx, origin, flags, ticks)
+        local tick_interval = globals.tickinterval()
+        local gravity_step = cvar.sv_gravity:get_float() * tick_interval
+        local jump_step = cvar.sv_jump_impulse:get_float() * tick_interval
+        local accelerate_cvar = cvar.sv_accelerate:get_float()
+        local airaccelerate_cvar = cvar.sv_airaccelerate:get_float()
+        local friction_cvar = cvar.sv_friction:get_float()
+        local stop_speed = cvar.sv_stopspeed:get_float()
+        local velocity = player.get_velocity_vec(idx)
+        local surface_friction = entity.get_prop(idx, "m_surfaceFriction") or 1
+        local on_ground = bit.band(flags or 0, 1) == 1
+        local gravity = 0
+        local position = {
+            x = origin.x,
+            y = origin.y,
+            z = origin.z
+        }
+        local max_speed = player.get_weapon_max_speed(idx)
+
+        if not on_ground then
+            gravity = -gravity_step
+        elseif velocity.z > 1 then
+            gravity = jump_step
+        end
+
+        for _ = 1, ticks do
+            local previous = {
+                x = position.x,
+                y = position.y,
+                z = position.z
+            }
+            local horizontal_speed = math.sqrt((velocity.x * velocity.x) + (velocity.y * velocity.y))
+
+            if horizontal_speed > 0.1 then
+                local wishdir_x = velocity.x / horizontal_speed
+                local wishdir_y = velocity.y / horizontal_speed
+                local wishspeed = math.max(horizontal_speed, max_speed)
+
+                if on_ground then
+                    player.apply_friction(velocity, stop_speed, friction_cvar, surface_friction, tick_interval)
+                    player.accelerate(velocity, wishdir_x, wishdir_y, wishspeed, accelerate_cvar, surface_friction, tick_interval)
+                else
+                    player.accelerate(velocity, wishdir_x, wishdir_y, wishspeed, airaccelerate_cvar, surface_friction, tick_interval)
+                end
+            end
+
+            position = {
+                x = position.x + (velocity.x * tick_interval),
+                y = position.y + (velocity.y * tick_interval),
+                z = position.z + ((velocity.z + gravity) * tick_interval)
+            }
+
+            if not on_ground then
+                velocity.z = velocity.z + gravity
+            end
+
+            local fraction = client.trace_line(
+                idx,
+                previous.x, previous.y, previous.z,
+                position.x, position.y, position.z
+            )
+
+            if fraction < 1 then
+                if fraction > 0 then
+                    return {
+                        x = previous.x + ((position.x - previous.x) * fraction),
+                        y = previous.y + ((position.y - previous.y) * fraction),
+                        z = previous.z + ((position.z - previous.z) * fraction)
+                    }
+                end
+
+                return previous
+            end
+        end
+
+        return position
+    end
+
+    player.get_prediction_aim_origin = function(idx, data)
+        if not data then
+            return nil, 0
+        end
+
+        local origin = player.get_origin_vec(idx)
+        if not origin then
+            return nil, 0
+        end
+
+        local flags = entity.get_prop(idx, "m_fFlags") or 0
+        local latency = math.max(client.latency(), 0)
+        local interp = tonumber(client.get_cvar("cl_interp")) or 0.031
+        local latency_time = math.min(0.2, latency + interp)
+        local latency_ticks = math.max(1, math.floor(0.5 + (latency_time / globals.tickinterval())))
+        local aim_ticks = math.max(data.aim_tick or data.tick or 0, latency_ticks)
+
+        if data.force_predict or data.defensive_peek or data.tickbase then
+            aim_ticks = aim_ticks + 1
+        end
+
+        return player.extrapolate_position(idx, origin, flags, aim_ticks), aim_ticks, data.speed or 0
+    end
+
     player.distance3d = function(x1, y1, z1, x2, y2, z2)
         return math.sqrt((x2 - x1)^2 + (y2 - y1)^2 + (z2 - z1)^2)
     end
@@ -1951,6 +2141,53 @@ utils = {} do
             end
         end
         return false
+    end
+
+    utils.new_vec = function(x, y, z)
+        return {
+            x = x or 0,
+            y = y or 0,
+            z = z or 0
+        }
+    end
+
+    utils.vec_add = function(a, b)
+        return utils.new_vec(a.x + b.x, a.y + b.y, a.z + b.z)
+    end
+
+    utils.vec_sub = function(a, b)
+        return utils.new_vec(a.x - b.x, a.y - b.y, a.z - b.z)
+    end
+
+    utils.vec_length_2d = function(v)
+        return math.sqrt((v.x * v.x) + (v.y * v.y))
+    end
+
+    utils.vec_distance = function(a, b)
+        return player.distance3d(a.x, a.y, a.z, b.x, b.y, b.z)
+    end
+
+    utils.calc_angle = function(src_x, src_y, src_z, dst_x, dst_y, dst_z)
+        local dx = dst_x - src_x
+        local dy = dst_y - src_y
+        local dz = dst_z - src_z
+        local hyp = math.sqrt(dx * dx + dy * dy)
+        local pitch = math.deg(math.atan2(-dz, hyp))
+        local yaw = math.deg(math.atan2(dy, dx))
+        return pitch, yaw
+    end
+
+    utils.blend_vec = function(current, target, factor)
+        return {
+            x = current.x + ((target.x - current.x) * factor),
+            y = current.y + ((target.y - current.y) * factor),
+            z = current.z + ((target.z - current.z) * factor)
+        }
+    end
+
+    utils.get_active_min_damage = function()
+        local override_enabled = ui.get(ui_references.minimum_damage_override[1]) and ui.get(ui_references.minimum_damage_override[2])
+        return override_enabled and ui.get(ui_references.minimum_damage_override[3]) or ui.get(ui_references.minimum_damage)
     end
 
     utils.get_player_info = function(idx)
@@ -9397,6 +9634,7 @@ predict_box = {} do
     predict_box.sim_ticks = {}
     predict_box.net_data = {}
     predict_box.default_box_color = {47, 117, 221, 255}
+    local predictive_shot_strength = 4
 
     local function reset_player(idx)
         predict_box.esp_data[idx] = nil
@@ -9408,33 +9646,6 @@ predict_box = {} do
         predict_box.esp_data = {}
         predict_box.sim_ticks = {}
         predict_box.net_data = {}
-    end
-
-    local function new_vec(x, y, z)
-        return {
-            x = x or 0,
-            y = y or 0,
-            z = z or 0
-        }
-    end
-
-    local function vec_add(a, b)
-        return new_vec(a.x + b.x, a.y + b.y, a.z + b.z)
-    end
-
-    local function vec_sub(a, b)
-        return new_vec(a.x - b.x, a.y - b.y, a.z - b.z)
-    end
-
-    local function vec_length_2d(v)
-        return math.sqrt((v.x * v.x) + (v.y * v.y))
-    end
-
-    local function vec_distance(a, b)
-        local dx = a.x - b.x
-        local dy = a.y - b.y
-        local dz = a.z - b.z
-        return math.sqrt((dx * dx) + (dy * dy) + (dz * dz))
     end
 
     local function time_to_ticks(t)
@@ -9481,59 +9692,6 @@ predict_box = {} do
         end
     end
 
-    local function extrapolate(idx, origin, flags, ticks)
-        local tick_interval = globals.tickinterval()
-        local gravity_step = cvar.sv_gravity:get_float() * tick_interval
-        local jump_step = cvar.sv_jump_impulse:get_float() * tick_interval
-        local vel_x = entity.get_prop(idx, "m_vecVelocity[0]") or 0
-        local vel_y = entity.get_prop(idx, "m_vecVelocity[1]") or 0
-        local vel_z = entity.get_prop(idx, "m_vecVelocity[2]") or 0
-        local velocity = new_vec(vel_x, vel_y, vel_z)
-        local on_ground = bit.band(flags or 0, 1) == 1
-        local gravity = 0
-        local position = new_vec(origin.x, origin.y, origin.z)
-
-        if not on_ground then
-            gravity = -gravity_step
-        elseif velocity.z > 1 then
-            gravity = jump_step
-        end
-
-        for _ = 1, ticks do
-            local previous = new_vec(position.x, position.y, position.z)
-
-            position = new_vec(
-                position.x + (velocity.x * tick_interval),
-                position.y + (velocity.y * tick_interval),
-                position.z + ((velocity.z + gravity) * tick_interval)
-            )
-
-            if not on_ground then
-                velocity.z = velocity.z + gravity
-            end
-
-            local fraction = client.trace_line(
-                idx,
-                previous.x, previous.y, previous.z,
-                position.x, position.y, position.z
-            )
-
-            if fraction < 1 then
-                if fraction > 0 then
-                    return new_vec(
-                        previous.x + ((position.x - previous.x) * fraction),
-                        previous.y + ((position.y - previous.y) * fraction),
-                        previous.z + ((position.z - previous.z) * fraction)
-                    )
-                end
-
-                return previous
-            end
-        end
-
-        return position
-    end
-
     local function get_active_players(local_player)
         local observer_mode = entity.get_prop(local_player, "m_iObserverMode") or 0
 
@@ -9569,7 +9727,10 @@ predict_box = {} do
     end
 
     function predict_box.on_net_update()
-        if not interface.visuals.enabled_visuals:get() or not interface.visuals.predict_box:get() then
+        local visual_runtime = interface.visuals.enabled_visuals:get() and interface.visuals.predict_box:get()
+        local aimbot_runtime = interface.aimbot.enabled_aimbot:get() and interface.aimbot.predictive_shot:get()
+
+        if not visual_runtime and not aimbot_runtime then
             predict_box.reset()
             return
         end
@@ -9581,7 +9742,7 @@ predict_box = {} do
         end
 
         local players = entity.get_players(true) or {}
-        local prediction_strength = interface.visuals.predict_box_strength:get()
+        local visual_prediction_strength = visual_runtime and interface.visuals.predict_box_strength:get() or predictive_shot_strength
         local seen = {}
 
         for i = 1, #players do
@@ -9593,18 +9754,14 @@ predict_box = {} do
                 goto continue
             end
 
-            local origin_x, origin_y, origin_z = entity.get_origin(idx)
+            local origin = player.get_origin_vec(idx)
             local sim_time = entity.get_prop(idx, "m_flSimulationTime")
 
-            if not origin_x or not sim_time then
+            if not origin or not sim_time then
                 goto continue
             end
 
-            local origin = new_vec(origin_x, origin_y, origin_z)
-            local vel_x = entity.get_prop(idx, "m_vecVelocity[0]") or 0
-            local vel_y = entity.get_prop(idx, "m_vecVelocity[1]") or 0
-            local vel_z = entity.get_prop(idx, "m_vecVelocity[2]") or 0
-            local velocity = new_vec(vel_x, vel_y, vel_z)
+            local velocity, velocity_length = player.get_velocity_vec(idx)
             local simulation_tick = time_to_ticks(sim_time)
             local previous = predict_box.sim_ticks[idx]
 
@@ -9614,27 +9771,36 @@ predict_box = {} do
 
                 if delta < 0 or (delta > 0 and delta <= 64) or force_predict then
                     local flags = entity.get_prop(idx, "m_fFlags") or 0
-                    local diff_origin = vec_sub(origin, previous.origin)
-                    local teleport_distance = vec_length_2d(diff_origin)
+                    local diff_origin = utils.vec_sub(origin, previous.origin)
+                    local teleport_distance = utils.vec_length_2d(diff_origin)
                     local ticks_to_predict = delta < 0 and 1 or delta
-                    local velocity_length = vec_length_2d(velocity)
-                    local normal_prediction_ticks = 2
+                    local measured_speed = nil
+                    if delta > 0 and delta <= 16 then
+                        measured_speed = teleport_distance / (delta * globals.tickinterval())
+                    end
+                    local effective_speed = player.resolve_effective_speed(velocity_length, measured_speed, previous.speed)
+                    local visual_prediction_ticks = 2
+                    local aim_prediction_ticks = 2
 
-                    if velocity_length > 100 then
-                        normal_prediction_ticks = math.min(prediction_strength, math.floor(velocity_length / 50))
+                    if effective_speed > 100 then
+                        visual_prediction_ticks = math.min(visual_prediction_strength, math.floor(effective_speed / 50))
+                        aim_prediction_ticks = math.min(predictive_shot_strength, math.floor(effective_speed / 50))
                     end
 
                     local normal_prediction = delta >= 0 and teleport_distance <= 64
-                    local final_prediction_ticks = force_predict and prediction_strength
-                        or (normal_prediction and normal_prediction_ticks or ticks_to_predict)
-                    local extrapolated = extrapolate(idx, origin, flags, final_prediction_ticks)
+                    local visual_final_prediction_ticks = force_predict and visual_prediction_strength
+                        or (normal_prediction and visual_prediction_ticks or ticks_to_predict)
+                    local aim_final_prediction_ticks = force_predict and predictive_shot_strength
+                        or (normal_prediction and aim_prediction_ticks or ticks_to_predict)
+                    local final_prediction_ticks = visual_runtime and visual_final_prediction_ticks or aim_final_prediction_ticks
+                    local extrapolated = player.extrapolate_position(idx, origin, flags, final_prediction_ticks)
                     local is_tickbase = delta < 0
                     local is_fakelag = teleport_distance > 64
                     local rapid_direction_change = false
 
                     if previous.velocity then
-                        local previous_xy = math.sqrt((previous.velocity.x * previous.velocity.x) + (previous.velocity.y * previous.velocity.y))
-                        local current_xy = math.sqrt((velocity.x * velocity.x) + (velocity.y * velocity.y))
+                        local previous_xy = utils.vec_length_2d(previous.velocity)
+                        local current_xy = utils.vec_length_2d(velocity)
 
                         if previous_xy > 0 and current_xy > 0 then
                             local dot = ((previous.velocity.x * velocity.x) + (previous.velocity.y * velocity.y))
@@ -9655,8 +9821,11 @@ predict_box = {} do
 
                     predict_box.net_data[idx] = {
                         tick = final_prediction_ticks,
+                        aim_tick = aim_final_prediction_ticks,
                         origin = origin,
                         predicted_origin = extrapolated,
+                        speed = effective_speed,
+                        raw_speed = velocity_length,
                         tickbase = is_tickbase,
                         lagcomp = is_fakelag,
                         normal_prediction = normal_prediction,
@@ -9673,7 +9842,8 @@ predict_box = {} do
             predict_box.sim_ticks[idx] = {
                 tick = simulation_tick,
                 origin = origin,
-                velocity = velocity
+                velocity = velocity,
+                speed = predict_box.net_data[idx] and predict_box.net_data[idx].speed or velocity_length
             }
 
             ::continue::
@@ -9723,13 +9893,12 @@ predict_box = {} do
                 goto continue
             end
 
-            local origin_x, origin_y, origin_z = entity.get_origin(idx)
-            if not origin_x then
+            local origin = player.get_origin_vec(idx)
+            if not origin then
                 goto continue
             end
 
-            local origin = new_vec(origin_x, origin_y, origin_z)
-            local distance = vec_distance(origin, predicted)
+            local distance = utils.vec_distance(origin, predicted)
             local r, g, b, a = get_prediction_color(distance)
 
             if box_color[1] ~= predict_box.default_box_color[1]
@@ -9744,8 +9913,8 @@ predict_box = {} do
                 local max_x, max_y, max_z = entity.get_prop(idx, "m_vecMaxs")
 
                 if min_x and max_x then
-                    local mins = vec_add(new_vec(min_x, min_y, min_z), predicted)
-                    local maxs = vec_add(new_vec(max_x, max_y, max_z), predicted)
+                    local mins = utils.vec_add(utils.new_vec(min_x, min_y, min_z), predicted)
+                    local maxs = utils.vec_add(utils.new_vec(max_x, max_y, max_z), predicted)
                     draw_3d_box(mins, maxs, r, g, b, a)
 
                     if debug_line then
@@ -9824,7 +9993,19 @@ predict_box = {} do
     end
 
     interface.visuals.predict_box:set_callback(function()
-        if not interface.visuals.predict_box:get() then
+        local visual_runtime = interface.visuals.enabled_visuals:get() and interface.visuals.predict_box:get()
+        local aimbot_runtime = interface.aimbot.enabled_aimbot:get() and interface.aimbot.predictive_shot:get()
+
+        if not visual_runtime and not aimbot_runtime then
+            predict_box.reset()
+        end
+    end)
+
+    interface.aimbot.predictive_shot:set_callback(function()
+        local visual_runtime = interface.visuals.enabled_visuals:get() and interface.visuals.predict_box:get()
+        local aimbot_runtime = interface.aimbot.enabled_aimbot:get() and interface.aimbot.predictive_shot:get()
+
+        if not visual_runtime and not aimbot_runtime then
             predict_box.reset()
         end
     end)
@@ -9832,6 +10013,327 @@ predict_box = {} do
     client.set_event_callback('net_update_end', predict_box.on_net_update)
     client.set_event_callback('paint', predict_box.on_paint)
     client.set_event_callback('shutdown', predict_box.reset)
+    client.set_event_callback('round_start', predict_box.reset)
+end
+--@endregion
+
+--@region: predictive shot
+predictive_shot = {} do
+    predictive_shot.last_logged_command = nil
+
+    local function is_supported_weapon(weapon)
+        local weapon_info = csgo_weapons(weapon)
+        if not weapon_info or weapon_info.type ~= "sniperrifle" then
+            return false, nil
+        end
+
+        return weapon_info.idx == 9, weapon_info
+    end
+
+    local function should_use_prediction(data, origin_x, origin_y, origin_z, predicted_origin)
+        if not data or not predicted_origin then
+            return false
+        end
+
+        local shift = player.distance3d(origin_x, origin_y, origin_z, predicted_origin.x, predicted_origin.y, predicted_origin.z)
+
+        if shift < 4 or data.lagcomp or data.tickbase then
+            return false
+        end
+
+        return data.force_predict or data.defensive_peek
+    end
+
+    local function get_prediction_reason(data)
+        local reasons = {}
+
+        if data.tickbase then
+            reasons[#reasons + 1] = "tickbase"
+        end
+
+        if data.defensive_peek then
+            reasons[#reasons + 1] = "defensive_peek"
+        end
+
+        if data.force_predict then
+            reasons[#reasons + 1] = "force_predict"
+        end
+
+        if data.lagcomp then
+            reasons[#reasons + 1] = "lagcomp"
+        end
+
+        if data.normal_prediction then
+            reasons[#reasons + 1] = "normal"
+        end
+
+        return #reasons > 0 and table.concat(reasons, "+") or "unknown"
+    end
+
+    local function log_shot(target, reason, shift, aim_ticks, selected_tick, speed, score, min_damage)
+        local command_number = globals.tickcount()
+        if predictive_shot.last_logged_command == command_number then
+            return
+        end
+
+        predictive_shot.last_logged_command = command_number
+
+        local target_name = entity.get_player_name(target) or "unknown"
+        client.color_log(157, 230, 254, "noctua predictive shot \0")
+        client.color_log(255, 255, 255,
+            string.format(
+                "target=%s weapon=%s reason=%s shift=%.1f aim_tick=%d selected_tick=%d speed=%.1f score=%.1f mindmg=%d\n\0",
+                target_name,
+                "awp",
+                reason,
+                shift,
+                aim_ticks or 0,
+                selected_tick or 0,
+                speed or 0,
+                score or 0,
+                min_damage or 0
+            )
+        )
+    end
+
+    local function get_best_point(local_player, target, predicted_origin, min_damage)
+        local ex, ey, ez = client.eye_position()
+        local best_x, best_y, best_z
+        local best_score = 0
+        local origin = player.get_origin_vec(target)
+        if not origin then
+            return nil, nil, nil, 0
+        end
+
+        local delta_x = predicted_origin.x - origin.x
+        local delta_y = predicted_origin.y - origin.y
+        local group_hits = {}
+        local group_center_point = {}
+        local group_best_point = {}
+        local group_best_score = {}
+        local group_center_damage = {}
+        local awp_points = {}
+        local body_hitboxes = {
+            { idx = 2, weight = 60 },
+            { idx = 4, weight = 42 }
+        }
+
+        for i = 1, #body_hitboxes do
+            local def = body_hitboxes[i]
+            local hx, hy, hz = entity.hitbox_position(target, def.idx)
+            if hx then
+                group_center_point[def.idx] = {
+                    x = hx + delta_x,
+                    y = hy + delta_y,
+                    z = hz
+                }
+
+                awp_points[#awp_points + 1] = {
+                    x = hx + delta_x,
+                    y = hy + delta_y,
+                    z = hz,
+                    weight = def.weight,
+                    center = true,
+                    group = def.idx
+                }
+                awp_points[#awp_points + 1] = {
+                    x = hx + delta_x,
+                    y = hy + delta_y,
+                    z = hz + 1.5,
+                    weight = def.weight - 8,
+                    center = false,
+                    group = def.idx
+                }
+            end
+        end
+
+        for i = 1, #awp_points do
+            local point = awp_points[i]
+            local _, damage = client.trace_bullet(local_player, ex, ey, ez, point.x, point.y, point.z, true)
+
+            if damage > min_damage then
+                group_hits[point.group] = (group_hits[point.group] or 0) + 1
+
+                if point.center and damage > (group_center_damage[point.group] or 0) then
+                    group_center_damage[point.group] = damage
+                end
+
+                local point_score = damage + point.weight
+                if point_score > (group_best_score[point.group] or 0) then
+                    group_best_score[point.group] = point_score
+                    group_best_point[point.group] = point
+                end
+            end
+        end
+
+        local function choose_group(group_idx)
+            local chosen_point = group_center_point[group_idx] or group_best_point[group_idx]
+            local hits = group_hits[group_idx] or 0
+            if not chosen_point or hits < 2 then
+                return nil
+            end
+
+            return {
+                x = chosen_point.x,
+                y = chosen_point.y,
+                z = chosen_point.z,
+                score = (hits * 100) + (group_center_damage[group_idx] or 0)
+            }
+        end
+
+        local stomach_choice = choose_group(2)
+        local chest_choice = choose_group(4)
+        local final_choice = stomach_choice
+
+        if chest_choice and (not final_choice or chest_choice.score > final_choice.score) then
+            final_choice = chest_choice
+        end
+
+        if final_choice then
+            best_x, best_y, best_z = final_choice.x, final_choice.y, final_choice.z
+            best_score = final_choice.score
+        end
+
+        return best_x, best_y, best_z, best_score
+    end
+
+    function predictive_shot.on_setup_command(cmd)
+        if not (interface.aimbot.enabled_aimbot:get() and interface.aimbot.predictive_shot:get()) then
+            return
+        end
+
+        local local_player = entity.get_local_player()
+        if not local_player or not entity.is_alive(local_player) then
+            return
+        end
+
+        local weapon = entity.get_player_weapon(local_player)
+        local supported, weapon_info = is_supported_weapon(weapon)
+        if not supported then
+            return
+        end
+
+        local threat = client.current_threat()
+        if not threat or not entity.is_alive(threat) or entity.is_dormant(threat) then
+            return
+        end
+
+        if player_list.GetWhitelist(player_list, threat) then
+            return
+        end
+
+        local target_origin = player.get_origin_vec(threat)
+        if not target_origin then
+            return
+        end
+
+        local target_flags = entity.get_prop(threat, "m_fFlags") or 0
+        local net_data = predict_box.net_data[threat]
+        local aim_origin, aim_ticks, target_speed = player.get_prediction_aim_origin(threat, net_data)
+        local shift = aim_origin and player.distance3d(target_origin.x, target_origin.y, target_origin.z, aim_origin.x, aim_origin.y, aim_origin.z) or 0
+
+        if not should_use_prediction(net_data, target_origin.x, target_origin.y, target_origin.z, aim_origin) then
+            return
+        end
+
+        if net_data.force_predict and net_data.normal_prediction and not net_data.defensive_peek then
+            if target_speed < 80 and shift > 20 then
+                return
+            end
+
+            local adjusted_tick = math.min(aim_ticks, 2)
+
+            if shift <= 12 then
+                adjusted_tick = 1
+            end
+
+            if adjusted_tick ~= aim_ticks then
+                aim_ticks = adjusted_tick
+                aim_origin = player.extrapolate_position(threat, target_origin, target_flags, aim_ticks)
+                shift = player.distance3d(target_origin.x, target_origin.y, target_origin.z, aim_origin.x, aim_origin.y, aim_origin.z)
+            end
+
+            local blend_factor = 0.86
+            if shift <= 14 then
+                blend_factor = 0.74
+            elseif shift <= 22 then
+                blend_factor = 0.8
+            end
+
+            if target_speed < 80 then
+                blend_factor = math.min(blend_factor, 0.58)
+            end
+
+            aim_origin = utils.blend_vec(target_origin, aim_origin, blend_factor)
+            shift = player.distance3d(target_origin.x, target_origin.y, target_origin.z, aim_origin.x, aim_origin.y, aim_origin.z)
+
+            if aim_ticks > 1 and shift <= 8.5 then
+                aim_ticks = 1
+                aim_origin = player.extrapolate_position(threat, target_origin, target_flags, aim_ticks)
+                aim_origin = utils.blend_vec(target_origin, aim_origin, 0.68)
+                shift = player.distance3d(target_origin.x, target_origin.y, target_origin.z, aim_origin.x, aim_origin.y, aim_origin.z)
+            end
+        end
+
+        local min_damage = utils.get_active_min_damage()
+        local best_x, best_y, best_z, best_score = get_best_point(local_player, threat, aim_origin, min_damage)
+        local best_tick = aim_ticks
+
+        if not best_x or best_score <= 0 then
+            return
+        end
+
+        local _, _, _, velocity_2d = player.get_velocity(local_player)
+        local flags = entity.get_prop(local_player, "m_fFlags") or 0
+        local on_ground = bit.band(flags, 1) == 1
+        local scoped = entity.get_prop(local_player, "m_bIsScoped") == 1
+
+        if not scoped then
+            cmd.in_attack2 = 1
+            return
+        end
+
+        if not on_ground then
+            return
+        end
+
+        local spread_limit = 0.02
+        local inaccuracy = entity.get_prop(weapon, "m_fAccuracyPenalty") or 0
+        local max_speed = player.get_weapon_max_speed(local_player)
+        local stop_speed_limit = math.min(52, max_speed * 0.24)
+
+        if velocity_2d > stop_speed_limit or inaccuracy > spread_limit then
+            local move_speed = math.sqrt((cmd.forwardmove * cmd.forwardmove) + (cmd.sidemove * cmd.sidemove))
+            if move_speed > stop_speed_limit and move_speed > 0 then
+                local scale = stop_speed_limit / move_speed
+                cmd.forwardmove = cmd.forwardmove * scale
+                cmd.sidemove = cmd.sidemove * scale
+            end
+
+            cmd.in_attack = 0
+            cmd.buttons = bit.band(cmd.buttons, bit.bnot(1))
+            return
+        end
+
+        local curtime = globals.curtime()
+        local next_attack = entity.get_prop(local_player, "m_flNextAttack") or 0
+        local next_primary = entity.get_prop(weapon, "m_flNextPrimaryAttack") or 0
+
+        if curtime < next_attack or curtime < next_primary then
+            return
+        end
+
+        local ex, ey, ez = client.eye_position()
+        local pitch, yaw = utils.calc_angle(ex, ey, ez, best_x, best_y, best_z)
+        cmd.pitch = pitch
+        cmd.yaw = yaw
+        cmd.in_attack = 1
+        cmd.buttons = bit.bor(cmd.buttons, 1)
+        cmd.no_choke = true
+        log_shot(threat, get_prediction_reason(net_data), shift, aim_ticks, best_tick, target_speed, best_score, min_damage)
+    end
+
+    client.set_event_callback('setup_command', predictive_shot.on_setup_command)
 end
 --@endregion
 
@@ -10634,16 +11136,6 @@ dormant_aimbot = {} do
         { scale = 3.2, hitbox = "chest",       z = 51, duck_sub = 12, priority = 4 }
     }
 
-    local function calc_angle(src_x, src_y, src_z, dst_x, dst_y, dst_z)
-        local dx = dst_x - src_x
-        local dy = dst_y - src_y
-        local dz = dst_z - src_z
-        local hyp = math.sqrt(dx*dx + dy*dy)
-        local pitch = math.deg(math.atan2(-dz, hyp))
-        local yaw = math.deg(math.atan2(dy, dx))
-        return pitch, yaw
-    end
-
     dormant_aimbot.on_setup_command = function(cmd)
         if not interface.aimbot.dormant_enabled:get() or not interface.aimbot.dormant_enabled.hotkey:get() then return end
 
@@ -10704,8 +11196,7 @@ dormant_aimbot = {} do
                 
                 if alpha and alpha > alpha_threshold then
                     local ox, oy, oz = entity.get_origin(idx)
-                    local vx = entity.get_prop(idx, "m_vecVelocity[0]") or 0
-                    local vy = entity.get_prop(idx, "m_vecVelocity[1]") or 0
+                    local vx, vy = player.get_velocity(idx)
                     
                     if math.abs(ox) > 1 then
                         local dist_sq = (ox-ex)^2 + (oy-ey)^2 + (oz-ez)^2
@@ -10723,7 +11214,7 @@ dormant_aimbot = {} do
                                 local box = virtual_hitboxes[i]
                                 local vz = oz + (box.z - (duck_amt * box.duck_sub))
                                 
-                                local _, yaw_to = calc_angle(ex, ey, ez, pred_x, pred_y, vz)
+                                local _, yaw_to = utils.calc_angle(ex, ey, ez, pred_x, pred_y, vz)
                                 local rad = math.rad(yaw_to + 90)
                                 
                                 local side_scale = box.scale * 0.8
@@ -10803,9 +11294,7 @@ dormant_aimbot = {} do
         _G.noctua_runtime.dormant_state = "working"
 
         local spread_limit = 0.02
-        local vel_x = entity.get_prop(lp, "m_vecVelocity[0]") or 0
-        local vel_y = entity.get_prop(lp, "m_vecVelocity[1]") or 0
-        local velocity_2d = math.sqrt(vel_x * vel_x + vel_y * vel_y)
+        local _, _, _, velocity_2d = player.get_velocity(lp)
         local flags = entity.get_prop(lp, "m_fFlags") or 0
         local on_ground = bit.band(flags, 1) == 1
 
@@ -10820,8 +11309,7 @@ dormant_aimbot = {} do
         end
 
         local inaccuracy = entity.get_prop(weapon, "m_fAccuracyPenalty") or 0
-        local is_scoped = entity.get_prop(lp, "m_bIsScoped") == 1
-        local max_spd = (is_scoped and w_data.max_player_speed_alt or w_data.max_player_speed) or 250
+        local max_spd = player.get_weapon_max_speed(lp)
         local stop_speed_limit = math.min(52, max_spd * 0.24)
 
         if velocity_2d > stop_speed_limit or inaccuracy > spread_limit then
@@ -10845,7 +11333,7 @@ dormant_aimbot = {} do
         local final_inaccuracy = entity.get_prop(weapon, "m_fAccuracyPenalty") or 0
         
         if final_inaccuracy <= spread_limit then
-            local pitch, yaw = calc_angle(ex, ey, ez, best_x, best_y, best_z)
+            local pitch, yaw = utils.calc_angle(ex, ey, ez, best_x, best_y, best_z)
             cmd.pitch = pitch
             cmd.yaw = yaw
             cmd.in_attack = 1
@@ -11005,6 +11493,8 @@ art = {} do
     local changelog = [[
     Changelog:
     - Added known alias system
+    - Added predictive shot (experimental)
+    - Added hitchance override
     - Added streamer mode
     - Added animation breakers
     - Added buybot fallback option
@@ -11015,7 +11505,9 @@ art = {} do
     - Added mismatch reasons
     - Added compatibility mode
     - Added dormant aimbot
+    - Added opposite knife hand
     - Added auto r8
+    - Added unlock fd speed
     - Added animated text blur for damage indicator
     - Reworked miss reasons
     - Reworked buybot
