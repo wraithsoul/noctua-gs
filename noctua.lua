@@ -826,9 +826,12 @@ interface = {} do
             profiles = {}
         },
         fake_lag = {
-            extensions = interface.header.fake_lag:multiselect('extensions\nantiaim.fake_lag.extensions', 'avoid backstab', 'force break lc', 'safe head', 'bombsite e fix'),
+            extensions = interface.header.fake_lag:multiselect('extensions\nantiaim.fake_lag.extensions', 'avoid backstab', 'force break lc', 'safe head', 'bombsite e fix', 'break self backtrack', 'vigilant lagcomp breaking', 'correct lag on exploit', 'fast fall', 'fast ladder'),
             triggers = interface.header.fake_lag:multiselect('break lc triggers\nantiaim.fake_lag.force_break_lc_triggers', 'flashed', 'damage received', 'reloading', 'weapon switch', 'osaa'),
-            safe_head_triggers = interface.header.fake_lag:multiselect('safe head triggers\nantiaim.fake_lag.safe_head_triggers', 'high distance', 'idle', 'duck', 'airc', 'airc+knife', 'airc+zeus')
+            safe_head_triggers = interface.header.fake_lag:multiselect('safe head triggers\nantiaim.fake_lag.safe_head_triggers', 'high distance', 'idle', 'duck', 'airc', 'airc+knife', 'airc+zeus'),
+            break_self_backtrack_mode = interface.header.fake_lag:combobox('break type based on\nantiaim.fake_lag.break_self_backtrack_mode', 'threat', 'auto'),
+            vigilant_controls = interface.header.fake_lag:multiselect('decisive controls\nantiaim.fake_lag.vigilant_controls', 'idle', 'run', 'duck', 'slow', 'air', 'airc'),
+            correct_lag_exploit_type = interface.header.fake_lag:multiselect('exploit type\nantiaim.fake_lag.correct_lag_exploit_type', 'double tap', 'osaa')
         },
         hotkeys = {
             freestanding = interface.header.other:checkbox('freestanding', 0x00),
@@ -1346,6 +1349,21 @@ interface = {} do
 
                         if key == 'safe_head_triggers' then
                             element:set_visible(utils.multiselect_has(interface.antiaim.fake_lag.extensions:get(), 'safe head'))
+                            return
+                        end
+
+                        if key == 'break_self_backtrack_mode' then
+                            element:set_visible(utils.multiselect_has(interface.antiaim.fake_lag.extensions:get(), 'break self backtrack'))
+                            return
+                        end
+
+                        if key == 'vigilant_controls' then
+                            element:set_visible(utils.multiselect_has(interface.antiaim.fake_lag.extensions:get(), 'vigilant lagcomp breaking'))
+                            return
+                        end
+
+                        if key == 'correct_lag_exploit_type' then
+                            element:set_visible(utils.multiselect_has(interface.antiaim.fake_lag.extensions:get(), 'correct lag on exploit'))
                             return
                         end
 
@@ -2842,14 +2860,18 @@ end
 antiaim = {} do
     antiaim.builder = {}
     antiaim.extensions = {}
+    antiaim.exploit = {}
     antiaim.hotkeys = {}
     antiaim.use = {}
 
     local builder = antiaim.builder
     local extensions = antiaim.extensions
+    local exploit = antiaim.exploit
     local hotkeys = antiaim.hotkeys
     local use_state = antiaim.use
     local refs = reference.antiaim.angles
+    local fakelag_refs = reference.antiaim.fakelag
+    local rage_binds = reference.rage.binds
     local yaw_jitter_map = {
         off = 'Off',
         offset = 'Offset',
@@ -3090,6 +3112,120 @@ antiaim = {} do
         return _G.noctua_runtime.use_active
     end
 
+    exploit.BREAK_LAG_COMPENSATION_DISTANCE_SQR = 64 * 64
+    exploit.data = {
+        old_origin = nil,
+        old_simtime = 0,
+        shift = false,
+        breaking_lc = false,
+        lagcompensation = {
+            distance = 0,
+            teleport = false
+        },
+        suppressed = {
+            double_tap = false,
+            osaa = false
+        }
+    }
+
+    function exploit.restore()
+        if exploit.data.suppressed.double_tap then
+            rage_binds.double_tap[1]:override()
+            exploit.data.suppressed.double_tap = false
+        end
+
+        if exploit.data.suppressed.osaa then
+            rage_binds.on_shot_anti_aim[1]:override()
+            exploit.data.suppressed.osaa = false
+        end
+    end
+
+    function exploit.reset()
+        exploit.restore()
+        exploit.data.old_origin = nil
+        exploit.data.old_simtime = 0
+        exploit.data.shift = false
+        exploit.data.breaking_lc = false
+        exploit.data.lagcompensation.distance = 0
+        exploit.data.lagcompensation.teleport = false
+    end
+
+    function exploit.get()
+        return exploit.data
+    end
+
+    function exploit.is_double_tap_active()
+        return ui.get(ui_references.double_tap[1]) and ui.get(ui_references.double_tap[2])
+    end
+
+    function exploit.is_osaa_active()
+        return ui.get(ui_references.on_shot_anti_aim[1]) and ui.get(ui_references.on_shot_anti_aim[2])
+    end
+
+    function exploit.has_active()
+        return exploit.is_double_tap_active() or exploit.is_osaa_active()
+    end
+
+    function exploit.suppress_active()
+        if exploit.is_double_tap_active() then
+            rage_binds.double_tap[1]:override(false)
+            exploit.data.suppressed.double_tap = true
+        end
+
+        if exploit.is_osaa_active() then
+            rage_binds.on_shot_anti_aim[1]:override(false)
+            exploit.data.suppressed.osaa = true
+        end
+    end
+
+    function exploit.update_state()
+        exploit.data.shift = antiaim_funcs.get_tickbase_shifting() > 0
+    end
+
+    function exploit.update_lagcompensation(local_player)
+        local x, y, z = entity.get_origin(local_player)
+        local simtime = entity.get_prop(local_player, 'm_flSimulationTime')
+
+        if x == nil or simtime == nil then
+            return
+        end
+
+        local old_origin = exploit.data.old_origin
+        local old_simtime = exploit.data.old_simtime
+        local tickinterval = globals.tickinterval()
+        local simtick = math.floor((simtime / tickinterval) + 0.5)
+
+        if old_origin ~= nil and old_simtime ~= 0 then
+            local delta = simtick - old_simtime
+
+            if delta < 0 or (delta > 0 and delta <= 64) then
+                local dx = x - old_origin.x
+                local dy = y - old_origin.y
+                local dz = z - old_origin.z
+                local distance = (dx * dx) + (dy * dy) + (dz * dz)
+                local is_teleport = distance > exploit.BREAK_LAG_COMPENSATION_DISTANCE_SQR
+
+                exploit.data.breaking_lc = is_teleport
+                exploit.data.lagcompensation.distance = distance
+                exploit.data.lagcompensation.teleport = is_teleport
+            end
+        end
+
+        exploit.data.old_origin = utils.new_vec(x, y, z)
+        exploit.data.old_simtime = simtick
+    end
+
+    function exploit.on_net_update_start()
+        local local_player = entity.get_local_player()
+
+        if not local_player or not entity.is_alive(local_player) then
+            exploit.reset()
+            return
+        end
+
+        exploit.update_lagcompensation(local_player)
+    end
+
     extensions.avoid_backstab_distance = 240
     extensions.damage_received_until = 0
     extensions.flash_until = 0
@@ -3112,6 +3248,9 @@ antiaim = {} do
         extensions.flash_until = 0
         extensions.reload_until = 0
         _G.noctua_runtime.safe_head_active = false
+        exploit.restore()
+        fakelag_refs.on[1]:override()
+        fakelag_refs.limit:override()
     end
 
     function extensions.is_osaa_active()
@@ -3120,6 +3259,121 @@ antiaim = {} do
 
     function extensions.is_swapping_weapons(cmd)
         return cmd.weaponselect > 0
+    end
+
+    function extensions.get_break_limit(local_player)
+        local vx = entity.get_prop(local_player, 'm_vecVelocity[0]') or 0
+        local vy = entity.get_prop(local_player, 'm_vecVelocity[1]') or 0
+        local speed = math.sqrt((vx * vx) + (vy * vy))
+
+        if speed < 5 then
+            return nil
+        end
+
+        local interval = globals.tickinterval()
+        local required = math.ceil(65 / math.max(speed * interval, 1))
+
+        return mathematic.clamp(required, 1, 15)
+    end
+
+    function extensions.is_correct_exploit_active()
+        local exploit_types = interface.antiaim.fake_lag.correct_lag_exploit_type:get()
+        local is_double_tap = utils.multiselect_has(exploit_types, 'double tap') and ui.get(ui_references.double_tap[1]) and ui.get(ui_references.double_tap[2])
+        local is_osaa = utils.multiselect_has(exploit_types, 'osaa') and extensions.is_osaa_active()
+
+        return is_double_tap or is_osaa
+    end
+
+    function extensions.apply_fakelag(local_player, cmd)
+        local limit_override = nil
+
+        if extensions.is_enabled('correct lag on exploit') and extensions.is_correct_exploit_active() then
+            limit_override = 1
+        else
+            if extensions.is_enabled('break self backtrack') then
+                local mode = interface.antiaim.fake_lag.break_self_backtrack_mode:get()
+                local has_threat = client.current_threat() ~= nil
+
+                if mode == 'auto' or has_threat then
+                    limit_override = extensions.get_break_limit(local_player)
+                end
+            end
+
+            if extensions.is_enabled('vigilant lagcomp breaking') then
+                local decisive_controls = interface.antiaim.fake_lag.vigilant_controls:get()
+                local state = utils.get_state()
+
+                if utils.multiselect_has(decisive_controls, state) then
+                    limit_override = math.max(limit_override or 0, 15)
+                end
+            end
+        end
+
+        if limit_override == nil then
+            fakelag_refs.on[1]:override()
+            fakelag_refs.limit:override()
+            return
+        end
+
+        fakelag_refs.on[1]:override(true)
+        fakelag_refs.limit:override(mathematic.clamp(limit_override, 1, 15))
+    end
+
+    function extensions.apply_fast_fall(local_player, cmd)
+        if not extensions.is_enabled('fast fall') then
+            return
+        end
+
+        if cmd.in_jump == 1 then
+            return
+        end
+
+        local state = utils.get_state()
+        if state ~= 'air' and state ~= 'airc' then
+            return
+        end
+
+        if (entity.get_prop(local_player, 'm_MoveType') or 0) == 9 then
+            return
+        end
+
+        if not exploit.has_active() then
+            return
+        end
+
+        local velocity_z = entity.get_prop(local_player, 'm_vecVelocity[2]') or 0
+        if velocity_z > -120 then
+            return
+        end
+
+        local ox, oy, oz = entity.get_origin(local_player)
+        local check_distance = mathematic.clamp(math.abs(velocity_z) * globals.tickinterval() * 4, 24, 96)
+        local fraction = client.trace_line(local_player, ox, oy, oz, ox, oy, oz - check_distance)
+
+        if fraction < 1 then
+            exploit.suppress_active()
+            cmd.no_choke = true
+        end
+    end
+
+    function extensions.apply_fast_ladder(local_player, cmd)
+        if not extensions.is_enabled('fast ladder') then
+            return
+        end
+
+        if (entity.get_prop(local_player, 'm_MoveType') or 0) ~= 9 or cmd.forwardmove == 0 then
+            return
+        end
+
+        local camera_pitch = client.camera_angles()
+        local descending = cmd.forwardmove < 0 or camera_pitch > 45
+
+        cmd.in_moveleft = descending and 1 or 0
+        cmd.in_moveright = descending and 0 or 1
+        cmd.in_forward = descending and 1 or 0
+        cmd.in_back = descending and 0 or 1
+        cmd.pitch = 89
+        cmd.yaw = mathematic.normalize_yaw(cmd.yaw + 90)
     end
 
     function extensions.is_flashed(local_player)
@@ -3286,6 +3540,10 @@ antiaim = {} do
 
     function extensions.apply(cmd, local_player, state)
         _G.noctua_runtime.safe_head_active = false
+
+        extensions.apply_fakelag(local_player, cmd)
+        extensions.apply_fast_fall(local_player, cmd)
+        extensions.apply_fast_ladder(local_player, cmd)
 
         if extensions.should_force_break_lc(local_player, cmd) then
             cmd.force_defensive = true
@@ -3574,12 +3832,15 @@ antiaim = {} do
         local local_player = entity.get_local_player()
 
         if not interface.antiaim.enabled_antiaim:get() or not local_player or not entity.is_alive(local_player) then
+            exploit.reset()
             use_state.reset()
             extensions.reset()
             builder.unset()
             return
         end
 
+        exploit.restore()
+        exploit.update_state()
         use_state.update(cmd, local_player)
         builder.apply(cmd, local_player)
 
@@ -3595,6 +3856,7 @@ antiaim = {} do
             return
         end
 
+        exploit.reset()
         use_state.reset()
         extensions.reset()
         hotkeys.reset()
@@ -3602,11 +3864,15 @@ antiaim = {} do
     end
 
     client.set_event_callback('setup_command', antiaim.on_setup_command)
+    client.set_event_callback('net_update_start', exploit.on_net_update_start)
     client.set_event_callback('paint_ui', hotkeys.on_paint_ui)
     client.set_event_callback('paint', antiaim.on_paint)
     client.set_event_callback('player_hurt', extensions.on_player_hurt)
     client.set_event_callback('player_blind', extensions.on_player_blind)
     client.set_event_callback('weapon_reload', extensions.on_weapon_reload)
+    client.set_event_callback('round_start', exploit.reset)
+    client.set_event_callback('game_newmap', exploit.reset)
+    client.set_event_callback('cs_game_disconnected', exploit.reset)
     client.set_event_callback('round_start', use_state.reset)
     client.set_event_callback('game_newmap', use_state.reset)
     client.set_event_callback('cs_game_disconnected', use_state.reset)
@@ -3614,12 +3880,14 @@ antiaim = {} do
     client.set_event_callback('game_newmap', extensions.reset)
     client.set_event_callback('cs_game_disconnected', extensions.reset)
     client.set_event_callback('shutdown', function()
+        exploit.reset()
         use_state.reset()
         extensions.reset()
         hotkeys.reset()
         builder.reset()
     end)
     client.set_event_callback('pre_config_save', function()
+        exploit.reset()
         use_state.reset()
         extensions.reset()
         hotkeys.reset()
