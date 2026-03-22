@@ -825,6 +825,11 @@ interface = {} do
             state = interface.header.general:combobox('state', unpack(antiaim_state_options)),
             profiles = {}
         },
+        fake_lag = {
+            extensions = interface.header.fake_lag:multiselect('extensions\nantiaim.fake_lag.extensions', 'avoid backstab', 'force break lc', 'safe head', 'bombsite e fix'),
+            triggers = interface.header.fake_lag:multiselect('break lc triggers\nantiaim.fake_lag.force_break_lc_triggers', 'flashed', 'damage received', 'reloading', 'weapon switch', 'osaa'),
+            safe_head_triggers = interface.header.fake_lag:multiselect('safe head triggers\nantiaim.fake_lag.safe_head_triggers', 'high distance', 'idle', 'duck', 'airc', 'airc+knife', 'airc+zeus')
+        },
         hotkeys = {
             freestanding = interface.header.other:checkbox('freestanding', 0x00),
             freestanding_disablers = interface.header.other:multiselect('disablers', 'standing', 'moving', 'slow walk', 'air', 'crouched'),
@@ -1326,6 +1331,21 @@ interface = {} do
 
                         if field == 'delay_from' or field == 'delay_to' or field == 'invert_chance' then
                             element:set_visible(profile.body_yaw:get() == 'jitter')
+                            return
+                        end
+
+                        element:set_visible(true)
+                        return
+                    end
+
+                    if root == 'fake_lag' then
+                        if key == 'triggers' then
+                            element:set_visible(utils.multiselect_has(interface.antiaim.fake_lag.extensions:get(), 'force break lc'))
+                            return
+                        end
+
+                        if key == 'safe_head_triggers' then
+                            element:set_visible(utils.multiselect_has(interface.antiaim.fake_lag.extensions:get(), 'safe head'))
                             return
                         end
 
@@ -2489,6 +2509,18 @@ utils = {} do
         return utils.ui_callback_unset(item, callback)
     end
 
+    utils.multiselect_has = function(value, option)
+        if value == nil then
+            return false
+        end
+
+        if type(value) == 'string' then
+            return value == option
+        end
+
+        return utils.contains(value, option)
+    end
+
     utils.ragebot_weapon_types = {
         'Global',
         'G3SG1 / SCAR-20',
@@ -2579,6 +2611,10 @@ utils = {} do
     end
 
     utils.get_antiaim_state = function()
+        if _G.noctua_runtime.use_active then
+            return 'use'
+        end
+
         if _G.noctua_runtime.manual_active then
             return 'manual'
         end
@@ -2588,10 +2624,6 @@ utils = {} do
         end
 
         local state = utils.get_state()
-
-        if state == 'use' then
-            return 'use'
-        end
 
         if state == 'freestand' then
             return 'freestand'
@@ -2674,10 +2706,6 @@ utils = {} do
                 else
                     freeze_start = nil
                 end
-            end
-
-            if client.key_state(69) then
-                return "use"
             end
 
             if ui.get(ui_references.fakeduck) then
@@ -2813,10 +2841,14 @@ end
 --@region: antiaim
 antiaim = {} do
     antiaim.builder = {}
+    antiaim.extensions = {}
     antiaim.hotkeys = {}
+    antiaim.use = {}
 
     local builder = antiaim.builder
+    local extensions = antiaim.extensions
     local hotkeys = antiaim.hotkeys
+    local use_state = antiaim.use
     local refs = reference.antiaim.angles
     local yaw_jitter_map = {
         off = 'Off',
@@ -2876,7 +2908,7 @@ antiaim = {} do
 
     function hotkeys.is_freestanding_active()
         local item = interface.antiaim.hotkeys.freestanding
-        local disablers = interface.antiaim.hotkeys.freestanding_disablers:get() or {}
+        local disablers = interface.antiaim.hotkeys.freestanding_disablers:get()
 
         if ui.is_menu_open() then
             return false
@@ -2886,11 +2918,7 @@ antiaim = {} do
             return false
         end
 
-        if type(disablers) == 'string' then
-            return disablers ~= hotkeys.get_freestanding_state()
-        end
-
-        return not utils.contains(disablers, hotkeys.get_freestanding_state())
+        return not utils.multiselect_has(disablers, hotkeys.get_freestanding_state())
     end
 
     function hotkeys.get_hotkey_changed(item, active, mode)
@@ -2942,16 +2970,404 @@ antiaim = {} do
         _G.noctua_runtime.freestanding_active = false
     end
 
+    use_state.interact_traced = false
+
+    function use_state.reset()
+        use_state.interact_traced = false
+        _G.noctua_runtime.use_active = false
+    end
+
+    function use_state.get_profile()
+        local profile = builder.get_profile('use')
+
+        if profile == nil then
+            return nil
+        end
+
+        if profile.enabled ~= nil and not profile.enabled:get() then
+            return nil
+        end
+
+        return profile
+    end
+
+    function use_state.should_update(cmd, local_player)
+        if cmd.in_use == 0 then
+            use_state.interact_traced = false
+            return false
+        end
+
+        local profile = use_state.get_profile()
+        if profile == nil then
+            return false
+        end
+
+        local weapon = entity.get_player_weapon(local_player)
+        local weapon_info = weapon and csgo_weapons(weapon) or nil
+
+        if weapon_info == nil then
+            return false
+        end
+
+        local is_weapon_bomb = weapon_info.idx == 49
+        local is_defusing = entity.get_prop(local_player, 'm_bIsDefusing') == 1
+        local is_rescuing = entity.get_prop(local_player, 'm_bIsGrabbingHostage') == 1
+        local in_bomb_site = entity.get_prop(local_player, 'm_bInBombZone') == 1
+
+        if is_defusing or is_rescuing then
+            return false
+        end
+
+        if in_bomb_site and (not extensions.is_enabled('bombsite e fix') or is_weapon_bomb) then
+            return false
+        end
+
+        local team = entity.get_prop(local_player, 'm_iTeamNum')
+        if team == 3 and cmd.pitch > 15 then
+            local lx, ly, lz = entity.get_origin(local_player)
+            local bombs = entity.get_all('CPlantedC4')
+
+            for i = 1, #bombs do
+                local bx, by, bz = entity.get_origin(bombs[i])
+
+                if bx ~= nil then
+                    local dx = bx - lx
+                    local dy = by - ly
+                    local dz = bz - lz
+
+                    if ((dx * dx) + (dy * dy) + (dz * dz)) < (62 * 62) then
+                        return false
+                    end
+                end
+            end
+        end
+
+        local pitch, yaw = client.camera_angles()
+        local ex, ey, ez = client.eye_position()
+        local pitch_rad = math.rad(pitch)
+        local yaw_rad = math.rad(yaw)
+        local tx = ex + (math.cos(pitch_rad) * math.cos(yaw_rad) * 128)
+        local ty = ey + (math.cos(pitch_rad) * math.sin(yaw_rad) * 128)
+        local tz = ez + (-math.sin(pitch_rad) * 128)
+        local fraction, entindex = client.trace_line(local_player, ex, ey, ez, tx, ty, tz)
+
+        if fraction ~= 1 then
+            if entindex == -1 then
+                return true
+            end
+
+            local classname = entity.get_classname(entindex)
+
+            if classname == 'CWorld' or classname == 'CFuncBrush' or classname == 'CCSPlayer' then
+                return true
+            end
+
+            if classname == 'CHostage' then
+                local hx, hy, hz = entity.get_origin(entindex)
+
+                if hx ~= nil then
+                    local dx = hx - ex
+                    local dy = hy - ey
+                    local dz = hz - ez
+
+                    if ((dx * dx) + (dy * dy) + (dz * dz)) < (84 * 84) then
+                        return false
+                    end
+                end
+            end
+
+            if not use_state.interact_traced then
+                use_state.interact_traced = true
+                return false
+            end
+        end
+
+        return true
+    end
+
+    function use_state.update(cmd, local_player)
+        _G.noctua_runtime.use_active = use_state.should_update(cmd, local_player)
+        return _G.noctua_runtime.use_active
+    end
+
+    extensions.avoid_backstab_distance = 240
+    extensions.damage_received_until = 0
+    extensions.flash_until = 0
+    extensions.reload_until = 0
+
+    function extensions.is_enabled(name)
+        return utils.multiselect_has(interface.antiaim.fake_lag.extensions:get(), name)
+    end
+
+    function extensions.is_trigger_enabled(name)
+        return utils.multiselect_has(interface.antiaim.fake_lag.triggers:get(), name)
+    end
+
+    function extensions.is_safe_head_trigger_enabled(name)
+        return utils.multiselect_has(interface.antiaim.fake_lag.safe_head_triggers:get(), name)
+    end
+
+    function extensions.reset()
+        extensions.damage_received_until = 0
+        extensions.flash_until = 0
+        extensions.reload_until = 0
+        _G.noctua_runtime.safe_head_active = false
+    end
+
+    function extensions.is_osaa_active()
+        return ui.get(ui_references.on_shot_anti_aim[1]) and ui.get(ui_references.on_shot_anti_aim[2])
+    end
+
+    function extensions.is_swapping_weapons(cmd)
+        return cmd.weaponselect > 0
+    end
+
+    function extensions.is_flashed(local_player)
+        local flash_duration = entity.get_prop(local_player, 'm_flFlashDuration') or 0
+        return flash_duration > 0 or globals.curtime() < extensions.flash_until
+    end
+
+    function extensions.is_reloading(local_player, cmd)
+        local weapon = entity.get_player_weapon(local_player)
+        local in_reload = weapon and entity.get_prop(weapon, 'm_bInReload') or 0
+        return in_reload == 1 or cmd.in_reload == 1 or globals.curtime() < extensions.reload_until
+    end
+
+    function extensions.should_force_break_lc(local_player, cmd)
+        if not extensions.is_enabled('force break lc') then
+            return false
+        end
+
+        if extensions.is_trigger_enabled('flashed') and extensions.is_flashed(local_player) then
+            return true
+        end
+
+        if extensions.is_trigger_enabled('damage received') and globals.curtime() < extensions.damage_received_until then
+            return true
+        end
+
+        if extensions.is_trigger_enabled('reloading') and extensions.is_reloading(local_player, cmd) then
+            return true
+        end
+
+        if extensions.is_trigger_enabled('weapon switch') and extensions.is_swapping_weapons(cmd) then
+            return true
+        end
+
+        if extensions.is_trigger_enabled('osaa') and extensions.is_osaa_active() then
+            return true
+        end
+
+        return false
+    end
+
+    function extensions.is_weapon_knife(weapon)
+        local weapon_info = weapon and csgo_weapons(weapon) or nil
+        return weapon_info ~= nil and weapon_info.type == 'knife' and weapon_info.idx ~= 31
+    end
+
+    function extensions.get_backstab_yaw(local_player)
+        if not extensions.is_enabled('avoid backstab') then
+            return nil
+        end
+
+        local lx, ly, lz = entity.get_origin(local_player)
+        if lx == nil then
+            return nil
+        end
+
+        local max_distance = extensions.avoid_backstab_distance * extensions.avoid_backstab_distance
+        local best_distance = math.huge
+        local best_yaw = nil
+        local enemies = entity.get_players(true)
+
+        for i = 1, #enemies do
+            local enemy = enemies[i]
+            local weapon = entity.get_player_weapon(enemy)
+
+            if entity.is_alive(enemy) and not entity.is_dormant(enemy) and extensions.is_weapon_knife(weapon) then
+                local ex, ey, ez = entity.get_origin(enemy)
+
+                if ex ~= nil then
+                    local dx = ex - lx
+                    local dy = ey - ly
+                    local dz = ez - lz
+                    local distance = (dx * dx) + (dy * dy) + (dz * dz)
+
+                    if distance < best_distance then
+                        local _, yaw = utils.calc_angle(lx, ly, lz, ex, ey, ez)
+                        best_distance = distance
+                        best_yaw = yaw
+                    end
+                end
+            end
+        end
+
+        if best_yaw == nil or best_distance > max_distance then
+            return nil
+        end
+
+        return best_yaw
+    end
+
+    function extensions.get_safe_head_condition(local_player)
+        if not extensions.is_enabled('safe head') then
+            return nil
+        end
+
+        local threat = client.current_threat()
+        if threat == nil then
+            return nil
+        end
+
+        local weapon = entity.get_player_weapon(local_player)
+        local weapon_info = weapon and csgo_weapons(weapon) or nil
+
+        if weapon_info == nil then
+            return nil
+        end
+
+        local lx, ly, lz = entity.get_origin(local_player)
+        local tx, ty, tz = entity.get_origin(threat)
+
+        if lx == nil or tx == nil then
+            return nil
+        end
+
+        local dx = tx - lx
+        local dy = ty - ly
+        local height = lz - tz
+        local distance_2d = (dx * dx) + (dy * dy)
+        local state = utils.get_state()
+        local crouched = entity.get_prop(local_player, 'm_flDuckAmount') == 1
+        local moving = state == 'run' or state == 'slow' or state == 'duck move'
+        local in_air = state == 'air' or state == 'airc'
+        local is_knife = weapon_info.type == 'knife' and weapon_info.idx ~= 31
+        local is_taser = weapon_info.idx == 31
+
+        if not in_air then
+            if extensions.is_safe_head_trigger_enabled('high distance') and (not moving or crouched) and height >= 10 and distance_2d > 1000 * 1000 then
+                return 'high distance'
+            end
+
+            if crouched then
+                if extensions.is_safe_head_trigger_enabled('duck') and height >= 48 then
+                    return 'duck'
+                end
+
+                return nil
+            end
+
+            if extensions.is_safe_head_trigger_enabled('idle') and not moving and height >= 24 then
+                return 'idle'
+            end
+
+            return nil
+        end
+
+        if not crouched then
+            return nil
+        end
+
+        if extensions.is_safe_head_trigger_enabled('airc+zeus') and is_taser and height > -20 and distance_2d < 500 * 500 then
+            return 'airc+zeus'
+        end
+
+        if extensions.is_safe_head_trigger_enabled('airc+knife') and is_knife then
+            return 'airc+knife'
+        end
+
+        if extensions.is_safe_head_trigger_enabled('airc') and height > 160 then
+            return 'airc'
+        end
+
+        return nil
+    end
+
+    function extensions.apply(cmd, local_player, state)
+        _G.noctua_runtime.safe_head_active = false
+
+        if extensions.should_force_break_lc(local_player, cmd) then
+            cmd.force_defensive = true
+        end
+
+        if _G.noctua_runtime.use_active then
+            return
+        end
+
+        if state.manual_dir ~= nil then
+            return
+        end
+
+        local backstab_yaw = extensions.get_backstab_yaw(local_player)
+        if backstab_yaw ~= nil then
+            local _, camera_yaw = client.camera_angles()
+            state.yaw_base = 'Local view'
+            state.yaw_mode = '180'
+            state.yaw_offset = mathematic.normalize_yaw(backstab_yaw - camera_yaw - 180)
+            state.jitter_mode = 'off'
+            state.jitter_offset = 0
+            state.freestanding_body_yaw = false
+            state.freestanding = false
+            return
+        end
+
+        local safe_head_condition = extensions.get_safe_head_condition(local_player)
+        if safe_head_condition == nil then
+            return
+        end
+
+        _G.noctua_runtime.safe_head_active = true
+        state.yaw_base = 'At targets'
+        state.yaw_mode = '180'
+        state.yaw_offset = safe_head_condition == 'airc+knife' and 37 or 0
+        state.jitter_mode = 'off'
+        state.jitter_offset = 0
+        state.body_yaw = 'static'
+        state.body_yaw_offset = safe_head_condition == 'airc+knife' and 1 or 0
+        state.freestanding_body_yaw = false
+        state.freestanding = false
+    end
+
+    function extensions.on_player_hurt(e)
+        local local_player = entity.get_local_player()
+
+        if local_player ~= nil and client.userid_to_entindex(e.userid) == local_player then
+            extensions.damage_received_until = globals.curtime() + 0.25
+        end
+    end
+
+    function extensions.on_player_blind(e)
+        local local_player = entity.get_local_player()
+
+        if local_player ~= nil and client.userid_to_entindex(e.userid) == local_player then
+            local duration = tonumber(e.blind_duration) or 1
+            extensions.flash_until = globals.curtime() + math.max(duration, 0.25)
+        end
+    end
+
+    function extensions.on_weapon_reload(e)
+        local local_player = entity.get_local_player()
+
+        if local_player ~= nil and client.userid_to_entindex(e.userid) == local_player then
+            extensions.reload_until = globals.curtime() + 1
+        end
+    end
+
     function builder.get_profile(state)
         return interface.antiaim.builder.profiles[state]
     end
 
     function builder.get_runtime_state()
-        _G.noctua_runtime.manual_active = interface.antiaim.hotkeys.manual_yaw:get() and hotkeys.manual_dir ~= nil
-        _G.noctua_runtime.freestanding_active = hotkeys.is_freestanding_active() and not _G.noctua_runtime.manual_active
+        _G.noctua_runtime.manual_active = interface.antiaim.hotkeys.manual_yaw:get() and hotkeys.manual_dir ~= nil and not _G.noctua_runtime.use_active
+        _G.noctua_runtime.freestanding_active = hotkeys.is_freestanding_active() and not _G.noctua_runtime.manual_active and not _G.noctua_runtime.use_active
 
         if not _G.noctua_runtime.freestanding_active then
             refs.freestanding:override(false)
+        end
+
+        if _G.noctua_runtime.use_active then
+            return 'use'
         end
 
         if _G.noctua_runtime.manual_active then
@@ -2962,7 +3378,13 @@ antiaim = {} do
             return 'freestand'
         end
 
-        return utils.get_antiaim_state()
+        local state = utils.get_state()
+
+        if state == 'freestand' then
+            return 'freestand'
+        end
+
+        return utils.normalize_antiaim_state(state)
     end
 
     function builder.get_active_profile()
@@ -2977,6 +3399,8 @@ antiaim = {} do
     end
 
     function builder.unset()
+        _G.noctua_runtime.use_active = false
+        _G.noctua_runtime.safe_head_active = false
         refs.freestanding:override()
         refs.freestanding_body_yaw:override()
         refs.body_yaw[2]:override()
@@ -3027,7 +3451,7 @@ antiaim = {} do
         builder.delay_limit = 0
     end
 
-    function builder.apply(cmd)
+    function builder.apply(cmd, local_player)
         local _, profile = builder.get_active_profile()
 
         if profile == nil then
@@ -3079,6 +3503,7 @@ antiaim = {} do
         local body_yaw = body_yaw_mode
         local body_yaw_offset = profile.body_yaw_offset:get()
         local freestanding_body_yaw = body_yaw_mode ~= 'off' and body_yaw_mode ~= 'jitter' and profile.freestanding_body_yaw:get() or false
+        local yaw_mode = '180'
 
         if body_yaw == 'static' then
             body_yaw_offset = math.abs(body_yaw_offset)
@@ -3094,7 +3519,7 @@ antiaim = {} do
             body_yaw_offset = 0
         end
 
-        local manual_dir = interface.antiaim.hotkeys.manual_yaw:get() and hotkeys.manual_dir or nil
+        local manual_dir = (not _G.noctua_runtime.use_active and interface.antiaim.hotkeys.manual_yaw:get()) and hotkeys.manual_dir or nil
         if manual_dir ~= nil then
             local angle = hotkeys.manual_angles[manual_dir] or 0
             local modifier = interface.antiaim.hotkeys.manual_modifier:get() or {}
@@ -3114,29 +3539,53 @@ antiaim = {} do
             end
         end
 
+        local settings = {
+            manual_dir = manual_dir,
+            yaw_mode = yaw_mode,
+            yaw_base = (_G.noctua_runtime.use_active or manual_dir ~= nil) and 'Local view' or 'At targets',
+            yaw_offset = _G.noctua_runtime.use_active and mathematic.normalize_yaw(yaw_offset + 180) or yaw_offset,
+            jitter_mode = jitter_mode,
+            jitter_offset = jitter_offset,
+            body_yaw = body_yaw,
+            body_yaw_offset = body_yaw_offset,
+            freestanding_body_yaw = freestanding_body_yaw,
+            freestanding = _G.noctua_runtime.use_active and false or _G.noctua_runtime.freestanding_active,
+            pitch_mode = _G.noctua_runtime.use_active and 'Custom' or 'Default',
+            pitch_offset = _G.noctua_runtime.use_active and mathematic.clamp(cmd.pitch, -89, 89) or 0
+        }
+
+        extensions.apply(cmd, local_player, settings)
+
         refs.enabled:override(true)
-        refs.pitch[1]:override('Default')
-        refs.pitch[2]:override(0)
-        refs.yaw_base:override(manual_dir ~= nil and 'Local view' or 'At targets')
-        refs.yaw[1]:override('180')
-        refs.yaw[2]:override(yaw_offset)
-        refs.yaw_jitter[1]:override(yaw_jitter_map[jitter_mode] or 'Off')
-        refs.yaw_jitter[2]:override(jitter_offset)
-        refs.body_yaw[1]:override(body_yaw_map[body_yaw] or 'Off')
-        refs.body_yaw[2]:override(body_yaw_offset)
-        refs.freestanding_body_yaw:override(freestanding_body_yaw)
-        refs.freestanding:override(_G.noctua_runtime.freestanding_active)
+        refs.pitch[1]:override(settings.pitch_mode)
+        refs.pitch[2]:override(settings.pitch_offset)
+        refs.yaw_base:override(settings.yaw_base)
+        refs.yaw[1]:override(settings.yaw_mode)
+        refs.yaw[2]:override(settings.yaw_offset)
+        refs.yaw_jitter[1]:override(yaw_jitter_map[settings.jitter_mode] or 'Off')
+        refs.yaw_jitter[2]:override(settings.jitter_offset)
+        refs.body_yaw[1]:override(body_yaw_map[settings.body_yaw] or 'Off')
+        refs.body_yaw[2]:override(settings.body_yaw_offset)
+        refs.freestanding_body_yaw:override(settings.freestanding_body_yaw)
+        refs.freestanding:override(settings.freestanding)
     end
 
     function antiaim.on_setup_command(cmd)
         local local_player = entity.get_local_player()
 
         if not interface.antiaim.enabled_antiaim:get() or not local_player or not entity.is_alive(local_player) then
+            use_state.reset()
+            extensions.reset()
             builder.unset()
             return
         end
 
-        builder.apply(cmd)
+        use_state.update(cmd, local_player)
+        builder.apply(cmd, local_player)
+
+        if _G.noctua_runtime.use_active then
+            cmd.in_use = 0
+        end
     end
 
     function antiaim.on_paint()
@@ -3146,6 +3595,8 @@ antiaim = {} do
             return
         end
 
+        use_state.reset()
+        extensions.reset()
         hotkeys.reset()
         builder.unset()
     end
@@ -3153,11 +3604,24 @@ antiaim = {} do
     client.set_event_callback('setup_command', antiaim.on_setup_command)
     client.set_event_callback('paint_ui', hotkeys.on_paint_ui)
     client.set_event_callback('paint', antiaim.on_paint)
+    client.set_event_callback('player_hurt', extensions.on_player_hurt)
+    client.set_event_callback('player_blind', extensions.on_player_blind)
+    client.set_event_callback('weapon_reload', extensions.on_weapon_reload)
+    client.set_event_callback('round_start', use_state.reset)
+    client.set_event_callback('game_newmap', use_state.reset)
+    client.set_event_callback('cs_game_disconnected', use_state.reset)
+    client.set_event_callback('round_start', extensions.reset)
+    client.set_event_callback('game_newmap', extensions.reset)
+    client.set_event_callback('cs_game_disconnected', extensions.reset)
     client.set_event_callback('shutdown', function()
+        use_state.reset()
+        extensions.reset()
         hotkeys.reset()
         builder.reset()
     end)
     client.set_event_callback('pre_config_save', function()
+        use_state.reset()
+        extensions.reset()
         hotkeys.reset()
         builder.unset()
     end)
