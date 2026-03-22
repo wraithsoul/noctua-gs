@@ -656,6 +656,20 @@ end)
 --@endregion
 
 --@region: interface
+local antiaim_state_options = {
+    'default',
+    'idle',
+    'run',
+    'slow',
+    'air',
+    'airc',
+    'duck',
+    'duck move',
+    'use',
+    'manual',
+    'freestand',
+}
+
 interface = {} do
     pui.macros.title = _name
 
@@ -669,7 +683,7 @@ interface = {} do
         empty = '⠀'
     }
  
-    interface.search = interface.header.general:combobox(pui.macros.title .. ' - '.. _version, 'home', 'kas', 'aimbot', 'visuals', 'utility', 'config', 'other')
+    interface.search = interface.header.general:combobox(pui.macros.title .. ' - '.. _version, 'home', 'kas', 'aimbot', 'antiaim', 'visuals', 'utility', 'config', 'other')
 
     interface.home = {
         title = interface.header.fake_lag:label('your stats:'),
@@ -779,6 +793,59 @@ interface = {} do
         dormant_damage = interface.header.general:slider('minimum damage', 1, 100, 7, true, ''),
         predictive_shot = interface.header.fake_lag:checkbox('\aa5ab55ffpredictive shot (awp only, experimental)')
     }
+
+    local function create_antiaim_builder_profile(state_key)
+        local state_id = state_key:gsub('[^%w]+', '_')
+        local key_prefix = 'antiaim.builder.' .. state_id
+        local profile = {}
+
+        if state_key ~= 'default' then
+            profile.enabled = interface.header.general:checkbox('override ' .. state_key .. '\n' .. key_prefix .. '.enabled')
+        end
+
+        profile.yaw_left = interface.header.general:slider('yaw left\n' .. key_prefix .. '.yaw_left', -180, 180, 0, true, '°')
+        profile.yaw_right = interface.header.general:slider('yaw right\n' .. key_prefix .. '.yaw_right', -180, 180, 0, true, '°')
+        profile.yaw_random = interface.header.general:slider('random\n' .. key_prefix .. '.yaw_random', 0, 30, 0, true, '%')
+        profile.yaw_jitter = interface.header.general:combobox('yaw jitter\n' .. key_prefix .. '.yaw_jitter', 'off', 'offset', 'center', 'random', 'skitter')
+        profile.jitter_offset = interface.header.general:slider('jitter offset\n' .. key_prefix .. '.jitter_offset', -180, 180, 0, true, '°')
+        profile.jitter_random = interface.header.general:slider('randomization\n' .. key_prefix .. '.jitter_random', 0, 30, 0, true, '%')
+        profile.body_yaw = interface.header.general:combobox('body yaw\n' .. key_prefix .. '.body_yaw', 'off', 'opposite', 'static', 'jitter')
+        profile.body_yaw_offset = interface.header.general:slider('\n' .. key_prefix .. '.body_yaw_offset', -180, 180, 0, true, '°')
+        profile.freestanding_body_yaw = interface.header.general:checkbox('freestanding body yaw\n' .. key_prefix .. '.freestanding_body_yaw')
+        profile.delay_from = interface.header.general:slider('delay from\n' .. key_prefix .. '.delay_from', 1, 8, 1, true, 't', 1, {[1] = 'off'})
+        profile.delay_to = interface.header.general:slider('delay to\n' .. key_prefix .. '.delay_to', 1, 8, 1, true, 't', 1, {[1] = 'off'})
+        profile.invert_chance = interface.header.general:slider('invert chance\n' .. key_prefix .. '.invert_chance', 0, 100, 100, true, '%')
+
+        return profile
+    end
+
+    interface.antiaim = {
+        enabled_antiaim = interface.header.general:checkbox('enable antiaim'),
+        builder = {
+            state = interface.header.general:combobox('state', unpack(antiaim_state_options)),
+            profiles = {}
+        },
+        hotkeys = {
+            freestanding = interface.header.other:checkbox('freestanding', 0x00),
+            freestanding_disablers = interface.header.other:multiselect('disablers', 'standing', 'moving', 'slow walk', 'air', 'crouched'),
+            manual_yaw = interface.header.other:checkbox('manual yaw'),
+            manual_modifier = interface.header.other:multiselect('modifier', 'disable yaw modifiers', 'freestanding body'),
+            manual_left = ui.new_hotkey('AA', 'Other', 'left\nantiaim.hotkeys.manual_left'),
+            manual_right = ui.new_hotkey('AA', 'Other', 'right\nantiaim.hotkeys.manual_right'),
+            manual_forward = ui.new_hotkey('AA', 'Other', 'forward\nantiaim.hotkeys.manual_forward'),
+            manual_backward = ui.new_hotkey('AA', 'Other', 'backward\nantiaim.hotkeys.manual_backward')
+        }
+    }
+
+    for i = 1, #antiaim_state_options do
+        local state_key = antiaim_state_options[i]
+        interface.antiaim.builder.profiles[state_key] = create_antiaim_builder_profile(state_key)
+    end
+
+    ui.set(interface.antiaim.hotkeys.manual_left, 'Toggle')
+    ui.set(interface.antiaim.hotkeys.manual_right, 'Toggle')
+    ui.set(interface.antiaim.hotkeys.manual_forward, 'Toggle')
+    ui.set(interface.antiaim.hotkeys.manual_backward, 'Toggle')
 
     interface.visuals = {
         enabled_visuals = interface.header.general:checkbox('enable visuals'),
@@ -935,12 +1002,26 @@ interface = {} do
         -- replaced later
     end
 
+    local function set_element_visible(element, visible)
+        if element == nil then
+            return
+        end
+
+        if type(element) == 'number' then
+            ui.set_visible(element, visible)
+            return
+        end
+
+        element:set_visible(visible)
+    end
+
     interface.setup = function()
         local selection = interface.search:get()
         local groups = {
             home = interface.home,
             kas = interface.kas,
             aimbot = interface.aimbot,
+            antiaim = interface.antiaim,
             visuals = interface.visuals,
             utility = interface.utility,
             config = interface.config
@@ -951,7 +1032,7 @@ interface = {} do
 
             for _, group in pairs(groups) do
                 pui.traverse(group, function(element)
-                    element:set_visible(false)
+                    set_element_visible(element, false)
                 end)
             end
 
@@ -964,11 +1045,11 @@ interface = {} do
         local visibility_config = {
             home = {
                 groups_to_show = { groups.home },
-                groups_to_hide = { groups.kas, groups.aimbot, groups.visuals, groups.models, groups.utility, groups.config }
+                groups_to_hide = { groups.kas, groups.aimbot, groups.antiaim, groups.visuals, groups.models, groups.utility, groups.config }
             },
             kas = {
                 groups_to_show = { groups.kas },
-                groups_to_hide = { groups.home, groups.aimbot, groups.visuals, groups.models, groups.utility, groups.config },
+                groups_to_hide = { groups.home, groups.aimbot, groups.antiaim, groups.visuals, groups.models, groups.utility, groups.config },
                 element_visibility_logic = function(element, path)
                     local key = path[#path]
                     local enabled = interface.kas.enabled:get()
@@ -1094,7 +1175,7 @@ interface = {} do
             },
             aimbot = {
                 groups_to_show = { groups.aimbot },
-                groups_to_hide = { groups.home, groups.kas, groups.visuals, groups.models, groups.utility, groups.config },
+                groups_to_hide = { groups.home, groups.kas, groups.antiaim, groups.visuals, groups.models, groups.utility, groups.config },
                 element_visibility_logic = function(element, path)
                     local key = path[#path]
                     local root = path[1]
@@ -1181,9 +1262,100 @@ interface = {} do
                     end
                 end
             },
+            antiaim = {
+                groups_to_show = { groups.antiaim },
+                groups_to_hide = { groups.home, groups.kas, groups.aimbot, groups.visuals, groups.models, groups.utility, groups.config },
+                element_visibility_logic = function(element, path)
+                    local key = path[#path]
+                    local root = path[1]
+                    local enabled = interface.antiaim.enabled_antiaim:get()
+                    local selected_state = interface.antiaim.builder.state:get()
+
+                    if key == 'enabled_antiaim' then
+                        element:set_visible(true)
+                        return
+                    end
+
+                    if not enabled then
+                        element:set_visible(false)
+                        return
+                    end
+
+                    if root == 'builder' and key == 'state' then
+                        element:set_visible(true)
+                        return
+                    end
+
+                    if root == 'builder' and path[2] == 'profiles' then
+                        local state_key = path[3]
+                        local field = path[4]
+                        local profile = interface.antiaim.builder.profiles[state_key]
+                        local profile_enabled = state_key == 'default' or (profile ~= nil and profile.enabled ~= nil and profile.enabled:get())
+
+                        if state_key ~= selected_state or profile == nil then
+                            element:set_visible(false)
+                            return
+                        end
+
+                        if field == 'enabled' then
+                            element:set_visible(state_key ~= 'default')
+                            return
+                        end
+
+                        if not profile_enabled then
+                            element:set_visible(false)
+                            return
+                        end
+
+                        if field == 'jitter_offset' or field == 'jitter_random' then
+                            element:set_visible(profile.yaw_jitter:get() ~= 'off')
+                            return
+                        end
+
+                        if field == 'body_yaw_offset' then
+                            local body_yaw = profile.body_yaw:get()
+                            element:set_visible(body_yaw == 'static' or body_yaw == 'jitter')
+                            return
+                        end
+
+                        if field == 'freestanding_body_yaw' then
+                            local body_yaw = profile.body_yaw:get()
+                            element:set_visible(body_yaw ~= 'off' and body_yaw ~= 'jitter')
+                            return
+                        end
+
+                        if field == 'delay_from' or field == 'delay_to' or field == 'invert_chance' then
+                            element:set_visible(profile.body_yaw:get() == 'jitter')
+                            return
+                        end
+
+                        element:set_visible(true)
+                        return
+                    end
+
+                    if root == 'hotkeys' then
+                        if key == 'freestanding' or key == 'manual_yaw' then
+                            element:set_visible(true)
+                            return
+                        end
+
+                        if key == 'freestanding_disablers' then
+                            element:set_visible(interface.antiaim.hotkeys.freestanding:get())
+                            return
+                        end
+
+                        if key == 'manual_modifier' or key == 'manual_left' or key == 'manual_right' or key == 'manual_forward' or key == 'manual_backward' then
+                            element:set_visible(interface.antiaim.hotkeys.manual_yaw:get())
+                            return
+                        end
+                    end
+
+                    element:set_visible(true)
+                end
+            },
             visuals = {
                 groups_to_show = { groups.visuals },
-                groups_to_hide = { groups.home, groups.kas, groups.aimbot, groups.models, groups.utility, groups.config },
+                groups_to_hide = { groups.home, groups.kas, groups.aimbot, groups.antiaim, groups.models, groups.utility, groups.config },
                 element_visibility_logic = function(element, path)
                     local key = path[#path]
                     local visuals_enabled = interface.visuals.enabled_visuals:get()
@@ -1329,7 +1501,7 @@ interface = {} do
             },
             utility = {
                 groups_to_show = { groups.utility },
-                groups_to_hide = { groups.home, groups.kas, groups.aimbot, groups.visuals, groups.models, groups.config },
+                groups_to_hide = { groups.home, groups.kas, groups.aimbot, groups.antiaim, groups.visuals, groups.models, groups.config },
                 element_visibility_logic = function(element, path)
                     local key = path[#path]
 
@@ -1398,7 +1570,7 @@ interface = {} do
             },
             config = {
                 groups_to_show = { groups.config },
-                groups_to_hide = { groups.home, groups.kas, groups.aimbot, groups.visuals, groups.models, groups.utility },
+                groups_to_hide = { groups.home, groups.kas, groups.aimbot, groups.antiaim, groups.visuals, groups.models, groups.utility },
                 element_visibility_logic = function(element, path)
                     element:set_visible(true)
                 end,
@@ -1407,7 +1579,7 @@ interface = {} do
                 end
             },
             default = {
-                groups_to_hide = { groups.home, groups.kas, groups.aimbot, groups.visuals, groups.models, groups.utility, groups.config }
+                groups_to_hide = { groups.home, groups.kas, groups.aimbot, groups.antiaim, groups.visuals, groups.models, groups.utility, groups.config }
             }
         }
 
@@ -1416,10 +1588,19 @@ interface = {} do
         for _, group in pairs(config.groups_to_show) do
             if group then
                 pui.traverse(group, function(element, path)
+                    local proxy = element
+                    if type(element) == 'number' then
+                        proxy = {
+                            set_visible = function(_, visible)
+                                ui.set_visible(element, visible)
+                            end
+                        }
+                    end
+
                     if config.element_visibility_logic then
-                        config.element_visibility_logic(element, path)
+                        config.element_visibility_logic(proxy, path)
                     else
-                        element:set_visible(true)
+                        set_element_visible(element, true)
                     end
                 end)
             end
@@ -1428,7 +1609,7 @@ interface = {} do
         for _, group in pairs(config.groups_to_hide) do
             if group then
                 pui.traverse(group, function(element, path)
-                    element:set_visible(false)
+                    set_element_visible(element, false)
                 end)
             end
         end
@@ -1604,16 +1785,16 @@ reference = {} do
     }
     reference.antiaim = {
         angles = {
-            enabled = ui.reference('aa', 'anti-aimbot angles', 'enabled'),
-            pitch = { ui.reference('aa', 'anti-aimbot angles', 'pitch') },
-            roll = { ui.reference('aa', 'anti-aimbot angles', 'roll') },
-            yaw_base = ui.reference('aa', 'anti-aimbot angles', 'yaw base'),
-            yaw = { ui.reference('aa', 'anti-aimbot angles', 'yaw') },
-            freestanding_body_yaw = ui.reference('aa', 'anti-aimbot angles', 'freestanding body yaw'),
-            edge_yaw = ui.reference('aa', 'anti-aimbot angles', 'edge yaw'),
-            yaw_jitter = { ui.reference('aa', 'anti-aimbot angles', 'yaw jitter') },
-            body_yaw = { ui.reference('aa', 'anti-aimbot angles', 'body yaw') },
-            freestanding = { ui.reference('aa', 'anti-aimbot angles', 'freestanding') }
+            enabled = pui.reference('aa', 'anti-aimbot angles', 'enabled'),
+            pitch = { pui.reference('aa', 'anti-aimbot angles', 'pitch') },
+            roll = pui.reference('aa', 'anti-aimbot angles', 'roll'),
+            yaw_base = pui.reference('aa', 'anti-aimbot angles', 'yaw base'),
+            yaw = { pui.reference('aa', 'anti-aimbot angles', 'yaw') },
+            freestanding_body_yaw = pui.reference('aa', 'anti-aimbot angles', 'freestanding body yaw'),
+            edge_yaw = pui.reference('aa', 'anti-aimbot angles', 'edge yaw'),
+            yaw_jitter = { pui.reference('aa', 'anti-aimbot angles', 'yaw jitter') },
+            body_yaw = { pui.reference('aa', 'anti-aimbot angles', 'body yaw') },
+            freestanding = pui.reference('aa', 'anti-aimbot angles', 'freestanding')
         },
         fakelag = {
             on = { pui.reference('aa', 'fake lag', 'enabled') },
@@ -2383,6 +2564,42 @@ utils = {} do
         return override_enabled and ui.get(ui_references.minimum_damage_override[3]) or ui.get(ui_references.minimum_damage)
     end
 
+    utils.antiaim_states = antiaim_state_options
+
+    utils.normalize_antiaim_state = function(state)
+        if type(state) ~= 'string' or state == '' then
+            return 'default'
+        end
+
+        if utils.contains(utils.antiaim_states, state) then
+            return state
+        end
+
+        return 'default'
+    end
+
+    utils.get_antiaim_state = function()
+        if _G.noctua_runtime.manual_active then
+            return 'manual'
+        end
+
+        if _G.noctua_runtime.freestanding_active then
+            return 'freestand'
+        end
+
+        local state = utils.get_state()
+
+        if state == 'use' then
+            return 'use'
+        end
+
+        if state == 'freestand' then
+            return 'freestand'
+        end
+
+        return utils.normalize_antiaim_state(state)
+    end
+
     utils.get_player_info = function(idx)
         if type(idx) ~= "number" then
             return nil
@@ -2590,6 +2807,360 @@ utils = {} do
         
         return ping or 0
     end
+end
+--@endregion
+
+--@region: antiaim
+antiaim = {} do
+    antiaim.builder = {}
+    antiaim.hotkeys = {}
+
+    local builder = antiaim.builder
+    local hotkeys = antiaim.hotkeys
+    local refs = reference.antiaim.angles
+    local yaw_jitter_map = {
+        off = 'Off',
+        offset = 'Offset',
+        center = 'Center',
+        random = 'Random',
+        skitter = 'Skitter'
+    }
+    local body_yaw_map = {
+        off = 'Off',
+        opposite = 'Opposite',
+        static = 'Static',
+        jitter = 'Jitter'
+    }
+    local skitter = {
+        -1, 1, 0,
+        -1, 1, 0,
+        -1, 0, 1,
+        -1, 0, 1
+    }
+
+    builder.inverted = false
+    builder.inverts = 0
+    builder.delay_ticks = 0
+    builder.delay_limit = 0
+
+    hotkeys.manual_dir = nil
+    hotkeys.manual_data = {}
+    hotkeys.manual_angles = {
+        left = -90,
+        right = 90,
+        forward = 180,
+        backward = 0
+    }
+
+    function hotkeys.get_freestanding_state()
+        local state = utils.get_state()
+
+        if state == 'air' or state == 'airc' then
+            return 'air'
+        end
+
+        if state == 'slow' then
+            return 'slow walk'
+        end
+
+        if state == 'duck' or state == 'duck move' then
+            return 'crouched'
+        end
+
+        if state == 'run' then
+            return 'moving'
+        end
+
+        return 'standing'
+    end
+
+    function hotkeys.is_freestanding_active()
+        local item = interface.antiaim.hotkeys.freestanding
+        local disablers = interface.antiaim.hotkeys.freestanding_disablers:get() or {}
+
+        if ui.is_menu_open() then
+            return false
+        end
+
+        if not item:get() or not item.hotkey:get() then
+            return false
+        end
+
+        if type(disablers) == 'string' then
+            return disablers ~= hotkeys.get_freestanding_state()
+        end
+
+        return not utils.contains(disablers, hotkeys.get_freestanding_state())
+    end
+
+    function hotkeys.get_hotkey_changed(item, active, mode)
+        if hotkeys.manual_data[item] == nil then
+            hotkeys.manual_data[item] = {
+                active = active
+            }
+        end
+
+        local previous = hotkeys.manual_data[item].active
+        hotkeys.manual_data[item].active = active
+
+        return (mode == 1 or mode == 2) and previous ~= active
+    end
+
+    function hotkeys.update_manual_direction(item, dir)
+        local active, mode = ui.get(item)
+
+        if not hotkeys.get_hotkey_changed(item, active, mode) then
+            return
+        end
+
+        if hotkeys.manual_dir == dir then
+            hotkeys.manual_dir = nil
+        else
+            hotkeys.manual_dir = dir
+        end
+    end
+
+    function hotkeys.on_paint_ui()
+        if not interface.antiaim.enabled_antiaim:get() or not interface.antiaim.hotkeys.manual_yaw:get() then
+            hotkeys.manual_dir = nil
+            _G.noctua_runtime.manual_active = false
+            return
+        end
+
+        hotkeys.update_manual_direction(interface.antiaim.hotkeys.manual_left, 'left')
+        hotkeys.update_manual_direction(interface.antiaim.hotkeys.manual_right, 'right')
+        hotkeys.update_manual_direction(interface.antiaim.hotkeys.manual_forward, 'forward')
+        hotkeys.update_manual_direction(interface.antiaim.hotkeys.manual_backward, 'backward')
+
+        _G.noctua_runtime.manual_active = hotkeys.manual_dir ~= nil
+    end
+
+    function hotkeys.reset()
+        hotkeys.manual_dir = nil
+        hotkeys.manual_data = {}
+        _G.noctua_runtime.manual_active = false
+        _G.noctua_runtime.freestanding_active = false
+    end
+
+    function builder.get_profile(state)
+        return interface.antiaim.builder.profiles[state]
+    end
+
+    function builder.get_runtime_state()
+        _G.noctua_runtime.manual_active = interface.antiaim.hotkeys.manual_yaw:get() and hotkeys.manual_dir ~= nil
+        _G.noctua_runtime.freestanding_active = hotkeys.is_freestanding_active() and not _G.noctua_runtime.manual_active
+
+        if not _G.noctua_runtime.freestanding_active then
+            refs.freestanding:override(false)
+        end
+
+        if _G.noctua_runtime.manual_active then
+            return 'manual'
+        end
+
+        if _G.noctua_runtime.freestanding_active then
+            return 'freestand'
+        end
+
+        return utils.get_antiaim_state()
+    end
+
+    function builder.get_active_profile()
+        local state = builder.get_runtime_state()
+        local profile = builder.get_profile(state)
+
+        if profile ~= nil and (profile.enabled == nil or profile.enabled:get()) then
+            return state, profile
+        end
+
+        return 'default', builder.get_profile('default')
+    end
+
+    function builder.unset()
+        refs.freestanding:override()
+        refs.freestanding_body_yaw:override()
+        refs.body_yaw[2]:override()
+        refs.body_yaw[1]:override()
+        refs.yaw_jitter[2]:override()
+        refs.yaw_jitter[1]:override()
+        refs.yaw[2]:override()
+        refs.yaw[1]:override()
+        refs.yaw_base:override()
+        refs.pitch[2]:override()
+        refs.pitch[1]:override()
+        refs.enabled:override()
+    end
+
+    function builder.reset()
+        builder.inverted = false
+        builder.inverts = 0
+        builder.delay_ticks = 0
+        builder.delay_limit = 0
+        builder.unset()
+    end
+
+    function builder.update_inverter(profile, cmd)
+        if cmd.chokedcommands ~= 0 then
+            return
+        end
+
+        if builder.delay_limit < 1 then
+            builder.delay_limit = client.random_int(
+                profile.delay_from:get(),
+                profile.delay_to:get()
+            )
+        end
+
+        builder.delay_ticks = builder.delay_ticks + 1
+
+        if builder.delay_ticks < builder.delay_limit then
+            return
+        end
+
+        builder.inverts = builder.inverts + 1
+
+        if client.random_int(0, 100) <= profile.invert_chance:get() then
+            builder.inverted = not builder.inverted
+        end
+
+        builder.delay_ticks = 0
+        builder.delay_limit = 0
+    end
+
+    function builder.apply(cmd)
+        local _, profile = builder.get_active_profile()
+
+        if profile == nil then
+            builder.unset()
+            return
+        end
+
+        builder.update_inverter(profile, cmd)
+
+        local yaw_left = profile.yaw_left:get()
+        local yaw_right = profile.yaw_right:get()
+        local yaw_random = profile.yaw_random:get() * 0.01
+
+        if yaw_random > 0 then
+            local left_random = math.floor(math.abs(yaw_left) * yaw_random)
+            local right_random = math.floor(math.abs(yaw_right) * yaw_random)
+
+            yaw_left = yaw_left + client.random_int(-left_random, left_random)
+            yaw_right = yaw_right + client.random_int(-right_random, right_random)
+        end
+
+        local yaw_offset = builder.inverted and yaw_right or yaw_left
+        local jitter_mode = profile.yaw_jitter:get()
+        local jitter_offset = profile.jitter_offset:get()
+
+        if jitter_mode ~= 'off' then
+            local jitter_random = profile.jitter_random:get() * 0.01
+            local jitter_delta = math.floor(math.abs(jitter_offset) * jitter_random)
+            jitter_offset = jitter_offset + client.random_int(-jitter_delta, jitter_delta)
+        end
+
+        if jitter_mode == 'offset' then
+            yaw_offset = yaw_offset + (builder.inverted and jitter_offset or 0)
+            jitter_mode = 'off'
+            jitter_offset = 0
+        elseif jitter_mode == 'center' then
+            local center_offset = builder.inverted and jitter_offset or -jitter_offset
+            yaw_offset = yaw_offset + (center_offset * 0.5)
+            jitter_mode = 'off'
+            jitter_offset = 0
+        elseif jitter_mode == 'skitter' then
+            local index = (builder.inverts % #skitter) + 1
+            yaw_offset = yaw_offset + (jitter_offset * skitter[index])
+            jitter_mode = 'off'
+            jitter_offset = 0
+        end
+
+        local body_yaw_mode = profile.body_yaw:get()
+        local body_yaw = body_yaw_mode
+        local body_yaw_offset = profile.body_yaw_offset:get()
+        local freestanding_body_yaw = body_yaw_mode ~= 'off' and body_yaw_mode ~= 'jitter' and profile.freestanding_body_yaw:get() or false
+
+        if body_yaw == 'static' then
+            body_yaw_offset = math.abs(body_yaw_offset)
+            body_yaw_offset = builder.inverted and body_yaw_offset or -body_yaw_offset
+        elseif body_yaw == 'jitter' then
+            body_yaw_offset = math.abs(body_yaw_offset)
+            if body_yaw_offset == 0 then
+                body_yaw_offset = 1
+            end
+            body_yaw_offset = builder.inverted and body_yaw_offset or -body_yaw_offset
+            body_yaw = 'static'
+        else
+            body_yaw_offset = 0
+        end
+
+        local manual_dir = interface.antiaim.hotkeys.manual_yaw:get() and hotkeys.manual_dir or nil
+        if manual_dir ~= nil then
+            local angle = hotkeys.manual_angles[manual_dir] or 0
+            local modifier = interface.antiaim.hotkeys.manual_modifier:get() or {}
+
+            yaw_offset = yaw_offset + angle
+
+            if utils.contains(modifier, 'disable yaw modifiers') then
+                jitter_mode = 'off'
+                jitter_offset = 0
+            end
+
+            if utils.contains(modifier, 'freestanding body') then
+                body_yaw_mode = 'static'
+                body_yaw = 'static'
+                body_yaw_offset = 180
+                freestanding_body_yaw = true
+            end
+        end
+
+        refs.enabled:override(true)
+        refs.pitch[1]:override('Default')
+        refs.pitch[2]:override(0)
+        refs.yaw_base:override(manual_dir ~= nil and 'Local view' or 'At targets')
+        refs.yaw[1]:override('180')
+        refs.yaw[2]:override(yaw_offset)
+        refs.yaw_jitter[1]:override(yaw_jitter_map[jitter_mode] or 'Off')
+        refs.yaw_jitter[2]:override(jitter_offset)
+        refs.body_yaw[1]:override(body_yaw_map[body_yaw] or 'Off')
+        refs.body_yaw[2]:override(body_yaw_offset)
+        refs.freestanding_body_yaw:override(freestanding_body_yaw)
+        refs.freestanding:override(_G.noctua_runtime.freestanding_active)
+    end
+
+    function antiaim.on_setup_command(cmd)
+        local local_player = entity.get_local_player()
+
+        if not interface.antiaim.enabled_antiaim:get() or not local_player or not entity.is_alive(local_player) then
+            builder.unset()
+            return
+        end
+
+        builder.apply(cmd)
+    end
+
+    function antiaim.on_paint()
+        local local_player = entity.get_local_player()
+
+        if interface.antiaim.enabled_antiaim:get() and local_player and entity.is_alive(local_player) then
+            return
+        end
+
+        hotkeys.reset()
+        builder.unset()
+    end
+
+    client.set_event_callback('setup_command', antiaim.on_setup_command)
+    client.set_event_callback('paint_ui', hotkeys.on_paint_ui)
+    client.set_event_callback('paint', antiaim.on_paint)
+    client.set_event_callback('shutdown', function()
+        hotkeys.reset()
+        builder.reset()
+    end)
+    client.set_event_callback('pre_config_save', function()
+        hotkeys.reset()
+        builder.unset()
+    end)
 end
 --@endregion
 
