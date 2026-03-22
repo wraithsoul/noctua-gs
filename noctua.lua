@@ -683,7 +683,7 @@ interface = {} do
         empty = '⠀'
     }
  
-    interface.search = interface.header.general:combobox(pui.macros.title .. ' - '.. _version, 'home', 'kas', 'aimbot', 'antiaim', 'visuals', 'utility', 'config', 'other')
+    interface.search = interface.header.general:combobox(pui.macros.title .. ' - '.. _version, 'home', 'aimbot', 'antiaim', 'visuals', 'world', 'utility', 'config', 'other')
 
     interface.home = {
         title = interface.header.fake_lag:label('your stats:'),
@@ -740,6 +740,8 @@ interface = {} do
         show_note = false
     }
 
+    interface.home.kas = interface.kas
+
     interface.home.menu_snow:override(true)
     interface.kas.enabled:override(true)
 
@@ -750,16 +752,16 @@ interface = {} do
         end
 
         local profile = {
-            options = interface.header.other:multiselect('conditions\nhitchance_override.' .. profile_key .. '.options', unpack(options)),
-            in_air = interface.header.other:slider('in air hitchance\nhitchance_override.' .. profile_key .. '.in_air', 0, 100, 0, true, '%', 1),
-            hotkey = interface.header.other:slider('hotkey hitchance\nhitchance_override.' .. profile_key .. '.hotkey', 0, 100, 0, true, '%', 1),
-            crouch = interface.header.other:slider('crouch hitchance\nhitchance_override.' .. profile_key .. '.crouch', 0, 100, 0, true, '%', 1),
-            peek_assist = interface.header.other:slider('peek assist hitchance\nhitchance_override.' .. profile_key .. '.peek_assist', 0, 100, 0, true, '%', 1)
+            options = interface.header.fake_lag:multiselect('conditions\nhitchance_override.' .. profile_key .. '.options', unpack(options)),
+            in_air = interface.header.fake_lag:slider('in air hitchance\nhitchance_override.' .. profile_key .. '.in_air', 0, 100, 0, true, '%', 1),
+            hotkey = interface.header.fake_lag:slider('hotkey hitchance\nhitchance_override.' .. profile_key .. '.hotkey', 0, 100, 0, true, '%', 1),
+            crouch = interface.header.fake_lag:slider('crouch hitchance\nhitchance_override.' .. profile_key .. '.crouch', 0, 100, 0, true, '%', 1),
+            peek_assist = interface.header.fake_lag:slider('peek assist hitchance\nhitchance_override.' .. profile_key .. '.peek_assist', 0, 100, 0, true, '%', 1)
         }
 
         if has_scope then
-            profile.no_scope = interface.header.other:slider('no scope hitchance\nhitchance_override.' .. profile_key .. '.no_scope', 0, 100, 0, true, '%', 1)
-            profile.no_scope_distance = interface.header.other:slider('no scope distance\nhitchance_override.' .. profile_key .. '.no_scope_distance', 5, 3000, 450, true, 'u', 1)
+            profile.no_scope = interface.header.fake_lag:slider('no scope hitchance\nhitchance_override.' .. profile_key .. '.no_scope', 0, 100, 0, true, '%', 1)
+            profile.no_scope_distance = interface.header.fake_lag:slider('no scope distance\nhitchance_override.' .. profile_key .. '.no_scope_distance', 5, 3000, 450, true, 'u', 1)
         end
 
         return profile
@@ -777,9 +779,9 @@ interface = {} do
         noscope_distance_scout = interface.header.general:slider('scout distance', 1, 800, 450, true, ''),
         noscope_distance_awp = interface.header.general:slider('awp distance', 1, 800, 450, true, ''),
         quick_stop = interface.header.general:checkbox('air stop', 0x00),
-        hitchance_override = interface.header.other:checkbox('hitchance override'),
-        hitchance_override_hotkey = interface.header.other:checkbox('override hotkey', 0x00),
-        hitchance_override_weapon = interface.header.other:combobox('weapon', 'autosnipers', 'deagle', 'revolver', 'pistols', 'scout', 'awp'),
+        hitchance_override = interface.header.fake_lag:checkbox('hitchance override'),
+        hitchance_override_hotkey = interface.header.fake_lag:checkbox('override hotkey', 0x00),
+        hitchance_override_weapon = interface.header.fake_lag:combobox('weapon', 'autosnipers', 'deagle', 'revolver', 'pistols', 'scout', 'awp'),
         hitchance_override_profiles = {
             autosnipers = create_hitchance_profile('autosnipers', true),
             deagle = create_hitchance_profile('deagle', false),
@@ -791,7 +793,7 @@ interface = {} do
         dormant_enabled = interface.header.general:checkbox('dormant aimbot', 0x00),
         dormant_hitchance = interface.header.general:slider('hit chance', 50, 100, 50, true, '%', 1, {[50] = 'auto'}),
         dormant_damage = interface.header.general:slider('minimum damage', 1, 100, 7, true, ''),
-        predictive_shot = interface.header.fake_lag:checkbox('\aa5ab55ffpredictive shot (awp only, experimental)')
+        predictive_shot = interface.header.other:checkbox('\aa5ab55ffpredictive shot (awp only, experimental)')
     }
 
     local function create_antiaim_builder_profile(state_key)
@@ -873,23 +875,22 @@ interface = {} do
         -- shared = interface.header.general:checkbox('shared identity (wip)'),
         bomb_timer = interface.header.general:checkbox('bomb timer'),
         logging = interface.header.general:checkbox('logging'),
-        logging_options = interface.header.general:multiselect('options\nvisuals.logging_options', 'console', 'screen'),
-        logging_options_console = interface.header.general:multiselect('console', 'fire', 'hit', 'miss', 'buy', 'aimbot'),
-        logging_options_screen = interface.header.general:multiselect('screen', 'fire', 'hit', 'miss', 'aimbot'),
+        logging_style = interface.header.general:multiselect('style\nvisuals.logging_style', 'console', 'screen'),
+        logging_events = interface.header.general:multiselect('events\nvisuals.logging_events', 'damage dealt', 'damage received', 'shots fired', 'shots missed', 'purchases'),
         logging_slider = interface.header.general:slider('slider', 40, 450, 240),
         aspect_ratio = interface.header.fake_lag:checkbox('override aspect ratio'),
         aspect_ratio_slider = interface.header.fake_lag:slider('value', 0, aspect_ratio.steps, aspect_ratio.steps/2, true, '', 1, aspect_ratio.ratio_table),
         thirdperson = interface.header.fake_lag:checkbox('override thirdperson distance'),
         thirdperson_slider = interface.header.fake_lag:slider('distance', 30, 150, 50, true, ''),
-        sunlight = interface.header.fake_lag:checkbox('override sunlight'),
-        sunlight_x = interface.header.fake_lag:slider('sun x', -180, 180, cvar.cl_csm_rot_x:get_float(), true, '', 0.1),
-        sunlight_y = interface.header.fake_lag:slider('sun y', -180, 180, cvar.cl_csm_rot_y:get_float(), true, '', 0.1),
-        sunlight_z = interface.header.fake_lag:slider('sun z', -180, 180, cvar.cl_csm_rot_z:get_float(), true, '', 0.1),
-        fog = interface.header.fake_lag:checkbox('override fog'),
-        fog_color = interface.header.fake_lag:label('fog color', {180, 200, 255, 255}),
-        fog_start = interface.header.fake_lag:slider('fog start', 0, 2500, 0, true, ''),
-        fog_end = interface.header.fake_lag:slider('fog end', 0, 2500, 1200, true, ''),
-        fog_density = interface.header.fake_lag:slider('fog density', 0, 100, 35, true, '%'),
+        sunlight = interface.header.general:checkbox('override sunlight'),
+        sunlight_x = interface.header.general:slider('sun x', -180, 180, cvar.cl_csm_rot_x:get_float(), true, '', 0.1),
+        sunlight_y = interface.header.general:slider('sun y', -180, 180, cvar.cl_csm_rot_y:get_float(), true, '', 0.1),
+        sunlight_z = interface.header.general:slider('sun z', -180, 180, cvar.cl_csm_rot_z:get_float(), true, '', 0.1),
+        fog = interface.header.general:checkbox('override fog'),
+        fog_color = interface.header.general:label('fog color', {180, 200, 255, 255}),
+        fog_start = interface.header.general:slider('fog start', 0, 2500, 0, true, ''),
+        fog_end = interface.header.general:slider('fog end', 0, 2500, 1200, true, ''),
+        fog_density = interface.header.general:slider('fog density', 0, 100, 35, true, '%'),
         viewmodel = interface.header.fake_lag:checkbox('override viewmodel'),
         viewmodel_fov = interface.header.fake_lag:slider('fov', -90, 90, cvar.viewmodel_fov:get_float()),
         viewmodel_x = interface.header.fake_lag:slider('x', -1000, 1000, cvar.viewmodel_offset_x:get_float(), true, '', 0.01),
@@ -916,6 +917,18 @@ interface = {} do
         predict_box_text_color = interface.header.other:label('text color', {255, 45, 45, 255}),
         predict_box_box_color = interface.header.other:label('box color', {47, 117, 221, 255}),
         predict_box_strength = interface.header.other:slider('prediction strength', 1, 16, 8, true, '', 1)
+    }
+
+    interface.world = {
+        sunlight = interface.visuals.sunlight,
+        sunlight_x = interface.visuals.sunlight_x,
+        sunlight_y = interface.visuals.sunlight_y,
+        sunlight_z = interface.visuals.sunlight_z,
+        fog = interface.visuals.fog,
+        fog_color = interface.visuals.fog_color,
+        fog_start = interface.visuals.fog_start,
+        fog_end = interface.visuals.fog_end,
+        fog_density = interface.visuals.fog_density
     }
 
     interface.config = {
@@ -1036,6 +1049,121 @@ interface = {} do
             config = interface.config
         }
 
+        local world_keys = {
+            sunlight = true,
+            sunlight_x = true,
+            sunlight_y = true,
+            sunlight_z = true,
+            fog = true,
+            fog_color = true,
+            fog_start = true,
+            fog_end = true,
+            fog_density = true
+        }
+
+        local function apply_kas_visibility(element, path)
+            local key = path[#path]
+            local runtime = interface.kas_runtime or {}
+            local enabled = interface.kas.enabled:get()
+            local is_idle = runtime.mode == 'idle'
+            local is_add = runtime.mode == 'add'
+            local is_edit = runtime.mode == 'edit'
+            local has_record = runtime.has_record == true
+            local supported = runtime.selected_supported == true
+
+            if key == 'enabled' then
+                element:set_visible(true)
+                return
+            end
+
+            if not enabled then
+                element:set_visible(false)
+                return
+            end
+
+            if key == 'player_list' or key == 'status' or key == 'database_status' then
+                element:set_visible(true)
+                return
+            end
+
+            if key == 'add_button' then
+                element:set_visible(supported and is_idle and not has_record)
+                return
+            end
+
+            if key == 'edit_button' or key == 'remove_button' then
+                element:set_visible(supported and is_idle and has_record)
+                return
+            end
+
+            if key == 'view_source' then
+                element:set_visible(supported and is_idle and has_record and runtime.show_source == true)
+                return
+            end
+
+            if key == 'view_alias' then
+                element:set_visible(supported and is_idle and has_record and runtime.show_alias == true)
+                return
+            end
+
+            if key == 'view_alternative' then
+                element:set_visible(supported and is_idle and has_record and runtime.show_alternative == true)
+                return
+            end
+
+            if key == 'view_group' then
+                element:set_visible(supported and is_idle and has_record and runtime.show_group == true)
+                return
+            end
+
+            if key == 'view_note' then
+                element:set_visible(supported and is_idle and has_record and runtime.show_note == true)
+                return
+            end
+
+            if key == 'options' then
+                element:set_visible(supported and (is_add or is_edit))
+                return
+            end
+
+            if key == 'source' then
+                element:set_visible(supported and (is_add or is_edit) and runtime.show_source == true)
+                return
+            end
+
+            if key == 'alias' or key == 'alias_label' then
+                element:set_visible(supported and (is_add or is_edit) and runtime.show_alias == true)
+                return
+            end
+
+            if key == 'alternative' or key == 'alternative_label' then
+                element:set_visible(supported and (is_add or is_edit) and runtime.show_alternative == true)
+                return
+            end
+
+            if key == 'group' or key == 'group_label' then
+                element:set_visible(supported and (is_add or is_edit) and runtime.show_group == true)
+                return
+            end
+
+            if key == 'note' or key == 'note_label' then
+                element:set_visible(supported and (is_add or is_edit) and runtime.show_note == true)
+                return
+            end
+
+            if key == 'add_submit' then
+                element:set_visible(supported and is_add)
+                return
+            end
+
+            if key == 'save_submit' then
+                element:set_visible(supported and is_edit)
+                return
+            end
+
+            element:set_visible(false)
+        end
+
         if interface.home.compatibility_mode:get() then
             interface.search:set_visible(false)
 
@@ -1054,133 +1182,20 @@ interface = {} do
         local visibility_config = {
             home = {
                 groups_to_show = { groups.home },
-                groups_to_hide = { groups.kas, groups.aimbot, groups.antiaim, groups.visuals, groups.models, groups.utility, groups.config }
+                groups_to_hide = { groups.aimbot, groups.antiaim, groups.visuals, groups.models, groups.utility, groups.config },
+                element_visibility_logic = function(element, path)
+                    if path[1] == 'kas' then
+                        apply_kas_visibility(element, path)
+                        return
+                    end
+
+                    element:set_visible(true)
+                end
             },
             kas = {
                 groups_to_show = { groups.kas },
                 groups_to_hide = { groups.home, groups.aimbot, groups.antiaim, groups.visuals, groups.models, groups.utility, groups.config },
-                element_visibility_logic = function(element, path)
-                    local key = path[#path]
-                    local enabled = interface.kas.enabled:get()
-                    local runtime = interface.kas_runtime or {}
-                    local is_idle = runtime.mode == 'idle'
-                    local is_add = runtime.mode == 'add'
-                    local is_edit = runtime.mode == 'edit'
-                    local has_record = runtime.has_record == true
-                    local supported = runtime.selected_supported == true
-
-                    if key == 'enabled' then
-                        element:set_visible(true)
-                        return
-                    end
-
-                    if not enabled then
-                        element:set_visible(false)
-                        return
-                    end
-
-                    if key == 'player_list' or key == 'status' or key == 'database_status' then
-                        element:set_visible(true)
-                        return
-                    end
-
-                    if key == 'add_button' then
-                        element:set_visible(supported and is_idle and not has_record)
-                        return
-                    end
-
-                    if key == 'edit_button' or key == 'remove_button' then
-                        element:set_visible(supported and is_idle and has_record)
-                        return
-                    end
-
-                    if key == 'view_source' then
-                        element:set_visible(supported and is_idle and has_record and runtime.show_source == true)
-                        return
-                    end
-
-                    if key == 'view_alias' then
-                        element:set_visible(supported and is_idle and has_record and runtime.show_alias == true)
-                        return
-                    end
-
-                    if key == 'view_alternative' then
-                        element:set_visible(supported and is_idle and has_record and runtime.show_alternative == true)
-                        return
-                    end
-
-                    if key == 'view_group' then
-                        element:set_visible(supported and is_idle and has_record and runtime.show_group == true)
-                        return
-                    end
-
-                    if key == 'view_note' then
-                        element:set_visible(supported and is_idle and has_record and runtime.show_note == true)
-                        return
-                    end
-
-                    if key == 'options' then
-                        element:set_visible(supported and (is_add or is_edit))
-                        return
-                    end
-
-                    if key == 'source' then
-                        element:set_visible(supported and (is_add or is_edit) and runtime.show_source == true)
-                        return
-                    end
-
-                    if key == 'alias' then
-                        element:set_visible(supported and (is_add or is_edit) and runtime.show_alias == true)
-                        return
-                    end
-
-                    if key == 'alias_label' then
-                        element:set_visible(supported and (is_add or is_edit) and runtime.show_alias == true)
-                        return
-                    end
-
-                    if key == 'alternative' then
-                        element:set_visible(supported and (is_add or is_edit) and runtime.show_alternative == true)
-                        return
-                    end
-
-                    if key == 'alternative_label' then
-                        element:set_visible(supported and (is_add or is_edit) and runtime.show_alternative == true)
-                        return
-                    end
-
-                    if key == 'group' then
-                        element:set_visible(supported and (is_add or is_edit) and runtime.show_group == true)
-                        return
-                    end
-
-                    if key == 'group_label' then
-                        element:set_visible(supported and (is_add or is_edit) and runtime.show_group == true)
-                        return
-                    end
-
-                    if key == 'note' then
-                        element:set_visible(supported and (is_add or is_edit) and runtime.show_note == true)
-                        return
-                    end
-
-                    if key == 'note_label' then
-                        element:set_visible(supported and (is_add or is_edit) and runtime.show_note == true)
-                        return
-                    end
-
-                    if key == 'add_submit' then
-                        element:set_visible(supported and is_add)
-                        return
-                    end
-
-                    if key == 'save_submit' then
-                        element:set_visible(supported and is_edit)
-                        return
-                    end
-
-                    element:set_visible(false)
-                end
+                element_visibility_logic = apply_kas_visibility
             },
             aimbot = {
                 groups_to_show = { groups.aimbot },
@@ -1409,6 +1424,11 @@ interface = {} do
                         return
                     end
 
+                    if world_keys[key] then
+                        element:set_visible(false)
+                        return
+                    end
+
                     if key == 'crosshair_style' then
                         element:set_visible(interface.visuals.crosshair_indicators:get())
                         return
@@ -1460,31 +1480,9 @@ interface = {} do
                     local visuals_enabled = interface.visuals.enabled_visuals:get()
                     
                     local logging_enabled = visuals_enabled and interface.visuals.logging:get() == true
-                    interface.visuals.logging_options:set_visible(logging_enabled)
+                    interface.visuals.logging_style:set_visible(logging_enabled)
+                    interface.visuals.logging_events:set_visible(logging_enabled)
                     interface.visuals.logging_slider:set_visible(false)
-                    if logging_enabled then
-                        local opts = interface.visuals.logging_options:get()
-                        local console_enabled = false
-                        local screen_enabled = false
-                        if type(opts) == "table" then
-                            for _, v in ipairs(opts) do
-                                if v == "console" then
-                                    console_enabled = true
-                                end
-                                if v == "screen" then
-                                    screen_enabled = true
-                                end
-                            end
-                        elseif type(opts) == "string" then
-                            if opts == "console" then console_enabled = true end
-                            if opts == "screen" then screen_enabled = true end
-                        end
-                        interface.visuals.logging_options_console:set_visible(console_enabled)
-                        interface.visuals.logging_options_screen:set_visible(screen_enabled)
-                    else
-                        interface.visuals.logging_options_console:set_visible(false)
-                        interface.visuals.logging_options_screen:set_visible(false)
-                    end
 
                     local show_aspect = visuals_enabled
                     interface.visuals.aspect_ratio:set_visible(show_aspect)
@@ -1493,21 +1491,6 @@ interface = {} do
                     local show_thirdperson = visuals_enabled
                     interface.visuals.thirdperson:set_visible(show_thirdperson)
                     interface.visuals.thirdperson_slider:set_visible(show_thirdperson and interface.visuals.thirdperson:get())
-
-                    local show_sunlight = visuals_enabled
-                    interface.visuals.sunlight:set_visible(show_sunlight)
-                    local show_sunlight_settings = show_sunlight and interface.visuals.sunlight:get()
-                    interface.visuals.sunlight_x:set_visible(show_sunlight_settings)
-                    interface.visuals.sunlight_y:set_visible(show_sunlight_settings)
-                    interface.visuals.sunlight_z:set_visible(show_sunlight_settings)
-
-                    local show_fog = visuals_enabled
-                    interface.visuals.fog:set_visible(show_fog)
-                    local show_fog_settings = show_fog and interface.visuals.fog:get()
-                    interface.visuals.fog_color:set_visible(show_fog_settings)
-                    interface.visuals.fog_start:set_visible(show_fog_settings)
-                    interface.visuals.fog_end:set_visible(show_fog_settings)
-                    interface.visuals.fog_density:set_visible(show_fog_settings)
 
                     local show_viewmodel = visuals_enabled
                     interface.visuals.viewmodel:set_visible(show_viewmodel)
@@ -1536,6 +1519,36 @@ interface = {} do
                     interface.visuals.predict_box_text_color:set_visible(show_predict_box)
                     interface.visuals.predict_box_box_color:set_visible(show_predict_box)
                     interface.visuals.predict_box_strength:set_visible(show_predict_box)
+                end
+            },
+            world = {
+                groups_to_show = { groups.visuals },
+                groups_to_hide = { groups.home, groups.kas, groups.aimbot, groups.antiaim, groups.models, groups.utility, groups.config },
+                element_visibility_logic = function(element, path)
+                    local key = path[#path]
+                    local visuals_enabled = interface.visuals.enabled_visuals:get()
+
+                    if not world_keys[key] then
+                        element:set_visible(false)
+                        return
+                    end
+
+                    if not visuals_enabled then
+                        element:set_visible(false)
+                        return
+                    end
+
+                    if key == 'sunlight_x' or key == 'sunlight_y' or key == 'sunlight_z' then
+                        element:set_visible(interface.visuals.sunlight:get())
+                        return
+                    end
+
+                    if key == 'fog_color' or key == 'fog_start' or key == 'fog_end' or key == 'fog_density' then
+                        element:set_visible(interface.visuals.fog:get())
+                        return
+                    end
+
+                    element:set_visible(true)
                 end
             },
             utility = {
@@ -5513,7 +5526,7 @@ widgets = {} do
                 return interface.visuals.lc_status:get()
             elseif id == "screen_logging" then
                 if not interface.visuals.logging:get() then return false end
-                local opts = interface.visuals.logging_options:get() or {}
+                local opts = interface.visuals.logging_style:get() or {}
                 return utils.contains(opts, "screen")
             elseif id == "bomb_timer" then
                 return interface.visuals.bomb_timer:get()
@@ -5567,7 +5580,7 @@ widgets = {} do
                 return interface.visuals.damage_indicator:get()
             elseif id == "screen_logging" then
                 if not interface.visuals.logging:get() then return false end
-                local opts = interface.visuals.logging_options:get() or {}
+                local opts = interface.visuals.logging_style:get() or {}
                 return utils.contains(opts, "screen")
             elseif id == "bomb_timer" then
                 return interface.visuals.bomb_timer:get()
@@ -7244,6 +7257,24 @@ logging = {} do
         self.cache = {}
     end
 
+    logging.has_style = function(self, style)
+        local value = interface.visuals.logging_style:get() or {}
+        return utils.multiselect_has(value, style)
+    end
+
+    logging.has_event = function(self, event_name)
+        local value = interface.visuals.logging_events:get() or {}
+        return utils.multiselect_has(value, event_name)
+    end
+
+    logging.should_output = function(self, style, event_name)
+        if not interface.visuals.logging:get() then
+            return false
+        end
+
+        return self:has_style(style) and self:has_event(event_name)
+    end
+
     logging.push_format = function(self, fmt, duration, is_preview, ...)
         self:push(string.format(fmt, ...), duration, is_preview, self:build_segments(fmt, ...))
     end
@@ -7480,14 +7511,8 @@ logging = {} do
 
         resolver.shot_state[e.target] = utils.get_enemy_state(e.target) or resolver.state_cache[e.target] or "unknown"
 
-        if not interface.visuals.logging:get() then return end
-        
-        local logOptions = interface.visuals.logging_options:get()
-        local consoleOptions = interface.visuals.logging_options_console:get()
-        local screenOptions = interface.visuals.logging_options_screen:get()
-        
-        local doConsole = utils.contains(logOptions, "console") and utils.contains(consoleOptions, "fire")
-        local doScreen = utils.contains(logOptions, "screen") and utils.contains(screenOptions, "fire")
+        local doConsole = self:should_output("console", "shots fired")
+        local doScreen = self:should_output("screen", "shots fired")
         if not doConsole and not doScreen then return end
 
         local yawDisplay = (type(desiredYaw) == "number") and (desiredYaw.."°") or (tostring(desiredYaw).."°")
@@ -7504,14 +7529,8 @@ logging = {} do
     logging.handleAimHit = function(self, e)
         if not e then return end
         resolver:record_shot_result(e.target, true, "hit")
-        if not interface.visuals.logging:get() then return end
-        
-        local logOptions = interface.visuals.logging_options:get()
-        local consoleOptions = interface.visuals.logging_options_console:get()
-        local screenOptions = interface.visuals.logging_options_screen:get()
-        
-        local doConsole = utils.contains(logOptions, "console") and utils.contains(consoleOptions, "hit")
-        local doScreen = utils.contains(logOptions, "screen") and utils.contains(screenOptions, "hit")
+        local doConsole = self:should_output("console", "damage dealt")
+        local doScreen = self:should_output("screen", "damage dealt")
         if not doConsole and not doScreen then return end
 
         local playerName = entity.get_player_name(e.target)
@@ -7585,14 +7604,8 @@ logging = {} do
 
     logging.handleNaded = function(self, e)
         if not e then return end
-        if not interface.visuals.logging:get() then return end
-        
-        local logOptions = interface.visuals.logging_options:get()
-        local consoleOptions = interface.visuals.logging_options_console:get()
-        local screenOptions = interface.visuals.logging_options_screen:get()
-        
-        local doConsole = utils.contains(logOptions, "console") and utils.contains(consoleOptions, "hit")
-        local doScreen = utils.contains(logOptions, "screen") and utils.contains(screenOptions, "hit")
+        local doConsole = self:should_output("console", "damage dealt")
+        local doScreen = self:should_output("screen", "damage dealt")
         if not doConsole and not doScreen then return end
 
         local victim = client.userid_to_entindex(e.userid)
@@ -7613,14 +7626,8 @@ logging = {} do
     
     logging.handleKnifed = function(self, e)
         if not e then return end
-        if not interface.visuals.logging:get() then return end
-        
-        local logOptions = interface.visuals.logging_options:get()
-        local consoleOptions = interface.visuals.logging_options_console:get()
-        local screenOptions = interface.visuals.logging_options_screen:get()
-        
-        local doConsole = utils.contains(logOptions, "console") and utils.contains(consoleOptions, "hit")
-        local doScreen = utils.contains(logOptions, "screen") and utils.contains(screenOptions, "hit")
+        local doConsole = self:should_output("console", "damage dealt")
+        local doScreen = self:should_output("screen", "damage dealt")
         if not doConsole and not doScreen then return end
 
         local victim = client.userid_to_entindex(e.userid)
@@ -7638,6 +7645,32 @@ logging = {} do
         end
         
         if doScreen then self:push_format("knifed %s's %s for %d damage (%d left)", nil, false, playerName, hitbox, damage, remainingHealth) end
+    end
+
+    logging.handleDamageTaken = function(self, e)
+        if not e then
+            return
+        end
+
+        local doConsole = self:should_output("console", "damage received")
+        local doScreen = self:should_output("screen", "damage received")
+        if not doConsole and not doScreen then
+            return
+        end
+
+        local attacker = client.userid_to_entindex(e.attacker)
+        local attacker_name = attacker and entity.get_player_name(attacker) or "world"
+        local damage = e.dmg_health or 0
+        local hitbox = self.hitgroup_names[(e.hitgroup or 0) + 1] or "body"
+        local health = entity.get_prop(entity.get_local_player(), "m_iHealth") or 0
+
+        if doConsole then
+            argLog("took %d damage in %s from %s (%d left)", damage, hitbox, attacker_name, health)
+        end
+
+        if doScreen then
+            self:push_format("took %d damage in %s from %s (%d left)", nil, false, damage, hitbox, attacker_name, health)
+        end
     end
 
     logging.handleAimMiss = function(self, e)
@@ -7724,14 +7757,8 @@ logging = {} do
 
         resolver:record_shot_result(e.target, false, reason)
     
-        if not interface.visuals.logging:get() then return end
-        
-        local logOptions = interface.visuals.logging_options:get()
-        local consoleOptions = interface.visuals.logging_options_console:get()
-        local screenOptions = interface.visuals.logging_options_screen:get()
-        
-        local doConsole = utils.contains(logOptions, "console") and utils.contains(consoleOptions, "miss")
-        local doScreen = utils.contains(logOptions, "screen") and utils.contains(screenOptions, "miss")
+        local doConsole = self:should_output("console", "shots missed")
+        local doScreen = self:should_output("screen", "shots missed")
         if not doConsole and not doScreen then return end
     
         local yawStr = (type(desiredYaw) == "number") and (desiredYaw.."°") or (tostring(desiredYaw).."°")
@@ -7764,10 +7791,7 @@ logging = {} do
             ui.set_enabled(logging.logweapon_original, true)
             return 
         end
-        
-        local logOptions = interface.visuals.logging_options:get()
-        local consoleOptions = interface.visuals.logging_options_console:get()
-        local doConsole = utils.contains(logOptions, "console") and utils.contains(consoleOptions, "buy")
+        local doConsole = logging:should_output("console", "purchases")
         
         if doConsole then
             ui.set(logging.logweapon_original, false)
@@ -7779,11 +7803,10 @@ logging = {} do
     
     logging.on_item_purchase = function(e)
         if not interface.visuals.logging:get() then return end
-        local logOptions = interface.visuals.logging_options:get()
-        local consoleOptions = interface.visuals.logging_options_console:get()
-        local doConsole = utils.contains(logOptions, "console") and utils.contains(consoleOptions, "buy")
+        local doConsole = logging:should_output("console", "purchases")
+        local doScreen = logging:should_output("screen", "purchases")
         
-        if not doConsole then return end
+        if not doConsole and not doScreen then return end
         
         local player_idx = client.userid_to_entindex(e.userid)
         if not player_idx or not entity.is_enemy(player_idx) then return end
@@ -7794,25 +7817,17 @@ logging = {} do
         weapon = weapon:gsub("^weapon_", "")
         
         local playerName = entity.get_player_name(player_idx) or "unknown"
-        argLog("%s bought %s", playerName, weapon)
+        if doConsole then
+            argLog("%s bought %s", playerName, weapon)
+        end
+
+        if doScreen then
+            logging:push_format("%s bought %s", nil, false, playerName, weapon)
+        end
     end
     
     logging.on_round_prestart = function(e)
-        if not interface.visuals.logging:get() then return end
-        
-        local logOptions = interface.visuals.logging_options:get()
-        if not utils.contains(logOptions, "console") then return end
-        
-        local game_rules = entity.get_all("CCSGameRulesProxy")[1]
-        if not game_rules then return end
-    
-        local is_warmup = entity.get_prop(game_rules, "m_bWarmupPeriod") == 1
-        
-        if not is_warmup then
-            local rounds_played = entity.get_prop(game_rules, "m_totalRoundsPlayed")
-            client.color_log(255, 255, 255, "\n\0")
-            argLog("round %d", rounds_played + 1)
-        end
+        return
     end
 end
 
@@ -8149,11 +8164,20 @@ local aimHandlers = {
         local victim = client.userid_to_entindex(e.userid)
         local attacker = client.userid_to_entindex(e.attacker)
         local me = entity.get_local_player()
-        
-        if not me or attacker ~= me then
+
+        if not me then
             return
         end
-        
+
+        if victim == me and attacker ~= me then
+            logging:handleDamageTaken(e)
+            return
+        end
+
+        if attacker ~= me then
+            return
+        end
+
         if e.weapon == "hegrenade" then
             logging:handleNaded(e)
             return
@@ -10267,7 +10291,7 @@ local kas = {} do
             notify_known_players()
         end
 
-        if interface.search:get() ~= "kas" then
+        if interface.search:get() ~= "home" then
             return
         end
 
