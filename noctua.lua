@@ -815,6 +815,7 @@ interface = {} do
         profile.delay_from = interface.header.general:slider('delay from\n' .. key_prefix .. '.delay_from', 1, 8, 1, true, 't', 1, {[1] = 'off'})
         profile.delay_to = interface.header.general:slider('delay to\n' .. key_prefix .. '.delay_to', 1, 8, 1, true, 't', 1, {[1] = 'off'})
         profile.invert_chance = interface.header.general:slider('invert chance\n' .. key_prefix .. '.invert_chance', 0, 100, 100, true, '%')
+        profile.force_break_lc = interface.header.general:checkbox('\aa5ab55ffforce break lc\n' .. key_prefix .. '.force_break_lc')
 
         return profile
     end
@@ -3653,7 +3654,7 @@ antiaim = {} do
         extensions.apply_fast_fall(local_player, cmd)
         extensions.apply_fast_ladder(local_player, cmd)
 
-        if extensions.should_force_break_lc(local_player, cmd) then
+        if state.force_break_lc or extensions.should_force_break_lc(local_player, cmd) then
             cmd.force_defensive = true
         end
 
@@ -3907,6 +3908,7 @@ antiaim = {} do
 
         local settings = {
             manual_dir = manual_dir,
+            force_break_lc = profile.force_break_lc:get(),
             yaw_mode = yaw_mode,
             yaw_base = (_G.noctua_runtime.use_active or manual_dir ~= nil) and 'Local view' or 'At targets',
             yaw_offset = _G.noctua_runtime.use_active and mathematic.normalize_yaw(yaw_offset + 180) or yaw_offset,
