@@ -459,6 +459,40 @@ viewmodel = {} do
     end
 end
 
+--@region: sunlight
+sunlight = {} do
+    sunlight.saved_override = cvar.cl_csm_rot_override:get_int()
+    sunlight.saved_x = cvar.cl_csm_rot_x:get_float()
+    sunlight.saved_y = cvar.cl_csm_rot_y:get_float()
+    sunlight.saved_z = cvar.cl_csm_rot_z:get_float()
+    sunlight.active = false
+
+    sunlight.restore = function()
+        if not sunlight.active then
+            return
+        end
+
+        cvar.cl_csm_rot_override:set_int(sunlight.saved_override)
+        cvar.cl_csm_rot_x:set_raw_float(sunlight.saved_x)
+        cvar.cl_csm_rot_y:set_raw_float(sunlight.saved_y)
+        cvar.cl_csm_rot_z:set_raw_float(sunlight.saved_z)
+        sunlight.active = false
+    end
+
+    sunlight.setup = function()
+        if not (interface.visuals.enabled_visuals:get() and interface.visuals.sunlight:get()) then
+            sunlight.restore()
+            return
+        end
+
+        cvar.cl_csm_rot_override:set_int(1)
+        cvar.cl_csm_rot_x:set_raw_float(interface.visuals.sunlight_x:get())
+        cvar.cl_csm_rot_y:set_raw_float(interface.visuals.sunlight_y:get())
+        cvar.cl_csm_rot_z:set_raw_float(interface.visuals.sunlight_z:get())
+        sunlight.active = true
+    end
+end
+
 --@region: zoom animation
 zoom_animation = {} do
     zoom_animation.lerp_storage = {}
@@ -552,12 +586,15 @@ client.set_event_callback('paint', function()
     aspect_ratio.setup()
     thirdperson.setup()
     viewmodel.setup()
+    sunlight.setup()
 end)
 
 client.set_event_callback('shutdown', function()
     if viewmodel.hand_override_active then
         cvar.cl_righthand:set_int(viewmodel.saved_righthand)
     end
+
+    sunlight.restore()
 end)
 
 client.set_event_callback('override_view', function(ctx)
@@ -716,6 +753,10 @@ interface = {} do
         aspect_ratio_slider = interface.header.fake_lag:slider('value', 0, aspect_ratio.steps, aspect_ratio.steps/2, true, '', 1, aspect_ratio.ratio_table),
         thirdperson = interface.header.fake_lag:checkbox('override thirdperson distance'),
         thirdperson_slider = interface.header.fake_lag:slider('distance', 30, 150, 50, true, ''),
+        sunlight = interface.header.fake_lag:checkbox('override sunlight'),
+        sunlight_x = interface.header.fake_lag:slider('sun x', -180, 180, cvar.cl_csm_rot_x:get_float(), true, '', 0.1),
+        sunlight_y = interface.header.fake_lag:slider('sun y', -180, 180, cvar.cl_csm_rot_y:get_float(), true, '', 0.1),
+        sunlight_z = interface.header.fake_lag:slider('sun z', -180, 180, cvar.cl_csm_rot_z:get_float(), true, '', 0.1),
         viewmodel = interface.header.fake_lag:checkbox('override viewmodel'),
         viewmodel_fov = interface.header.fake_lag:slider('fov', -90, 90, cvar.viewmodel_fov:get_float()),
         viewmodel_x = interface.header.fake_lag:slider('x', -1000, 1000, cvar.viewmodel_offset_x:get_float(), true, '', 0.01),
@@ -1184,6 +1225,13 @@ interface = {} do
                     local show_thirdperson = visuals_enabled
                     interface.visuals.thirdperson:set_visible(show_thirdperson)
                     interface.visuals.thirdperson_slider:set_visible(show_thirdperson and interface.visuals.thirdperson:get())
+
+                    local show_sunlight = visuals_enabled
+                    interface.visuals.sunlight:set_visible(show_sunlight)
+                    local show_sunlight_settings = show_sunlight and interface.visuals.sunlight:get()
+                    interface.visuals.sunlight_x:set_visible(show_sunlight_settings)
+                    interface.visuals.sunlight_y:set_visible(show_sunlight_settings)
+                    interface.visuals.sunlight_z:set_visible(show_sunlight_settings)
 
                     local show_viewmodel = visuals_enabled
                     interface.visuals.viewmodel:set_visible(show_viewmodel)
