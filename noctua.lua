@@ -1553,24 +1553,6 @@ interface = {} do
                             return
                         end
 
-                        if key == "animation_breakers_leg" then
-                            local breakers_enabled = interface.utility.animation_breakers:get() or {}
-                            element:set_visible(utils.contains(breakers_enabled, "modify legs"))
-                            return
-                        end
-
-                        if key == "animation_breakers_leg_slider" then
-                            local breakers_enabled = interface.utility.animation_breakers:get() or {}
-                            element:set_visible(utils.contains(breakers_enabled, "modify legs") and interface.utility.animation_breakers_leg:get() == "jitter")
-                            return
-                        end
-
-                        if key == "animation_breakers_static_legs_air" then
-                            local breakers_enabled = interface.utility.animation_breakers:get() or {}
-                            element:set_visible(utils.contains(breakers_enabled, "modify legs"))
-                            return
-                        end
-
                         if key == "body_lean_amount" then
                             local breakers_enabled = interface.utility.animation_breakers:get() or {}
                             element:set_visible(utils.contains(breakers_enabled, "body lean"))
@@ -10703,6 +10685,150 @@ reveal_enemy_team_chat = {} do
 
     ref:set_callback(reveal_enemy_team_chat.setup)
     reveal_enemy_team_chat.setup()
+end
+--@endregion
+
+--@region: animation breakers
+local animation_breakers = {} do
+    local leg_ref = reference.antiaim.other.leg_movement
+
+    function animation_breakers.is_enabled(option)
+        return utils.multiselect_has(interface.utility.animation_breakers:get(), option)
+    end
+
+    function animation_breakers.is_active()
+        local value = interface.utility.animation_breakers:get()
+
+        if type(value) == 'string' then
+            return value ~= ''
+        end
+
+        return type(value) == 'table' and #value > 0
+    end
+
+    function animation_breakers.reset()
+        leg_ref:override()
+    end
+
+    function animation_breakers.apply_leg_override(mode)
+        if mode == nil then
+            leg_ref:override()
+            return
+        end
+
+        leg_ref:override(mode)
+    end
+
+    function animation_breakers.run()
+        local local_player = entity.get_local_player()
+        if not local_player or not entity.is_alive(local_player) or not animation_breakers.is_active() then
+            animation_breakers.reset()
+            return
+        end
+
+        local animstate = player.get_animstate(local_player)
+        local animlayers = player.get_animlayer(local_player)
+        if animstate == nil or animlayers == nil then
+            animation_breakers.reset()
+            return
+        end
+
+        local flags = entity.get_prop(local_player, 'm_fFlags') or 0
+        local move_type = entity.get_prop(local_player, 'm_MoveType') or 0
+        local duck_amount = entity.get_prop(local_player, 'm_flDuckAmount') or 0
+        local _, _, _, speed = player.get_velocity(local_player)
+        local on_ground = bit.band(flags, 1) == 1
+        local leg_override = nil
+
+        if animation_breakers.is_enabled('on ground') and on_ground then
+            local ground_mode = interface.utility.on_ground_options:get()
+
+            if ground_mode == 'frozen' then
+                entity.set_prop(local_player, 'm_flPoseParameter', 1, 0)
+                leg_override = 'Always slide'
+            elseif ground_mode == 'walking' then
+                entity.set_prop(local_player, 'm_flPoseParameter', 0.5, 7)
+                leg_override = 'Never slide'
+            elseif ground_mode == 'jitter' and speed > 5 then
+                entity.set_prop(local_player, 'm_flPoseParameter', client.random_float(0.65, 1), 0)
+                leg_override = 'Always slide'
+            elseif ground_mode == 'sliding' and speed > 5 then
+                entity.set_prop(local_player, 'm_flPoseParameter', 0, 9)
+                entity.set_prop(local_player, 'm_flPoseParameter', 0, 10)
+                leg_override = 'Never slide'
+            elseif ground_mode == 'star' then
+                leg_override = globals.tickcount() % 3 == 0 and 'Off' or 'Always slide'
+            end
+        end
+
+        if animation_breakers.is_enabled('on air') and not on_ground and move_type ~= 8 and move_type ~= 9 then
+            local air_mode = interface.utility.on_air_options:get()
+
+            if air_mode == 'frozen' then
+                entity.set_prop(local_player, 'm_flPoseParameter', 1, 6)
+            elseif air_mode == 'walking' then
+                local cycle = globals.realtime() * 0.7 % 2
+                if cycle > 1 then
+                    cycle = 1 - (cycle - 1)
+                end
+
+                animlayers[6].m_weight = 1
+                animlayers[6].m_cycle = cycle
+            elseif air_mode == 'kinguru' then
+                entity.set_prop(local_player, 'm_flPoseParameter', math.random(0, 10) / 10, 6)
+            end
+        end
+
+        if animation_breakers.is_enabled('sliding slow motion') and ui.get(ui_references.slow_motion[1]) and ui.get(ui_references.slow_motion[2]) then
+            entity.set_prop(local_player, 'm_flPoseParameter', 0, 9)
+        end
+
+        if animation_breakers.is_enabled('sliding crouch') and duck_amount == 1 then
+            entity.set_prop(local_player, 'm_flPoseParameter', 0, 8)
+        end
+
+        if animation_breakers.is_enabled('zero on land') and animstate.bHitGroundAnimation and on_ground then
+            entity.set_prop(local_player, 'm_flPoseParameter', 0.5, 12)
+        end
+
+        if animation_breakers.is_enabled('earthquake') then
+            animlayers[12].m_weight = client.random_float(-0.3, 0.75)
+        end
+
+        if animation_breakers.is_enabled('body lean') then
+            animstate.flLeanAmount = interface.utility.body_lean_amount:get() / 100
+        end
+
+        animation_breakers.apply_leg_override(leg_override)
+    end
+
+    function animation_breakers.on_setup_command(cmd)
+        local local_player = entity.get_local_player()
+        if not local_player or not entity.is_alive(local_player) or not animation_breakers.is_active() then
+            return
+        end
+
+        if animation_breakers.is_enabled('quick peek legs') and ui.get(ui_references.quickpeek[1]) and ui.get(ui_references.quickpeek[2]) then
+            local move_type = entity.get_prop(local_player, 'm_MoveType') or 0
+            if move_type == 2 then
+                cmd.buttons = bit.band(cmd.buttons, bit.bnot(8))
+                cmd.buttons = bit.band(cmd.buttons, bit.bnot(16))
+                cmd.buttons = bit.band(cmd.buttons, bit.bnot(512))
+                cmd.buttons = bit.band(cmd.buttons, bit.bnot(1024))
+            end
+        end
+
+        if animation_breakers.is_enabled('on ground') and interface.utility.on_ground_options:get() == 'star' then
+            local flags = entity.get_prop(local_player, 'm_fFlags') or 0
+            if bit.band(flags, 1) == 1 then
+                animation_breakers.apply_leg_override(cmd.command_number % 3 == 0 and 'Off' or 'Always slide')
+            end
+        end
+    end
+
+    client.set_event_callback('pre_render', animation_breakers.run)
+    client.set_event_callback('setup_command', animation_breakers.on_setup_command)
+    client.set_event_callback('shutdown', animation_breakers.reset)
 end
 --@endregion
 
