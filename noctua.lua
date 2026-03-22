@@ -768,6 +768,7 @@ interface = {} do
         buybot_utility = interface.header.general:multiselect('utility', 'kevlar', 'helmet', 'defuser', 'taser', 'he', 'molotov', 'smoke'),
         auto_r8 = interface.header.general:checkbox('automatic !r8'),
         unlock_fd_speed = interface.header.general:checkbox('unlock fd speed'),
+        sync_aimbot_hotkeys = interface.header.general:checkbox('sync aimbot hotkeys'),
         unlock_fd_speed_scale = interface.header.general:slider('scale', 15, 150, 150, true, '', 1, {
             [15] = 'slow',
             [80] = 'default',
@@ -2112,6 +2113,7 @@ end
 local ui_references = {
     weapon_type = ui.reference('rage', 'weapon type', 'weapon type'),
     enabled = { ui.reference('rage', 'aimbot', 'enabled') },
+    multipoint = { ui.reference('rage', 'aimbot', 'multi-point') },
     stop = { ui.reference('rage', 'aimbot', 'quick stop') },
     minimum_damage = ui.reference('rage', 'aimbot', 'minimum damage'),
     minimum_damage_override = { ui.reference('rage', 'aimbot', 'minimum damage override') },
@@ -2141,6 +2143,92 @@ utils = {} do
             end
         end
         return false
+    end
+
+    utils.index_of = function(tbl, val)
+        for index = 1, #tbl do
+            if tbl[index] == val then
+                return index
+            end
+        end
+    end
+
+    do
+        local ui_callback_lookup = { }
+        utils.ui_callback_set = function(item, callback, force_call)
+            local list = ui_callback_lookup[item]
+
+            if list == nil then
+                list = { }
+                ui_callback_lookup[item] = list
+
+                ui.set_callback(item, function()
+                    for i = 1, #list do
+                        list[i](item)
+                    end
+                end)
+            end
+
+            if utils.index_of(list, callback) == nil then
+                table.insert(list, callback)
+            end
+
+            if force_call then
+                callback(item)
+            end
+
+            return item
+        end
+
+        utils.ui_callback_unset = function(item, callback)
+            local list = ui_callback_lookup[item]
+            if list == nil then
+                return item
+            end
+
+            local index = utils.index_of(list, callback)
+            if index ~= nil then
+                table.remove(list, index)
+            end
+
+            return item
+        end
+    end
+
+    utils.toggle_ui_callback = function(item, callback, enabled, force_call)
+        if enabled then
+            return utils.ui_callback_set(item, callback, force_call)
+        end
+
+        return utils.ui_callback_unset(item, callback)
+    end
+
+    utils.ragebot_weapon_types = {
+        'Global',
+        'G3SG1 / SCAR-20',
+        'SSG 08',
+        'AWP',
+        'R8 Revolver',
+        'Desert Eagle',
+        'Pistol',
+        'Zeus',
+        'Rifle',
+        'Shotgun',
+        'SMG',
+        'Machine gun'
+    }
+
+    utils.sync_hotkey_to_weapon_types = function(item, weapon_type_reference, weapon_types)
+        local _, mode, key = ui.get(item)
+        local current_weapon_type = ui.get(weapon_type_reference)
+        local list = weapon_types or utils.ragebot_weapon_types
+
+        for i = 1, #list do
+            ui.set(weapon_type_reference, list[i])
+            ui.set(item, mode, key or 0)
+        end
+
+        ui.set(weapon_type_reference, current_weapon_type)
     end
 
     utils.new_vec = function(x, y, z)
@@ -3337,6 +3425,43 @@ client.set_event_callback('setup_command', function(cmd)
 end)
 
 client.set_event_callback('shutdown', allow_force_recharge.shutdown)
+--@endregion
+
+--@region: sync aimbot hotkeys
+sync_aimbot_hotkeys = {} do
+    sync_aimbot_hotkeys.items = {
+        ui_references.enabled[2],
+        ui_references.multipoint[2],
+        ui_references.minimum_damage_override[2],
+        ui_references.safe_point,
+        ui_references.body_aim,
+        ui_references.stop[2],
+        ui_references.double_tap[2]
+    }
+
+    sync_aimbot_hotkeys.on_hotkey = function(item)
+        utils.sync_hotkey_to_weapon_types(item, ui_references.weapon_type)
+    end
+
+    sync_aimbot_hotkeys.update = function()
+        local enabled = interface.utility.sync_aimbot_hotkeys:get()
+
+        for i = 1, #sync_aimbot_hotkeys.items do
+            utils.toggle_ui_callback(sync_aimbot_hotkeys.items[i], sync_aimbot_hotkeys.on_hotkey, enabled)
+        end
+    end
+
+    sync_aimbot_hotkeys.shutdown = function()
+        for i = 1, #sync_aimbot_hotkeys.items do
+            utils.ui_callback_unset(sync_aimbot_hotkeys.items[i], sync_aimbot_hotkeys.on_hotkey)
+        end
+    end
+
+    interface.utility.sync_aimbot_hotkeys:set_callback(sync_aimbot_hotkeys.update)
+
+    sync_aimbot_hotkeys.update()
+    client.set_event_callback('shutdown', sync_aimbot_hotkeys.shutdown)
+end
 --@endregion
 
 --@region: quick stop in air
@@ -11507,6 +11632,7 @@ art = {} do
     - Added dormant aimbot
     - Added opposite knife hand
     - Added auto r8
+    - Added sync aimbot hotkeys
     - Added unlock fd speed
     - Added animated text blur for damage indicator
     - Reworked miss reasons
