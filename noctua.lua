@@ -493,6 +493,56 @@ sunlight = {} do
     end
 end
 
+--@region: fog
+fog = {} do
+    fog.saved = {
+        override = client.get_cvar("fog_override") or "0",
+        enable = client.get_cvar("fog_enable") or "0",
+        skybox = client.get_cvar("fog_enableskybox") or "0",
+        color = client.get_cvar("fog_color") or "255 255 255",
+        start = client.get_cvar("fog_start") or "0",
+        ["end"] = client.get_cvar("fog_end") or "0",
+        density = client.get_cvar("fog_maxdensity") or "1"
+    }
+    fog.active = false
+
+    fog.restore = function()
+        if not fog.active then
+            return
+        end
+
+        reference.visuals.effects.remove_fog:override()
+        client.set_cvar("fog_override", fog.saved.override)
+        client.set_cvar("fog_enable", fog.saved.enable)
+        client.set_cvar("fog_enableskybox", fog.saved.skybox)
+        client.set_cvar("fog_color", fog.saved.color)
+        client.set_cvar("fog_start", fog.saved.start)
+        client.set_cvar("fog_end", fog.saved["end"])
+        client.set_cvar("fog_maxdensity", fog.saved.density)
+        fog.active = false
+    end
+
+    fog.setup = function()
+        if not (interface.visuals.enabled_visuals:get() and interface.visuals.fog:get()) then
+            fog.restore()
+            return
+        end
+
+        local color_value = interface.visuals.fog_color.color.value
+        local density = interface.visuals.fog_density:get() * 0.01
+
+        reference.visuals.effects.remove_fog:override(false)
+        client.set_cvar("fog_override", 1)
+        client.set_cvar("fog_enable", 1)
+        client.set_cvar("fog_enableskybox", 1)
+        client.set_cvar("fog_color", string.format("%d %d %d", color_value[1], color_value[2], color_value[3]))
+        client.set_cvar("fog_start", interface.visuals.fog_start:get())
+        client.set_cvar("fog_end", interface.visuals.fog_end:get())
+        client.set_cvar("fog_maxdensity", density)
+        fog.active = true
+    end
+end
+
 --@region: zoom animation
 zoom_animation = {} do
     zoom_animation.lerp_storage = {}
@@ -587,6 +637,7 @@ client.set_event_callback('paint', function()
     thirdperson.setup()
     viewmodel.setup()
     sunlight.setup()
+    fog.setup()
 end)
 
 client.set_event_callback('shutdown', function()
@@ -595,6 +646,7 @@ client.set_event_callback('shutdown', function()
     end
 
     sunlight.restore()
+    fog.restore()
 end)
 
 client.set_event_callback('override_view', function(ctx)
@@ -757,6 +809,11 @@ interface = {} do
         sunlight_x = interface.header.fake_lag:slider('sun x', -180, 180, cvar.cl_csm_rot_x:get_float(), true, '', 0.1),
         sunlight_y = interface.header.fake_lag:slider('sun y', -180, 180, cvar.cl_csm_rot_y:get_float(), true, '', 0.1),
         sunlight_z = interface.header.fake_lag:slider('sun z', -180, 180, cvar.cl_csm_rot_z:get_float(), true, '', 0.1),
+        fog = interface.header.fake_lag:checkbox('override fog'),
+        fog_color = interface.header.fake_lag:label('fog color', {180, 200, 255, 255}),
+        fog_start = interface.header.fake_lag:slider('fog start', 0, 2500, 0, true, ''),
+        fog_end = interface.header.fake_lag:slider('fog end', 0, 2500, 1200, true, ''),
+        fog_density = interface.header.fake_lag:slider('fog density', 0, 100, 35, true, '%'),
         viewmodel = interface.header.fake_lag:checkbox('override viewmodel'),
         viewmodel_fov = interface.header.fake_lag:slider('fov', -90, 90, cvar.viewmodel_fov:get_float()),
         viewmodel_x = interface.header.fake_lag:slider('x', -1000, 1000, cvar.viewmodel_offset_x:get_float(), true, '', 0.01),
@@ -1233,6 +1290,14 @@ interface = {} do
                     interface.visuals.sunlight_y:set_visible(show_sunlight_settings)
                     interface.visuals.sunlight_z:set_visible(show_sunlight_settings)
 
+                    local show_fog = visuals_enabled
+                    interface.visuals.fog:set_visible(show_fog)
+                    local show_fog_settings = show_fog and interface.visuals.fog:get()
+                    interface.visuals.fog_color:set_visible(show_fog_settings)
+                    interface.visuals.fog_start:set_visible(show_fog_settings)
+                    interface.visuals.fog_end:set_visible(show_fog_settings)
+                    interface.visuals.fog_density:set_visible(show_fog_settings)
+
                     local show_viewmodel = visuals_enabled
                     interface.visuals.viewmodel:set_visible(show_viewmodel)
                     local show_viewmodel_settings = show_viewmodel and interface.visuals.viewmodel:get()
@@ -1567,6 +1632,7 @@ reference = {} do
         effects = {
             thirdperson = { pui.reference('visuals', 'effects', 'force third person (alive)') },
             scope = pui.reference('visuals', 'effects', 'remove scope overlay'),
+            remove_fog = pui.reference('visuals', 'effects', 'remove fog'),
             dpi = pui.reference('misc', 'settings', 'dpi scale'),
             clrmenu = pui.reference('misc', 'settings', 'menu color'),
             output = pui.reference('misc', 'miscellaneous', 'draw console output'),
