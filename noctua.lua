@@ -328,6 +328,7 @@ aspect_ratio = {} do
     aspect_ratio.steps = 200
     aspect_ratio.ratio_table = {}
     aspect_ratio.current_ratio = 1
+    aspect_ratio.last_set_ratio = nil
 
     aspect_ratio.gcd = function(m, n)
         while m ~= 0 do
@@ -363,7 +364,10 @@ aspect_ratio = {} do
         if multiplier == 1 then
             aspectratio_value = 0
         end
-        client.set_cvar("r_aspectratio", tonumber(aspectratio_value))
+        if aspect_ratio.last_set_ratio == nil or math.abs(aspectratio_value - aspect_ratio.last_set_ratio) > 0.001 then
+            client.set_cvar("r_aspectratio", aspectratio_value)
+            aspect_ratio.last_set_ratio = aspectratio_value
+        end
     end
 
     aspect_ratio.setup = function()
@@ -398,6 +402,10 @@ viewmodel = {} do
     viewmodel.current_x = cvar.viewmodel_offset_x:get_float()
     viewmodel.current_y = cvar.viewmodel_offset_y:get_float()
     viewmodel.current_z = cvar.viewmodel_offset_z:get_float()
+    viewmodel.last_set_fov = nil
+    viewmodel.last_set_x = nil
+    viewmodel.last_set_y = nil
+    viewmodel.last_set_z = nil
     viewmodel.hand_override_active = false
     viewmodel.saved_righthand = cvar.cl_righthand:get_int()
 
@@ -411,6 +419,10 @@ viewmodel = {} do
     viewmodel.setup = function()
         if not (interface.visuals.enabled_visuals:get() and interface.visuals.viewmodel:get()) then
             restore_knife_hand()
+            viewmodel.last_set_fov = nil
+            viewmodel.last_set_x = nil
+            viewmodel.last_set_y = nil
+            viewmodel.last_set_z = nil
             return
         end
 
@@ -424,10 +436,22 @@ viewmodel = {} do
         viewmodel.current_y = mathematic.lerp(viewmodel.current_y, target_y, globals.frametime() * 8)
         viewmodel.current_z = mathematic.lerp(viewmodel.current_z, target_z, globals.frametime() * 8)
 
-        cvar.viewmodel_fov:set_raw_float(viewmodel.current_fov)
-        cvar.viewmodel_offset_x:set_raw_float(viewmodel.current_x)
-        cvar.viewmodel_offset_y:set_raw_float(viewmodel.current_y)
-        cvar.viewmodel_offset_z:set_raw_float(viewmodel.current_z)
+        if viewmodel.last_set_fov == nil or math.abs(viewmodel.current_fov - viewmodel.last_set_fov) > 0.001 then
+            cvar.viewmodel_fov:set_raw_float(viewmodel.current_fov)
+            viewmodel.last_set_fov = viewmodel.current_fov
+        end
+        if viewmodel.last_set_x == nil or math.abs(viewmodel.current_x - viewmodel.last_set_x) > 0.001 then
+            cvar.viewmodel_offset_x:set_raw_float(viewmodel.current_x)
+            viewmodel.last_set_x = viewmodel.current_x
+        end
+        if viewmodel.last_set_y == nil or math.abs(viewmodel.current_y - viewmodel.last_set_y) > 0.001 then
+            cvar.viewmodel_offset_y:set_raw_float(viewmodel.current_y)
+            viewmodel.last_set_y = viewmodel.current_y
+        end
+        if viewmodel.last_set_z == nil or math.abs(viewmodel.current_z - viewmodel.last_set_z) > 0.001 then
+            cvar.viewmodel_offset_z:set_raw_float(viewmodel.current_z)
+            viewmodel.last_set_z = viewmodel.current_z
+        end
 
         if not interface.visuals.opposite_knife_hand:get() then
             restore_knife_hand()
@@ -465,6 +489,10 @@ sunlight = {} do
     sunlight.saved_x = cvar.cl_csm_rot_x:get_float()
     sunlight.saved_y = cvar.cl_csm_rot_y:get_float()
     sunlight.saved_z = cvar.cl_csm_rot_z:get_float()
+    sunlight.last_set_override = nil
+    sunlight.last_set_x = nil
+    sunlight.last_set_y = nil
+    sunlight.last_set_z = nil
     sunlight.active = false
 
     sunlight.restore = function()
@@ -476,6 +504,10 @@ sunlight = {} do
         cvar.cl_csm_rot_x:set_raw_float(sunlight.saved_x)
         cvar.cl_csm_rot_y:set_raw_float(sunlight.saved_y)
         cvar.cl_csm_rot_z:set_raw_float(sunlight.saved_z)
+        sunlight.last_set_override = sunlight.saved_override
+        sunlight.last_set_x = sunlight.saved_x
+        sunlight.last_set_y = sunlight.saved_y
+        sunlight.last_set_z = sunlight.saved_z
         sunlight.active = false
     end
 
@@ -485,10 +517,27 @@ sunlight = {} do
             return
         end
 
-        cvar.cl_csm_rot_override:set_int(1)
-        cvar.cl_csm_rot_x:set_raw_float(interface.visuals.sunlight_x:get())
-        cvar.cl_csm_rot_y:set_raw_float(interface.visuals.sunlight_y:get())
-        cvar.cl_csm_rot_z:set_raw_float(interface.visuals.sunlight_z:get())
+        if sunlight.last_set_override ~= 1 then
+            cvar.cl_csm_rot_override:set_int(1)
+            sunlight.last_set_override = 1
+        end
+
+        local sun_x = interface.visuals.sunlight_x:get()
+        local sun_y = interface.visuals.sunlight_y:get()
+        local sun_z = interface.visuals.sunlight_z:get()
+
+        if sunlight.last_set_x == nil or math.abs(sun_x - sunlight.last_set_x) > 0.001 then
+            cvar.cl_csm_rot_x:set_raw_float(sun_x)
+            sunlight.last_set_x = sun_x
+        end
+        if sunlight.last_set_y == nil or math.abs(sun_y - sunlight.last_set_y) > 0.001 then
+            cvar.cl_csm_rot_y:set_raw_float(sun_y)
+            sunlight.last_set_y = sun_y
+        end
+        if sunlight.last_set_z == nil or math.abs(sun_z - sunlight.last_set_z) > 0.001 then
+            cvar.cl_csm_rot_z:set_raw_float(sun_z)
+            sunlight.last_set_z = sun_z
+        end
         sunlight.active = true
     end
 end
@@ -504,7 +553,24 @@ fog = {} do
         ["end"] = client.get_cvar("fog_end") or "0",
         density = client.get_cvar("fog_maxdensity") or "1"
     }
+    fog.last_set = {
+        override = nil,
+        enable = nil,
+        skybox = nil,
+        color = nil,
+        start = nil,
+        ["end"] = nil,
+        density = nil
+    }
     fog.active = false
+
+    local function set_fog_cvar(name, value)
+        local value_str = tostring(value)
+        if fog.last_set[name] ~= value_str then
+            client.set_cvar(name, value)
+            fog.last_set[name] = value_str
+        end
+    end
 
     fog.restore = function()
         if not fog.active then
@@ -519,6 +585,13 @@ fog = {} do
         client.set_cvar("fog_start", fog.saved.start)
         client.set_cvar("fog_end", fog.saved["end"])
         client.set_cvar("fog_maxdensity", fog.saved.density)
+        fog.last_set.override = tostring(fog.saved.override)
+        fog.last_set.enable = tostring(fog.saved.enable)
+        fog.last_set.skybox = tostring(fog.saved.skybox)
+        fog.last_set.color = tostring(fog.saved.color)
+        fog.last_set.start = tostring(fog.saved.start)
+        fog.last_set["end"] = tostring(fog.saved["end"])
+        fog.last_set.density = tostring(fog.saved.density)
         fog.active = false
     end
 
@@ -532,13 +605,13 @@ fog = {} do
         local density = interface.visuals.fog_density:get() * 0.01
 
         reference.visuals.effects.remove_fog:override(false)
-        client.set_cvar("fog_override", 1)
-        client.set_cvar("fog_enable", 1)
-        client.set_cvar("fog_enableskybox", 1)
-        client.set_cvar("fog_color", string.format("%d %d %d", color_value[1], color_value[2], color_value[3]))
-        client.set_cvar("fog_start", interface.visuals.fog_start:get())
-        client.set_cvar("fog_end", interface.visuals.fog_end:get())
-        client.set_cvar("fog_maxdensity", density)
+        set_fog_cvar("fog_override", 1)
+        set_fog_cvar("fog_enable", 1)
+        set_fog_cvar("fog_enableskybox", 1)
+        set_fog_cvar("fog_color", string.format("%d %d %d", color_value[1], color_value[2], color_value[3]))
+        set_fog_cvar("fog_start", interface.visuals.fog_start:get())
+        set_fog_cvar("fog_end", interface.visuals.fog_end:get())
+        set_fog_cvar("fog_maxdensity", density)
         fog.active = true
     end
 end
@@ -1214,13 +1287,14 @@ interface = {} do
                         local profile_key = path[2]
                         local profile_field = path[3]
                         local profile = interface.aimbot.hitchance_override_profiles[profile_key]
-                        local options = profile and profile.options:get() or {}
                         local is_selected_weapon = (profile_key == selected_hitchance_weapon)
 
                         if not (hitchance_enabled and is_selected_weapon and profile) then
                             element:set_visible(false)
                             return
                         end
+
+                        local options = profile.options:get()
 
                         if profile_field == 'options' then
                             element:set_visible(true)
@@ -1317,12 +1391,13 @@ interface = {} do
                         local state_key = path[3]
                         local field = path[4]
                         local profile = interface.antiaim.builder.profiles[state_key]
-                        local profile_enabled = state_key == 'default' or (profile ~= nil and profile.enabled ~= nil and profile.enabled:get())
 
                         if state_key ~= selected_state or profile == nil then
                             element:set_visible(false)
                             return
                         end
+
+                        local profile_enabled = state_key == 'default' or profile.enabled:get()
 
                         if field == 'enabled' then
                             element:set_visible(state_key ~= 'default')
@@ -1590,8 +1665,8 @@ interface = {} do
 
                         if key == "streamer_mode_delete" then
                             local enabled = interface.utility.streamer_mode:get()
-                            local sel = streamer_images and streamer_images.get_selected_name and streamer_images.get_selected_name() or nil
-                            local is_custom = sel ~= nil and (not streamer_images.is_builtin or not streamer_images.is_builtin(sel))
+                            local sel = streamer_images.get_selected_name()
+                            local is_custom = sel ~= nil and not streamer_images.is_builtin(sel)
                             element:set_visible(enabled and is_custom)
                             return
                         end
@@ -2405,7 +2480,10 @@ player = {} do
     end
 
     player.distance3d = function(x1, y1, z1, x2, y2, z2)
-        return math.sqrt((x2 - x1)^2 + (y2 - y1)^2 + (z2 - z1)^2)
+        local dx = x2 - x1
+        local dy = y2 - y1
+        local dz = z2 - z1
+        return math.sqrt(dx * dx + dy * dy + dz * dz)
     end
 
     player.get_kd = function(player)
@@ -5010,8 +5088,8 @@ quick_stop_in_air = {} do
             return 
         end
 
-        local origin = entity.get_prop(lp, "m_vecOrigin")
-        local lpvec = vector(origin)
+        local ox, oy, oz = entity.get_prop(lp, "m_vecOrigin")
+        local lpvec = { x = ox, y = oy, z = oz }
 
         local weapon = entity.get_player_weapon(lp)
         local weap_class = entity.get_classname(weapon)
@@ -5020,8 +5098,8 @@ quick_stop_in_air = {} do
             return 
         end
 
-        local vecvelocity = { entity.get_prop(lp, "m_vecVelocity") }
-        local check_vel = vecvelocity[3] > 0
+        local _, _, vz = entity.get_prop(lp, "m_vecVelocity")
+        local check_vel = vz > 0
 
         local flags = entity.get_prop(lp, "m_fFlags")
         local jumpcheck = bit.band(flags, 1) == 0 
@@ -5457,10 +5535,7 @@ widgets = {} do
 
     local function get_menu_rect()
         local mx, my = ui.menu_position()
-        local mw, mh = 0, 0
-        if ui.menu_size then
-            mw, mh = ui.menu_size()
-        end
+        local mw, mh = ui.menu_size()
         return mx or 0, my or 0, mw or 0, mh or 0
     end
 
@@ -5479,8 +5554,8 @@ widgets = {} do
         local cx, cy = compute_center(id)
         local content_w, content_h = 100, 40
         if def.get_size then
-            local ok, w, h = pcall(def.get_size, st)
-            if ok and type(w) == "number" and type(h) == "number" then
+            local w, h = def.get_size(st)
+            if type(w) == "number" and type(h) == "number" then
                 content_w, content_h = w, h
             end
         end
@@ -6074,7 +6149,7 @@ visuals = {} do
         e.state = 'idle'
         e.state_until = 0
         e.blink_until = 0
-        e.next_blink = (globals.realtime and globals.realtime()) or 0
+        e.next_blink = globals.realtime()
         e.next_blink = e.next_blink + 1.5
         e.next_variation = e.next_blink + 0.5
         e.cached_idle_face = '( ^-^ )'
@@ -6140,7 +6215,7 @@ visuals = {} do
                 e.blink_until = now + 0.18
                 e.next_blink = now + 2.0 + math.random()
             end
-            if now >= (e.next_variation or 0) and now >= (e.state_until or 0) then
+            if now >= e.next_variation and now >= e.state_until then
                 e.cached_idle_face = e.gen_face('idle', false)
                 e.next_variation = now + 2.0 + math.random() * 2.0
             end
@@ -6151,7 +6226,7 @@ visuals = {} do
             if e.override_face and now < (e.override_until or 0) then
                 return e.override_face
             end
-            if now < (e.state_until or 0) then
+            if now < e.state_until then
                 if (e._last_state_sample or 0) + 0.6 <= now then
                     e.cached_state_face = e.gen_face(e.state, false)
                     e._last_state_sample = now
@@ -6220,7 +6295,7 @@ visuals = {} do
         local fadeSpeedSetting = fadeSpeedBase * frameTime
         local local_player = entity.get_local_player()
         local health = local_player and entity.get_prop(local_player, "m_iHealth") or 0
-        local style = (interface.visuals.crosshair_style and interface.visuals.crosshair_style:get()) or 'default'
+        local style = interface.visuals.crosshair_style:get()
         local isEmoji = (style == 'emoji')
         local isCenteredStyle = (style == 'center') or isEmoji
 
@@ -6380,7 +6455,7 @@ visuals = {} do
         self.element_positions.dmg = mathematic.lerp(self.element_positions.dmg, self.element_target_positions.dmg, position_lerp_t)
         self.element_positions.hc = mathematic.lerp(self.element_positions.hc, self.element_target_positions.hc, position_lerp_t)
 
-        local animate_on_scope = (interface.visuals.crosshair_animate_scope and interface.visuals.crosshair_animate_scope:get()) or false
+        local animate_on_scope = interface.visuals.crosshair_animate_scope:get()
         local use_scope_lerp = ((style == 'center') or isEmoji) and animate_on_scope
 
         self._last_scoped = self._last_scoped or false
@@ -6436,7 +6511,7 @@ visuals = {} do
                 return mathematic.lerp(from, to, scope_pos)
             end
 
-            local title_text = isEmoji and ((visuals.emoji and visuals.emoji.get_face and visuals.emoji.get_face()) or ":)") or (self.animated_text.base or "noctua")
+            local title_text = isEmoji and visuals.emoji.get_face() or (self.animated_text.base or "noctua")
             x_title = lerp_x_centered(title_text, true)
             x_state  = lerp_x_centered(state, false)
             x_rapid  = lerp_x_centered("rapid", false)
@@ -6449,10 +6524,10 @@ visuals = {} do
         local state_r, state_g, state_b = 255, 255, 255
 
         if isEmoji then
-            if visuals.emoji and visuals.emoji.update_idle then visuals.emoji.update_idle() end
-            local face = (visuals.emoji and visuals.emoji.get_face and visuals.emoji.get_face()) or ':)'
+            visuals.emoji.update_idle()
+            local face = visuals.emoji.get_face()
             local emoji_y = self.element_positions.noctua
-            if visuals.emoji and visuals.emoji.state_until and globals.realtime() < (visuals.emoji.state_until or 0) then
+            if globals.realtime() < visuals.emoji.state_until then
                 local st = visuals.emoji.state
                 local t = globals.realtime()
                 if st == 'happy' then
@@ -6589,7 +6664,7 @@ visuals = {} do
     function visuals:_update_lc_state()
         local st = self._lc_state
         local dt_on = ui.get(ui_references.double_tap[1]) and ui.get(ui_references.double_tap[2])
-        local charged = tonumber(antiaim_funcs.get_tickbase_charged and antiaim_funcs.get_tickbase_charged() or 0) or 0
+        local charged = antiaim_funcs.get_tickbase_charged()
         if dt_on then
             st._last_shift = charged
         end
@@ -6597,7 +6672,7 @@ visuals = {} do
             local ticks = tonumber(st._last_shift or 0) or 0
             st.last_ticks = ticks
             st.last_label, st.last_color = _lc_classify(ticks)
-            st.last_update = (globals.realtime and globals.realtime()) or 0
+            st.last_update = globals.realtime()
         end
         st.dt_prev = dt_on
         self._lc_state = st
@@ -6618,7 +6693,7 @@ visuals = {} do
         end
         
         local st = self._lc_state or {}
-        local now = (globals.realtime and globals.realtime()) or 0
+        local now = globals.realtime()
         local elapsed = now - (st.last_update or 0)
         local target_alpha = 0
         
@@ -6874,15 +6949,9 @@ confetti = {} do
     confetti.ensure_seed = function(self)
         if self._seeded then return end
         local a = tonumber((tostring({}):match("0x(%x+)") or "0"), 16) or 0
-        local b = math.floor((globals.realtime() or 0) * 1000)
-        local c = (globals.tickcount and globals.tickcount()) or 0
-        local seed = a
-        if bit and bit.bxor then
-            seed = bit.bxor(seed, b)
-            seed = bit.bxor(seed, c)
-        else
-            seed = (seed + b + c) % 2147483647
-        end
+        local b = math.floor(globals.realtime() * 1000)
+        local c = globals.tickcount()
+        local seed = bit.bxor(bit.bxor(a, b), c)
         if seed == 0 then seed = 1 end
         math.randomseed(seed)
         math.random(); math.random(); math.random()
@@ -7069,7 +7138,8 @@ confetti = {} do
             p.lifetime = p.lifetime - 1 * dt
             
             if p.lifetime <= 0 or p.y > sh + 200 or p.x < -200 or p.x > sw + 200 then
-                table.remove(self.particles, i)
+                self.particles[i] = self.particles[#self.particles]
+                self.particles[#self.particles] = nil
             end
         end
         if #self.particles == 0 then
@@ -7144,7 +7214,8 @@ local snow = {} do
             end
     
             if p.y > sh + 10 or p.alpha <= 0 then
-                table.remove(self.particles, i)
+                self.particles[i] = self.particles[#self.particles]
+                self.particles[#self.particles] = nil
             end
         end
     end
@@ -7997,11 +8068,7 @@ widgets.register({
         local unix_time = client.unix_time()
         local day_of_week = math.floor(unix_time / 86400 + 4) % 7 + 1
         local day_str = weekdays[day_of_week]
-        local lat_ms = 0
-        if client.latency then
-            local ok, v = pcall(client.latency)
-            if ok and type(v) == 'number' then lat_ms = math.floor(v * 1000 + 0.5) end
-        end
+        local lat_ms = math.floor(client.latency() * 1000 + 0.5)
         local num_str = tostring(lat_ms)
         local gap = 12
         local gap_small = 6
@@ -8041,11 +8108,7 @@ widgets.register({
         local unix_time = client.unix_time()
         local day_of_week = math.floor(unix_time / 86400 + 4) % 7 + 1
         local day_str = weekdays[day_of_week]
-        local lat_ms = 0
-        if client.latency then
-            local ok, v = pcall(client.latency)
-            if ok and type(v) == 'number' then lat_ms = math.floor(v * 1000 + 0.5) end
-        end
+        local lat_ms = math.floor(client.latency() * 1000 + 0.5)
         local num_str = tostring(lat_ms)
         local gap = 12
         local gap_small = 6
@@ -8171,25 +8234,11 @@ client.set_event_callback('post_config_load', function()
     streamer_mode.load_db()
 end)
 
-if interface.utility.streamer_mode then
-    interface.utility.streamer_mode:set_callback(function()
-        if interface.utility.streamer_mode:get() then
-            for _, img in ipairs(streamer_mode.active_images) do
-                local widget_id = "streamer_mode_img_" .. img.id
-                if widgets.items[widget_id] then
-                    widgets.items[widget_id] = nil
-                    for idx, order_id in ipairs(widgets.order) do
-                        if order_id == widget_id then
-                            table.remove(widgets.order, idx)
-                            break
-                        end
-                    end
-                    widgets.state[widget_id] = nil
-                end
-            end
-        else
-            for _, img in ipairs(streamer_mode.active_images) do
-                local widget_id = "streamer_mode_img_" .. img.id
+interface.utility.streamer_mode:set_callback(function()
+    if interface.utility.streamer_mode:get() then
+        for _, img in ipairs(streamer_mode.active_images) do
+            local widget_id = "streamer_mode_img_" .. img.id
+            if widgets.items[widget_id] then
                 widgets.items[widget_id] = nil
                 for idx, order_id in ipairs(widgets.order) do
                     if order_id == widget_id then
@@ -8200,8 +8249,20 @@ if interface.utility.streamer_mode then
                 widgets.state[widget_id] = nil
             end
         end
-    end)
-end
+    else
+        for _, img in ipairs(streamer_mode.active_images) do
+            local widget_id = "streamer_mode_img_" .. img.id
+            widgets.items[widget_id] = nil
+            for idx, order_id in ipairs(widgets.order) do
+                if order_id == widget_id then
+                    table.remove(widgets.order, idx)
+                    break
+                end
+            end
+            widgets.state[widget_id] = nil
+        end
+    end
+end)
 
 
 client.set_event_callback("shutdown", function()
@@ -8666,18 +8727,12 @@ configs = {} do
     end
 
     local function b64_encode(str)
-        if ok_base64 and base64 and base64.encode then
-            local ok, out = pcall(base64.encode, str)
-            if ok and out then return out end
-        end
-        return b64_encode_fallback(str)
+        return base64.encode(str)
     end
 
     local function b64_decode(str)
-        if ok_base64 and base64 and base64.decode then
-            local ok, out = pcall(base64.decode, str)
-            if ok and out then return out end
-        end
+        local ok, out = pcall(base64.decode, str)
+        if ok and out then return out end
         return b64_decode_fallback(str)
     end
 
@@ -8730,23 +8785,27 @@ configs = {} do
 
             local got_ok, v1, v2, v3 = false, nil, nil, nil
             if element.get then
-                local ok, a, b, c = pcall(function() return element:get() end)
-                if ok then got_ok, v1, v2, v3 = true, a, b, c end
+                local a, b, c = element:get()
+                got_ok, v1, v2, v3 = true, a, b, c
             end
 
             if got_ok and v1 ~= nil then
                 out.values[key] = v1
             end
 
-            local okc, cv = pcall(function() return element.color.value end)
-            if okc and type(cv) == 'table' then
-                out.values[key .. '.color'] = cv
+            if element.color then
+                local cv = element.color.value
+                if type(cv) == 'table' then
+                    out.values[key .. '.color'] = cv
+                end
             end
 
-            local okh, _active, mode_idx, keycode = pcall(function() return element.hotkey:get() end)
-            if okh then
-                out.values[key .. '.hotkey_mode_idx'] = mode_idx
-                if keycode ~= nil then out.values[key .. '.hotkey_keycode'] = keycode end
+            if element.hotkey then
+                local _active, mode_idx, keycode = element.hotkey:get()
+                if mode_idx ~= nil then
+                    out.values[key .. '.hotkey_mode_idx'] = mode_idx
+                    if keycode ~= nil then out.values[key .. '.hotkey_keycode'] = keycode end
+                end
             elseif got_ok and type(v1) == 'boolean' and type(v2) == 'number' then
                 out.values[key .. '.hotkey_mode_idx'] = v2
                 if v3 ~= nil then out.values[key .. '.hotkey_keycode'] = v3 end
@@ -8777,8 +8836,8 @@ configs = {} do
             local key = prefix .. '.' .. table.concat(path, '.')
 
             local val = values[key]
-            if val ~= nil then
-                pcall(function() element:set(val) end)
+            if val ~= nil and element.set then
+                element:set(val)
             end
             if element.color and type(val) == 'table' then element.color.value = val end
 
@@ -8794,9 +8853,9 @@ configs = {} do
 
             if element.hotkey and mode_str then
                 if type(keycode) == 'number' then
-                    pcall(function() element.hotkey:set(mode_str, keycode) end)
+                    element.hotkey:set(mode_str, keycode)
                 else
-                    pcall(function() element.hotkey:set(mode_str) end)
+                    element.hotkey:set(mode_str)
                 end
             elseif element.set and mode_str then
                 if type(keycode) == 'number' then
@@ -8897,12 +8956,7 @@ configs = {} do
             return
         end
         local payload = configs.collect(config_name)
-        local ok, json_str = pcall(json.encode, payload, false)
-        if not ok or not json_str then
-            logMessage('noctua · config', '', 'failed to encode config!')
-            client.exec("play ui/menu_invalid.wav")
-            return
-        end
+        local json_str = json.encode(payload, false)
         -- print(json_str)
         local enc = b64_encode(json_str)
         clipboard.set('noctua:' .. enc)
@@ -8926,12 +8980,7 @@ configs = {} do
             client.exec("play ui/menu_invalid.wav")
             return
         end
-        local ok_json, data = pcall(json.decode, decoded)
-        if not ok_json then
-            logMessage('noctua · config', '', 'json decode error: ' .. tostring(data))
-            client.exec("play ui/menu_invalid.wav")
-            return
-        end
+        local data = json.decode(decoded)
         if type(data) ~= 'table' or not data.values then
             logMessage('noctua · config', '', 'failed to parse config! (invalid structure)')
             client.exec("play ui/menu_invalid.wav")
@@ -9304,8 +9353,8 @@ streamer_images = {} do
         for _, item in ipairs(all) do
             table.insert(streamer_images.current_items, item)
         end
-        pcall(function() interface.utility.streamer_mode_select:update(streamer_images.current_items) end)
-        pcall(function() interface.utility.streamer_mode_select:set(0) end)
+        interface.utility.streamer_mode_select:update(streamer_images.current_items)
+        interface.utility.streamer_mode_select:set(0)
     end
 
     function streamer_images.get_selected_name()
@@ -9784,10 +9833,7 @@ local kas = {} do
 
     local function save_database()
         kas.state.database.last_update = current_timestamp_utc()
-        local ok, encoded = pcall(json.encode, kas.state.database, true)
-        if not ok or not encoded then
-            return nil, "failed to encode kas database"
-        end
+        local encoded = json.encode(kas.state.database, true)
 
         writefile(kas.file_path, encoded)
         return true
@@ -9804,8 +9850,8 @@ local kas = {} do
             return
         end
 
-        local ok, data = pcall(json.decode, body)
-        if not ok or type(data) ~= "table" or type(data.players) ~= "table" then
+        local data = json.decode(body)
+        if type(data) ~= "table" or type(data.players) ~= "table" then
             kas.state.database = default_database()
             push_kas("failed to parse kas.json, file was left untouched", 4)
             return
@@ -10137,7 +10183,7 @@ local kas = {} do
             end
         end
 
-        pcall(function() interface.kas.player_list:set(selected_index) end)
+        interface.kas.player_list:set(selected_index)
 
         if previous_mode ~= "idle" and selected_found then
             return
@@ -10408,7 +10454,7 @@ stats = {} do
     end
 
     local function is_bot(idx)
-        local info = utils.get_player_info and utils.get_player_info(idx)
+        local info = utils.get_player_info(idx)
         return info and info.__fakeplayer == true
     end
 
@@ -10506,7 +10552,7 @@ stats = {} do
 end
 
 stats.init()
-client.set_event_callback('shutdown', function() pcall(function() stats.save_db() end) end)
+client.set_event_callback('shutdown', function() stats.save_db() end)
 --@endregion
 
 --@region: clantag
@@ -10661,8 +10707,8 @@ killsay = {} do
             return false
         end
 
-        local ok, decoded = pcall(json.decode, body)
-        if ok and killsay.apply_phrases(decoded, target_table, phrase_type, "file") then
+        local decoded = json.decode(body)
+        if killsay.apply_phrases(decoded, target_table, phrase_type, "file") then
             return true
         end
 
@@ -10679,8 +10725,8 @@ killsay = {} do
 
         http.get(url, function(success, response)
             if success and response and response.status == 200 then
-                local ok, decoded = pcall(json.decode, response.body)
-                if ok and killsay.apply_phrases(decoded, target_table, phrase_type, "url") then
+                local decoded = json.decode(response.body)
+                if killsay.apply_phrases(decoded, target_table, phrase_type, "url") then
                     return
                 end
 
@@ -11067,6 +11113,15 @@ streamer_mode = {} do
     streamer_mode.was_m1_down = false
     streamer_mode.is_interacting = false
 
+    local function image_in_use(name)
+        for _, img in ipairs(streamer_mode.active_images) do
+            if img.name == name then
+                return true
+            end
+        end
+        return false
+    end
+
     local function clamp(v, mn, mx)
         if v < mn then return mn end
         if v > mx then return mx end
@@ -11079,10 +11134,7 @@ streamer_mode = {} do
 
     local function get_menu_rect()
         local mx, my = ui.menu_position()
-        local mw, mh = 0, 0
-        if ui.menu_size then
-            mw, mh = ui.menu_size()
-        end
+        local mw, mh = ui.menu_size()
         return mx or 0, my or 0, mw or 0, mh or 0
     end
 
@@ -11094,7 +11146,7 @@ streamer_mode = {} do
             
             local valid_images = {}
             for _, img in ipairs(streamer_mode.active_images) do
-                local url = streamer_images and streamer_images.get_url and streamer_images.get_url(img.name)
+                local url = streamer_images.get_url(img.name)
                 if url and url ~= "" then
                     table.insert(valid_images, img)
                     streamer_mode.load_image_data(img.name)
@@ -11118,16 +11170,16 @@ streamer_mode = {} do
             return
         end
 
-        local url = streamer_images and streamer_images.get_url and streamer_images.get_url(name)
+        local url = streamer_images.get_url(name)
         if not url or url == "" then return end
 
         streamer_mode.loading[name] = true
 
         http.get(url, function(success, response)
-            if success and response and response.status == 200 then
+            if success and response and response.status == 200 and image_in_use(name) then
                 streamer_mode.image_cache[name] = images.load(response.body)
             end
-            streamer_mode.loading[name] = false
+            streamer_mode.loading[name] = nil
         end)
     end
 
@@ -11157,7 +11209,12 @@ streamer_mode = {} do
     function streamer_mode.remove_image(id)
         for i, img in ipairs(streamer_mode.active_images) do
             if img.id == id then
+                local name = img.name
                 table.remove(streamer_mode.active_images, i)
+                if not image_in_use(name) then
+                    streamer_mode.image_cache[name] = nil
+                    streamer_mode.loading[name] = nil
+                end
                 streamer_mode.save_db()
                 client.exec("play ui/beepclear.wav")
                 return
@@ -11360,9 +11417,7 @@ client.set_event_callback('console_input', function(str)
         return true
     end
 
-    if streamer_images and streamer_images.add then
-        streamer_images.add(name, url)
-    end
+    streamer_images.add(name, url)
 
     return true
 end)
@@ -12288,7 +12343,7 @@ summary = {} do
     end
 
     local function is_bot(idx)
-        local info = utils.get_player_info and utils.get_player_info(idx)
+        local info = utils.get_player_info(idx)
         return info and info.__fakeplayer == true
     end
 
@@ -12618,12 +12673,10 @@ bomb_timer = {} do
             bomb_timer.state.defuse_time = globals.curtime()
         end)
 
-        if interface.visuals.bomb_timer then
-            bomb_timer.handle_ui()
-            local timer_id = interface.visuals.bomb_timer.ref or interface.visuals.bomb_timer.id
-            if timer_id then
-                ui.set_callback(timer_id, bomb_timer.handle_ui)
-            end
+        bomb_timer.handle_ui()
+        local timer_id = interface.visuals.bomb_timer.ref or interface.visuals.bomb_timer.id
+        if timer_id then
+            ui.set_callback(timer_id, bomb_timer.handle_ui)
         end
 
         widgets.register({
