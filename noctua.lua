@@ -1019,7 +1019,7 @@ interface = {} do
         -- item_anti_crash = interface.header.general:checkbox('\aa5ab55ffchat filter (crash & noise)'),
         clantag = interface.header.general:checkbox('clantag'),
         killsay = interface.header.general:checkbox('balabolka'),
-        killsay_modes = interface.header.general:multiselect('modes', 'on kill', 'on death'),
+        killsay_modes = interface.header.general:multiselect('modes', 'on kill', 'on death', 'on revenge'),
         hitsound = interface.header.general:checkbox('hitsound'),
         buybot = interface.header.general:checkbox('buybot'),
         buybot_primary = interface.header.general:combobox('primary weapon', '-', 'autosnipers', 'scout', 'awp'),
@@ -10875,17 +10875,24 @@ end
 killsay = {} do
     killsay.last_say_time = 0
     killsay.cooldown = 2.0
+    killsay.round_token = 0
+    killsay.pending_revenge = nil
+    killsay.revenge_targets = {}
     killsay.last_phrase_index = {
         kill = nil,
-        death = nil
+        death = nil,
+        revenge = nil
     }
 
     killsay.kill_json_url = "https://raw.githubusercontent.com/wraithsoul/noctua-gs/refs/heads/main/phrases/kill.json"
     killsay.death_json_url = "https://raw.githubusercontent.com/wraithsoul/noctua-gs/refs/heads/main/phrases/death.json"
+    killsay.revenge_json_url = "https://raw.githubusercontent.com/wraithsoul/noctua-gs/refs/heads/main/phrases/revenge.json"
     killsay.kill_json_path = "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Counter-Strike Global Offensive\\phrases\\kill.json"
     killsay.death_json_path = "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Counter-Strike Global Offensive\\phrases\\death.json"
+    killsay.revenge_json_path = "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Counter-Strike Global Offensive\\phrases\\revenge.json"
     killsay.multi_phrases_kill = {}
     killsay.multi_phrases_death = {}
+    killsay.multi_phrases_revenge = {}
 
     local function killsay_log(fmt, ...)
         argLogWithPrefix("noctua · killsay", fmt, ...)
@@ -10979,11 +10986,12 @@ killsay = {} do
     killsay.load_all_phrases = function()
         killsay.load_phrases_from_url(killsay.kill_json_url, killsay.kill_json_path, killsay.multi_phrases_kill, "kill")
         killsay.load_phrases_from_url(killsay.death_json_url, killsay.death_json_path, killsay.multi_phrases_death, "death")
+        killsay.load_phrases_from_url(killsay.revenge_json_url, killsay.revenge_json_path, killsay.multi_phrases_revenge, "revenge")
     end
 
     killsay.get_random_phrase = function(phrase_type)
-        local phrases_table = phrase_type == "death" and killsay.multi_phrases_death or killsay.multi_phrases_kill
-        if #phrases_table == 0 then return { "Error: No phrases loaded" } end
+        local phrases_table = phrase_type == "death" and killsay.multi_phrases_death or phrase_type == "revenge" and killsay.multi_phrases_revenge or killsay.multi_phrases_kill
+        if #phrases_table == 0 then return nil end
 
         local index = select_phrase_index(phrase_type, #phrases_table)
         killsay.last_phrase_index[phrase_type] = index
@@ -11002,11 +11010,13 @@ killsay = {} do
     killsay.send_phrases = function(phrase_type)
         local initial_delay = client.random_float(0.95, 1.45)
         
-        if phrase_type == "death" then
+        if phrase_type == "death" or phrase_type == "revenge" then
             initial_delay = initial_delay + client.random_float(0.55, 0.95)
         end
         
         local phrases = killsay.get_random_phrase(phrase_type)
+        if not phrases then return end
+
         local phrase_count = #phrases
         
         local cumulative_delay = initial_delay
@@ -11018,7 +11028,7 @@ killsay = {} do
                 min_between_delay = client.random_float(0.90, 1.35)
             end
             
-            if phrase_type == "death" then
+            if phrase_type == "death" or phrase_type == "revenge" then
                 min_between_delay = min_between_delay + client.random_float(0.30, 0.60)
             end
             
@@ -11033,42 +11043,92 @@ killsay = {} do
             end)
         end
     end
+
+    killsay.reset_revenge = function()
+        killsay.round_token = killsay.round_token + 1
+        killsay.pending_revenge = nil
+        killsay.revenge_targets = {}
+    end
+
+    killsay.try_send = function(phrase_type, now)
+        if now - killsay.last_say_time < killsay.cooldown then
+            return false
+        end
+
+        killsay.last_say_time = now
+        killsay.send_phrases(phrase_type)
+        return true
+    end
+
+    killsay.queue_revenge = function(now)
+        local delay = killsay.cooldown - (now - killsay.last_say_time)
+        if delay <= 0 then
+            return killsay.try_send("revenge", now)
+        end
+
+        local round_token = killsay.round_token
+        killsay.pending_revenge = round_token
+
+        client.delay_call(delay, function()
+            if killsay.pending_revenge ~= round_token or killsay.round_token ~= round_token then
+                return
+            end
+
+            killsay.pending_revenge = nil
+
+            if not interface.utility.killsay:get() or not utils.contains(interface.utility.killsay_modes:get(), "on revenge") then
+                return
+            end
+
+            killsay.last_say_time = globals.realtime()
+            killsay.send_phrases("revenge")
+        end)
+
+        return true
+    end
     
     killsay.on_player_death = function(e)
         if not interface.utility.killsay:get() then return end
 
         local local_player = entity.get_local_player()
-        if not local_player or not entity.is_alive(local_player) and e.userid ~= local_player then return end
+        if not local_player then return end
 
         local attacker = client.userid_to_entindex(e.attacker)
         local victim = client.userid_to_entindex(e.userid)
         
-        if not attacker or not victim then return end
+        if not victim then return end
 
         local modes = interface.utility.killsay_modes:get()
         local now = globals.realtime()
-
-        if now - killsay.last_say_time < killsay.cooldown then
-            return
-        end
         
         if attacker == local_player and victim ~= local_player then
             if utils.contains(modes, "on kill") then
                 local kd = player.get_kd(local_player)
                 -- if kd ~= nil and kd <= 1.0 then return end
                 
-                killsay.last_say_time = now 
-                killsay.send_phrases("kill")
+                killsay.try_send("kill", now)
             end
-        elseif victim == local_player and attacker ~= local_player then
+        elseif victim == local_player and attacker and attacker ~= local_player then
+            if utils.contains(modes, "on revenge") then
+                killsay.revenge_targets[attacker] = true
+            end
+
             if utils.contains(modes, "on death") then
-                killsay.last_say_time = now
-                killsay.send_phrases("death")
+                killsay.try_send("death", now)
+            end
+        elseif attacker ~= local_player and killsay.revenge_targets[victim] and utils.contains(modes, "on revenge") then
+            killsay.revenge_targets[victim] = nil
+
+            if not killsay.try_send("revenge", now) then
+                killsay.queue_revenge(now)
             end
         end
     end
     
     client.set_event_callback("player_death", killsay.on_player_death)
+    client.set_event_callback("round_start", killsay.reset_revenge)
+    client.set_event_callback("game_newmap", killsay.reset_revenge)
+    client.set_event_callback("cs_game_disconnected", killsay.reset_revenge)
     killsay.load_all_phrases()
 end
 --@endregion
