@@ -7221,19 +7221,12 @@ logging = {} do
 
     logging.push = function(self, text, duration, is_preview, segments)
         duration = duration or 3
-        for i = 1, #self.animatedMessages do
-            if not self.animatedMessages[i].targetY then
-                self.animatedMessages[i].targetY = self.animatedMessages[i].currentY or 0
-            end
-            self.animatedMessages[i].targetY = self.animatedMessages[i].targetY + 15
-        end
-        
         table.insert(self.animatedMessages, 1, {
             text = text,
             segments = segments,
             duration = duration,
             startTime = globals.realtime(),
-            currentY = 0,
+            currentY = -10,
             targetY = 0,
             removing = false,
             alpha = 0,
@@ -7243,7 +7236,7 @@ logging = {} do
 
         if #self.animatedMessages > 10 then
             self.animatedMessages[#self.animatedMessages].removing = true
-            self.animatedMessages[#self.animatedMessages].targetY = self.animatedMessages[#self.animatedMessages].targetY + 15
+            self.animatedMessages[#self.animatedMessages].remove_started_at = globals.realtime()
         end
     end
 
@@ -7392,6 +7385,15 @@ logging = {} do
                 draw_x = draw_x + (seg_w or 0)
             end
         end
+
+        local layout_y = 0
+        for i = 1, #self.animatedMessages do
+            local msg = self.animatedMessages[i]
+            if msg.preview or not msg.removing then
+                msg.targetY = layout_y
+                layout_y = layout_y + line_spacing
+            end
+        end
         
         for i = 1, #self.animatedMessages do
             local msg = self.animatedMessages[i]
@@ -7429,33 +7431,52 @@ logging = {} do
                 end
             else
                 local holdTime = math.max(0, tonumber(msg.duration) or 3)
-                local totalDuration = animTime + holdTime + animTime
+                local totalDuration = animTime + holdTime
 
-                if (elapsedTime >= totalDuration and not msg.removing) or msg.removing then
-                    if not msg.removing then
-                        msg.removing = true
-                        msg.targetY = msg.targetY + 15
+                if not msg.removing and elapsedTime >= totalDuration then
+                    msg.removing = true
+                    msg.remove_started_at = currentTime
+                end
+
+                if msg.removing then
+                    local remove_elapsed = currentTime - (msg.remove_started_at or currentTime)
+                    local progress = math.max(0, math.min(remove_elapsed / animTime, 1))
+                    local easedProgress = easeInOutQuad(progress)
+                    local targetAlpha = 255 * (1 - easedProgress)
+                    local targetOffset = 10 * easedProgress
+
+                    msg.alpha = mathematic.lerp(msg.alpha, targetAlpha, globals.frametime() * 12)
+                    msg.offset = mathematic.lerp(msg.offset, targetOffset, globals.frametime() * 12)
+
+                    local alpha = msg.alpha or 0
+                    local y = math.floor(base_y + msg.currentY + msg.offset + 0.5)
+                    local blur_amount = math.min(46, math.abs(msg.offset or 0) * 5.5 + math.abs(255 - alpha) * 0.08)
+
+                    if msg.segments and #msg.segments > 0 then
+                        render_segments(base_x, y, alpha, msg.segments, blur_amount > 1 and math.min(alpha * 0.22, blur_amount * 0.75) or 0)
+                    else
+                        if blur_amount > 1 then
+                            local blur_alpha = math.min(alpha * 0.22, blur_amount * 0.75)
+                            renderer.text(base_x - 1, y, 255, 255, 255, blur_alpha, "c", 0, msg.text)
+                            renderer.text(base_x + 1, y, 255, 255, 255, blur_alpha, "c", 0, msg.text)
+                            renderer.text(base_x, y - 1, 255, 255, 255, blur_alpha * 0.65, "c", 0, msg.text)
+                            renderer.text(base_x, y + 1, 255, 255, 255, blur_alpha * 0.65, "c", 0, msg.text)
+                        end
+                        renderer.text(base_x, y, 255, 255, 255, alpha, "c", 0, msg.text)
                     end
-                    
-                    if math.abs(msg.currentY - msg.targetY) < 0.1 then
+
+                    if progress >= 0.98 and alpha <= 2 then
                         table.remove(self.animatedMessages, i)
                         break
                     end
                 else
                     local targetAlpha, targetOffset
                     if elapsedTime < animTime then
-                        local progress = elapsedTime / animTime
-                        local easedProgress = easeInOutQuad(progress)
-                        targetAlpha = 255
-                        targetOffset = 0
-                    elseif elapsedTime < (animTime + holdTime) then
                         targetAlpha = 255
                         targetOffset = 0
                     else
-                        local progress = (elapsedTime - animTime - holdTime) / animTime
-                        local easedProgress = easeInOutQuad(progress)
-                        targetAlpha = 255 * (1 - easedProgress)
-                        targetOffset = 10 * easedProgress
+                        targetAlpha = 255
+                        targetOffset = 0
                     end
             
                     msg.alpha = mathematic.lerp(msg.alpha, targetAlpha, globals.frametime() * 10)
@@ -7662,7 +7683,15 @@ logging = {} do
         local attacker_name = attacker and entity.get_player_name(attacker) or "world"
         local damage = e.dmg_health or 0
         local hitbox = self.hitgroup_names[(e.hitgroup or 0) + 1] or "body"
-        local health = entity.get_prop(entity.get_local_player(), "m_iHealth") or 0
+        local health = e.health
+
+        if hitbox == "generic" then
+            hitbox = "body"
+        end
+
+        if health == nil then
+            health = entity.get_prop(entity.get_local_player(), "m_iHealth") or 0
+        end
 
         if doConsole then
             argLog("took %d damage in %s from %s (%d left)", damage, hitbox, attacker_name, health)
@@ -7804,9 +7833,8 @@ logging = {} do
     logging.on_item_purchase = function(e)
         if not interface.visuals.logging:get() then return end
         local doConsole = logging:should_output("console", "purchases")
-        local doScreen = logging:should_output("screen", "purchases")
         
-        if not doConsole and not doScreen then return end
+        if not doConsole then return end
         
         local player_idx = client.userid_to_entindex(e.userid)
         if not player_idx or not entity.is_enemy(player_idx) then return end
@@ -7820,14 +7848,31 @@ logging = {} do
         if doConsole then
             argLog("%s bought %s", playerName, weapon)
         end
-
-        if doScreen then
-            logging:push_format("%s bought %s", nil, false, playerName, weapon)
-        end
     end
     
     logging.on_round_prestart = function(e)
-        return
+        if not interface.visuals.logging:get() then
+            return
+        end
+
+        if not logging:has_style("console") then
+            return
+        end
+
+        local game_rules = entity.get_all("CCSGameRulesProxy")[1]
+        if not game_rules then
+            return
+        end
+
+        if entity.get_prop(game_rules, "m_bWarmupPeriod") == 1 then
+            return
+        end
+
+        local rounds_played = entity.get_prop(game_rules, "m_totalRoundsPlayed") or 0
+        logging.round_counter = rounds_played + 1
+
+        client.color_log(255, 255, 255, "\n\0")
+        argLog("round %d", logging.round_counter)
     end
 end
 
@@ -7865,18 +7910,29 @@ widgets.register({
         local count = #logging.animatedMessages
         local visible = math.max(1, math.min(count, MAX_LINES))
         local maxw = 0
+        local text_h = select(2, renderer.measure_text("c", "A")) or 12
         
         for i = 1, count do
             local w = select(1, renderer.measure_text("c", logging.animatedMessages[i].text or "")) or 0
             if w > maxw then maxw = w end
         end
         if maxw == 0 then maxw = 300 end
-        local height = 10 + visible * line_spacing + 10
+        local content_h = ((visible - 1) * line_spacing) + text_h
+        local height = 10 + content_h + 10
         return maxw, height
     end,
     draw = function(ctx)
-        local line_spacing = 15
-        local base_y = math.floor(ctx.y + 10 + math.ceil(line_spacing / 2) - 1 + 0.5)
+        local text_h = select(2, renderer.measure_text("c", "A")) or 12
+        local real_count = 0
+        for i = 1, #logging.animatedMessages do
+            if not logging.animatedMessages[i].preview then
+                real_count = real_count + 1
+            end
+        end
+
+        local showing_preview = ctx.edit_mode and real_count == 0
+        local runtime_y_offset = showing_preview and 0 or -3
+        local base_y = math.floor(ctx.y + 8 + (text_h / 2) + runtime_y_offset + 0.5)
         local base_x = math.floor(ctx.cx + 0.5)
         logging:drawAnimatedMessages(base_x, base_y, ctx.edit_mode)
     end,
