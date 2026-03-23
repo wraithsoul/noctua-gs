@@ -3489,8 +3489,9 @@ antiaim = {} do
     function extensions.apply_fakelag(local_player, cmd)
         local limit_override = nil
         local should_pulse = false
+        local is_fakeduck = ui.get(ui_references.fakeduck)
 
-        if extensions.is_enabled('correct lag on exploit') and extensions.is_correct_exploit_active() then
+        if extensions.is_enabled('correct lag on exploit') and extensions.is_correct_exploit_active() and not is_fakeduck then
             limit_override = 1
         else
             if extensions.should_break_self_backtrack_pulse(local_player, cmd) then
@@ -7866,12 +7867,14 @@ logging = {} do
 
         local cached = self.cache[e.target] or {}
         local lagComp = cached.lagComp or 0
+        local weapon = entity.get_player_weapon(entity.get_local_player())
+        local is_taser = weapon ~= nil and entity.get_classname(weapon) == "CWeaponTaser"
+        local ignore_hitbox_mismatch = is_taser and hitbox == "generic"
 
         local msg = ""
 
-        if cached and cached.hitbox and (cached.hitbox ~= "?" and cached.hitbox ~= hitbox) then
+        if cached and cached.hitbox and not ignore_hitbox_mismatch and (cached.hitbox ~= "?" and cached.hitbox ~= hitbox) then
             local mismatchReason = "?"
-            local weapon = entity.get_player_weapon(entity.get_local_player())
             local inaccuracy = 0
             if weapon then
                 inaccuracy = entity.get_prop(weapon, "m_fAccuracyPenalty")
