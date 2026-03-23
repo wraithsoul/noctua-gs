@@ -889,6 +889,16 @@ interface = {} do
         profile.delay_from = interface.header.general:slider('delay from\n' .. key_prefix .. '.delay_from', 1, 8, 1, true, 't', 1, {[1] = 'off'})
         profile.delay_to = interface.header.general:slider('delay to\n' .. key_prefix .. '.delay_to', 1, 8, 1, true, 't', 1, {[1] = 'off'})
         profile.invert_chance = interface.header.general:slider('invert chance\n' .. key_prefix .. '.invert_chance', 0, 100, 100, true, '%')
+        profile.defensive = interface.header.general:checkbox('defensive\n' .. key_prefix .. '.defensive.enabled')
+        profile.defensive_pitch = interface.header.general:combobox('pitch\n' .. key_prefix .. '.defensive.pitch', 'off', 'static', 'jitter', 'random', 'random static', 'spin', 'spin full', 'camera', 'at target')
+        profile.defensive_pitch_angle = interface.header.general:slider('angle\n' .. key_prefix .. '.defensive.pitch_angle', -89, 89, 0, true, '°')
+        profile.defensive_pitch_angle_2 = interface.header.general:slider('angle 2\n' .. key_prefix .. '.defensive.pitch_angle_2', -89, 89, 0, true, '°')
+        profile.defensive_pitch_speed = interface.header.general:slider('speed\n' .. key_prefix .. '.defensive.pitch_speed', -5, 5, 1, true, '')
+        profile.defensive_yaw = interface.header.general:combobox('yaw\n' .. key_prefix .. '.defensive.yaw', 'off', 'static', 'jitter', 'random', 'random jitter', 'random static', 'spin', 'spin full', 'spin jitter', '90v', '180v')
+        profile.defensive_yaw_angle = interface.header.general:slider('angle\n' .. key_prefix .. '.defensive.yaw_angle', -180, 180, 0, true, '°')
+        profile.defensive_yaw_angle_2 = interface.header.general:slider('angle 2\n' .. key_prefix .. '.defensive.yaw_angle_2', -180, 180, 0, true, '°')
+        profile.defensive_yaw_speed = interface.header.general:slider('speed\n' .. key_prefix .. '.defensive.yaw_speed', -5, 5, 1, true, '')
+        profile.defensive_force_lc_duration = interface.header.general:slider('force lc duration\n' .. key_prefix .. '.defensive.force_lc_duration', 1, 13, 13, true, 't', 1, {[13] = 'max'})
         profile.force_break_lc = interface.header.general:checkbox('\aa5ab55ffforce break lc\n' .. key_prefix .. '.force_break_lc')
 
         return profile
@@ -1429,6 +1439,51 @@ interface = {} do
 
                         if field == 'delay_from' or field == 'delay_to' or field == 'invert_chance' then
                             element:set_visible(profile.body_yaw:get() == 'jitter')
+                            return
+                        end
+
+                        if field == 'defensive' then
+                            element:set_visible(true)
+                            return
+                        end
+
+                        if field == 'defensive_pitch' or field == 'defensive_yaw' or field == 'defensive_force_lc_duration' then
+                            element:set_visible(profile.defensive:get())
+                            return
+                        end
+
+                        if field == 'defensive_pitch_angle' then
+                            local pitch = profile.defensive_pitch:get()
+                            element:set_visible(profile.defensive:get() and (pitch == 'static' or pitch == 'jitter' or pitch == 'random' or pitch == 'random static' or pitch == 'spin' or pitch == 'spin full'))
+                            return
+                        end
+
+                        if field == 'defensive_pitch_angle_2' then
+                            local pitch = profile.defensive_pitch:get()
+                            element:set_visible(profile.defensive:get() and (pitch == 'jitter' or pitch == 'random' or pitch == 'random static' or pitch == 'spin' or pitch == 'spin full'))
+                            return
+                        end
+
+                        if field == 'defensive_pitch_speed' then
+                            element:set_visible(profile.defensive:get() and profile.defensive_pitch:get() == 'spin')
+                            return
+                        end
+
+                        if field == 'defensive_yaw_angle' then
+                            local yaw = profile.defensive_yaw:get()
+                            element:set_visible(profile.defensive:get() and (yaw == 'static' or yaw == 'jitter' or yaw == 'random' or yaw == 'random jitter' or yaw == 'random static' or yaw == 'spin' or yaw == 'spin jitter'))
+                            return
+                        end
+
+                        if field == 'defensive_yaw_angle_2' then
+                            local yaw = profile.defensive_yaw:get()
+                            element:set_visible(profile.defensive:get() and (yaw == 'jitter' or yaw == 'random' or yaw == 'random jitter' or yaw == 'random static' or yaw == 'spin' or yaw == 'spin jitter'))
+                            return
+                        end
+
+                        if field == 'defensive_yaw_speed' then
+                            local yaw = profile.defensive_yaw:get()
+                            element:set_visible(profile.defensive:get() and (yaw == 'spin' or yaw == 'spin full' or yaw == 'spin jitter'))
                             return
                         end
 
@@ -2974,6 +3029,9 @@ antiaim = {} do
     builder.inverts = 0
     builder.delay_ticks = 0
     builder.delay_limit = 0
+    builder.defensive_inverted = false
+    builder.defensive_random_pitch = 0
+    builder.defensive_random_yaw = 0
 
     hotkeys.manual_dir = nil
     hotkeys.manual_data = {}
@@ -3191,11 +3249,17 @@ antiaim = {} do
     end
 
     exploit.BREAK_LAG_COMPENSATION_DISTANCE_SQR = 64 * 64
+    exploit.max_tickbase = 0
+    exploit.run_command_number = nil
     exploit.data = {
         old_origin = nil,
         old_simtime = 0,
         shift = false,
         breaking_lc = false,
+        defensive = {
+            left = 0,
+            max = 0
+        },
         lagcompensation = {
             distance = 0,
             teleport = false
@@ -3224,8 +3288,12 @@ antiaim = {} do
         exploit.data.old_simtime = 0
         exploit.data.shift = false
         exploit.data.breaking_lc = false
+        exploit.data.defensive.left = 0
+        exploit.data.defensive.max = 0
         exploit.data.lagcompensation.distance = 0
         exploit.data.lagcompensation.teleport = false
+        exploit.max_tickbase = 0
+        exploit.run_command_number = nil
     end
 
     function exploit.get()
@@ -3258,6 +3326,63 @@ antiaim = {} do
 
     function exploit.update_state()
         exploit.data.shift = antiaim_funcs.get_tickbase_shifting() > 0
+    end
+
+    function exploit.update_defensive_tick(local_player)
+        local tickbase = entity.get_prop(local_player, 'm_nTickBase')
+        if tickbase == nil then
+            return
+        end
+
+        if math.abs(tickbase - exploit.max_tickbase) > 64 then
+            exploit.max_tickbase = 0
+        end
+
+        local defensive_ticks_left = 0
+
+        if tickbase > exploit.max_tickbase then
+            exploit.max_tickbase = tickbase
+        elseif exploit.max_tickbase > tickbase then
+            defensive_ticks_left = math.min(14, math.max(0, exploit.max_tickbase - tickbase - 1))
+        end
+
+        if defensive_ticks_left > 0 then
+            exploit.data.breaking_lc = true
+            exploit.data.defensive.left = defensive_ticks_left
+
+            if exploit.data.defensive.max == 0 then
+                exploit.data.defensive.max = defensive_ticks_left
+            end
+        else
+            exploit.data.defensive.left = 0
+            exploit.data.defensive.max = 0
+        end
+    end
+
+    function exploit.should_force_defensive(duration)
+        if not exploit.has_active() then
+            return false
+        end
+
+        local defensive = exploit.data.defensive
+        local limited_duration = mathematic.clamp(duration or 13, 1, 13)
+
+        if defensive.left <= 0 or defensive.max <= 0 then
+            return true
+        end
+
+        return (defensive.max - defensive.left) < limited_duration
+    end
+
+    function exploit.is_defensive_active(duration)
+        local defensive = exploit.data.defensive
+        local limited_duration = mathematic.clamp(duration or 13, 1, 13)
+
+        if defensive.left <= 0 or defensive.max <= 0 then
+            return false
+        end
+
+        return (defensive.max - defensive.left) < limited_duration
     end
 
     function exploit.update_lagcompensation(local_player)
@@ -3302,6 +3427,31 @@ antiaim = {} do
         end
 
         exploit.update_lagcompensation(local_player)
+    end
+
+    function exploit.on_run_command(e)
+        local local_player = entity.get_local_player()
+
+        if not local_player or not entity.is_alive(local_player) then
+            exploit.run_command_number = nil
+            return
+        end
+
+        exploit.update_state()
+        exploit.run_command_number = e.command_number
+    end
+
+    function exploit.on_predict_command(cmd)
+        local local_player = entity.get_local_player()
+
+        if not local_player or not entity.is_alive(local_player) then
+            return
+        end
+
+        if cmd.command_number == exploit.run_command_number then
+            exploit.update_defensive_tick(local_player)
+            exploit.run_command_number = nil
+        end
     end
 
     extensions.avoid_backstab_distance = 240
@@ -3878,6 +4028,9 @@ antiaim = {} do
         builder.inverts = 0
         builder.delay_ticks = 0
         builder.delay_limit = 0
+        builder.defensive_inverted = false
+        builder.defensive_random_pitch = 0
+        builder.defensive_random_yaw = 0
         builder.unset()
     end
 
@@ -3907,6 +4060,243 @@ antiaim = {} do
 
         builder.delay_ticks = 0
         builder.delay_limit = 0
+    end
+
+    function builder.update_defensive_inverter(cmd)
+        if cmd.chokedcommands ~= 0 then
+            return
+        end
+
+        builder.defensive_inverted = not builder.defensive_inverted
+    end
+
+    function builder.get_defensive_target_pitch(local_player)
+        local threat = client.current_threat()
+        if threat == nil then
+            return nil
+        end
+
+        local lx, ly, lz = extensions.get_eye_position(local_player)
+        local tx, ty, tz = entity.hitbox_position(threat, 0)
+
+        if tx == nil then
+            tx, ty, tz = entity.get_origin(threat)
+        end
+
+        if lx == nil or tx == nil then
+            return nil
+        end
+
+        local pitch = utils.calc_angle(lx, ly, lz, tx, ty, tz)
+        return mathematic.clamp(pitch, -89, 89)
+    end
+
+    function builder.get_defensive_ping_pong(from, to, speed)
+        local min_value = math.min(from, to)
+        local max_value = math.max(from, to)
+
+        if min_value == max_value then
+            return min_value
+        end
+
+        local rate = math.max(math.abs(speed), 1)
+        local phase = (globals.curtime() * rate * 0.35) % 2
+
+        if speed < 0 then
+            phase = 2 - phase
+        end
+
+        if phase > 1 then
+            phase = 2 - phase
+        end
+
+        return mathematic.lerp(min_value, max_value, phase)
+    end
+
+    function builder.get_defensive_loop(from, to, speed)
+        local min_value = math.min(from, to)
+        local max_value = math.max(from, to)
+
+        if min_value == max_value then
+            return min_value
+        end
+
+        local rate = math.max(math.abs(speed), 1)
+        local phase = (globals.curtime() * rate * 0.35) % 1
+
+        if speed < 0 then
+            phase = 1 - phase
+        end
+
+        return mathematic.lerp(min_value, max_value, phase)
+    end
+
+    function builder.get_defensive_snap_cycle(limit, speed)
+        local rate = math.max(math.abs(speed or 0), 1)
+        local phase = (globals.curtime() * rate * 0.5) % 1
+
+        return limit * phase
+    end
+
+    function builder.apply_defensive_pitch(profile, settings, cmd, local_player)
+        local mode = profile.defensive_pitch:get()
+        local angle = profile.defensive_pitch_angle:get()
+        local angle_2 = profile.defensive_pitch_angle_2:get()
+        local speed = profile.defensive_pitch_speed:get()
+
+        if mode == 'off' then
+            return
+        end
+
+        if mode == 'camera' then
+            settings.pitch_mode = 'Custom'
+            settings.pitch_offset = mathematic.clamp(cmd.pitch, -89, 89)
+            return
+        end
+
+        if mode == 'at target' then
+            local pitch = builder.get_defensive_target_pitch(local_player)
+            if pitch ~= nil then
+                settings.pitch_mode = 'Custom'
+                settings.pitch_offset = pitch
+            end
+            return
+        end
+
+        settings.pitch_mode = 'Custom'
+
+        if mode == 'static' then
+            settings.pitch_offset = angle
+            return
+        end
+
+        if mode == 'jitter' then
+            settings.pitch_offset = builder.defensive_inverted and angle_2 or angle
+            return
+        end
+
+        if mode == 'random' then
+            settings.pitch_offset = client.random_int(math.min(angle, angle_2), math.max(angle, angle_2))
+            return
+        end
+
+        if mode == 'random static' then
+            settings.pitch_offset = builder.defensive_random_pitch
+            return
+        end
+
+        if mode == 'spin' then
+            settings.pitch_offset = builder.get_defensive_ping_pong(angle, angle_2, speed)
+            return
+        end
+
+        if mode == 'spin full' then
+            settings.pitch_offset = builder.get_defensive_loop(angle, angle_2, 1)
+        end
+    end
+
+    function builder.apply_defensive_yaw(profile, settings)
+        local mode = profile.defensive_yaw:get()
+        local angle = profile.defensive_yaw_angle:get()
+        local angle_2 = profile.defensive_yaw_angle_2:get()
+        local speed = profile.defensive_yaw_speed:get()
+
+        if mode == 'off' then
+            return
+        end
+
+        settings.yaw_mode = '180'
+        settings.jitter_mode = 'off'
+        settings.jitter_offset = 0
+        settings.freestanding = false
+
+        if mode == 'static' then
+            settings.yaw_offset = angle
+            return
+        end
+
+        if mode == 'jitter' then
+            settings.yaw_offset = builder.defensive_inverted and angle_2 or angle
+            return
+        end
+
+        if mode == 'random' then
+            settings.yaw_offset = client.random_int(math.min(angle, angle_2), math.max(angle, angle_2))
+            return
+        end
+
+        if mode == 'random jitter' then
+            settings.yaw_offset = client.random_int(0, 1) == 1 and angle or angle_2
+            return
+        end
+
+        if mode == 'random static' then
+            settings.yaw_offset = builder.defensive_random_yaw
+            return
+        end
+
+        if mode == 'spin' then
+            settings.yaw_offset = builder.get_defensive_ping_pong(angle, angle_2, speed)
+            return
+        end
+
+        if mode == 'spin full' then
+            settings.yaw_offset = mathematic.normalize_yaw(globals.curtime() * math.max(math.abs(speed), 1) * 120)
+            return
+        end
+
+        if mode == 'spin jitter' then
+            settings.yaw_offset = builder.get_defensive_loop(angle, angle_2, speed)
+            settings.jitter_mode = 'offset'
+            settings.jitter_offset = builder.defensive_inverted and 30 or -30
+            return
+        end
+
+        if mode == '90v' then
+            settings.yaw_offset = builder.get_defensive_snap_cycle(90, 4)
+            return
+        end
+
+        if mode == '180v' then
+            settings.yaw_offset = builder.get_defensive_snap_cycle(180, 4)
+        end
+    end
+
+    function builder.apply_defensive(cmd, local_player, profile, settings)
+        if not profile.defensive:get() then
+            return
+        end
+
+        if _G.noctua_runtime.safe_head_active then
+            return
+        end
+
+        local duration = profile.defensive_force_lc_duration:get()
+
+        if exploit.should_force_defensive(duration) then
+            cmd.force_defensive = true
+        end
+
+        if not exploit.is_defensive_active(duration) then
+            return
+        end
+
+        builder.update_defensive_inverter(cmd)
+
+        local defensive = exploit.get().defensive
+        if defensive.left == defensive.max then
+            local pitch_angle = profile.defensive_pitch_angle:get()
+            local pitch_angle_2 = profile.defensive_pitch_angle_2:get()
+            local yaw_angle = profile.defensive_yaw_angle:get()
+            local yaw_angle_2 = profile.defensive_yaw_angle_2:get()
+
+            builder.defensive_random_pitch = client.random_int(math.min(pitch_angle, pitch_angle_2), math.max(pitch_angle, pitch_angle_2))
+            builder.defensive_random_yaw = client.random_int(math.min(yaw_angle, yaw_angle_2), math.max(yaw_angle, yaw_angle_2))
+        end
+
+        settings.freestanding_body_yaw = false
+        builder.apply_defensive_pitch(profile, settings, cmd, local_player)
+        builder.apply_defensive_yaw(profile, settings)
     end
 
     function builder.apply(cmd, local_player)
@@ -4014,6 +4404,7 @@ antiaim = {} do
         }
 
         extensions.apply(cmd, local_player, settings)
+        builder.apply_defensive(cmd, local_player, profile, settings)
 
         refs.enabled:override(true)
         refs.pitch[1]:override(settings.pitch_mode)
@@ -4065,6 +4456,8 @@ antiaim = {} do
     end
 
     client.set_event_callback('setup_command', antiaim.on_setup_command)
+    client.set_event_callback('predict_command', exploit.on_predict_command)
+    client.set_event_callback('run_command', exploit.on_run_command)
     client.set_event_callback('net_update_start', exploit.on_net_update_start)
     client.set_event_callback('paint_ui', hotkeys.on_paint_ui)
     client.set_event_callback('paint', antiaim.on_paint)
@@ -13630,6 +14023,30 @@ auto_r8 = {} do
         auto_r8.freeze_started_at = nil
     end
 
+    auto_r8.try_send = function()
+        if auto_r8.has_sent or auto_r8.active_pistol_round <= 0 then
+            return
+        end
+
+        if not interface.utility.auto_r8:get() then
+            return
+        end
+
+        local game_rules = entity.get_game_rules()
+        if not game_rules or entity.get_prop(game_rules, "m_bFreezePeriod") ~= 1 then
+            return
+        end
+
+        if not auto_r8.can_send() then
+            return
+        end
+
+        client.exec("say_team !r8")
+        logging:push("swapped to revolver")
+        auto_r8.has_sent = true
+        auto_r8.used_r8_this_round = true
+    end
+
     auto_r8.get_next_round_number = function(game_rules)
         if not game_rules then
             return 0
@@ -13665,27 +14082,16 @@ auto_r8 = {} do
             return false
         end
 
-        if (entity.get_prop(local_player, "m_iHealth") or 0) <= 0 then
-            return false
-        end
-
-        local observer_mode = entity.get_prop(local_player, "m_iObserverMode") or 0
-        if observer_mode ~= 0 then
-            return false
-        end
-
-        local observer_target = entity.get_prop(local_player, "m_hObserverTarget") or -1
-        if observer_target ~= -1 and observer_target ~= 0 then
-            return false
-        end
-
         return true
     end
 
     auto_r8.on_paint = function()
         if not interface.utility.auto_r8:get() then
             auto_r8.reset()
+            return
         end
+
+        auto_r8.try_send()
     end
 
     auto_r8.on_round_prestart = function()
@@ -13695,7 +14101,7 @@ auto_r8 = {} do
             return
         end
 
-        local game_rules = entity.get_all("CCSGameRulesProxy")[1]
+        local game_rules = entity.get_game_rules()
         if not game_rules then
             return
         end
@@ -13705,21 +14111,9 @@ auto_r8 = {} do
             return
         end
 
-        client.delay_call(0.05, function()
-            if auto_r8.has_sent or not interface.utility.auto_r8:get() then
-                return
-            end
-
-            if not auto_r8.can_send() then
-                return
-            end
-
-            client.exec("say_team !r8")
-            logging:push("swapped to revolver")
-            auto_r8.has_sent = true
-            auto_r8.used_r8_this_round = true
-            auto_r8.active_pistol_round = round_number
-        end)
+        auto_r8.freeze_started_at = globals.realtime()
+        auto_r8.active_pistol_round = round_number
+        auto_r8.try_send()
     end
 
     auto_r8.on_round_end = function()
