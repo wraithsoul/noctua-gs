@@ -844,6 +844,7 @@ interface = {} do
         resolver_mode = interface.header.general:combobox('mode', 'autopilot', 'experimental'),
         silent_shot = interface.header.general:checkbox('silent shot'),
         force_recharge = interface.header.general:checkbox('allow force recharge'),
+        adaptive_delay_shot = interface.header.general:checkbox('adaptive delay shot'),
         quick_stop = interface.header.general:checkbox('air stop', 0x00),
         noscope_distance = interface.header.fake_lag:checkbox('noscope distance'),
         noscope_weapons = interface.header.fake_lag:multiselect('weapons', 'autosnipers', 'scout', 'awp'),
@@ -2524,6 +2525,7 @@ local ui_references = {
     double_tap_fl = ui.reference('rage', 'aimbot', 'double tap fake lag limit'),
     ps = { ui.reference('misc', 'miscellaneous', 'ping spike') },
     quickpeek = { ui.reference('rage', 'other', 'quick peek assist') },
+    delay_shot = ui.reference('rage', 'other', 'delay shot'),
     quickpeekm = { ui.reference('rage', 'other', 'quick peek assist mode') },
     fakeduck = ui.reference('rage', 'other', 'duck peek assist'),
     on_shot_anti_aim = { ui.reference('aa', 'other', 'on shot anti-aim') },
@@ -5439,6 +5441,237 @@ client.set_event_callback('shutdown', function()
 end)
 --@endregion
 
+--@region: adaptive delay shot
+adaptive_delay_shot = {} do
+    adaptive_delay_shot._suppress_callback = false
+    adaptive_delay_shot._applied_value = ui.get(ui_references.delay_shot)
+    adaptive_delay_shot._manual_value = adaptive_delay_shot._applied_value
+    adaptive_delay_shot._hold_until = 0
+
+    local function set_delay_shot(self, enabled)
+        if self._applied_value == enabled then
+            return
+        end
+
+        self._suppress_callback = true
+        ui.set(ui_references.delay_shot, enabled)
+        self._suppress_callback = false
+        self._applied_value = enabled
+    end
+
+    local function restore_manual(self)
+        set_delay_shot(self, self._manual_value == true)
+    end
+
+    local function get_target_speed(idx)
+        local vx = entity.get_prop(idx, "m_vecVelocity[0]") or 0
+        local vy = entity.get_prop(idx, "m_vecVelocity[1]") or 0
+        return math.sqrt((vx * vx) + (vy * vy))
+    end
+
+    local function get_weapon_weight(weapon)
+        local weapon_info = weapon and csgo_weapons(weapon) or nil
+        if not weapon_info then
+            return 0
+        end
+
+        if weapon_info.idx == 9 or weapon_info.idx == 40 or weapon_info.idx == 1 or weapon_info.idx == 64 then
+            return 1
+        end
+
+        return 0
+    end
+
+    local function is_scout_weapon(weapon)
+        local weapon_info = weapon and csgo_weapons(weapon) or nil
+        return weapon_info ~= nil and weapon_info.idx == 40
+    end
+
+    local function estimate_best_damage(local_player, target)
+        local ex, ey, ez = client.eye_position()
+        if ex == nil then
+            return 0
+        end
+
+        local hitboxes = { 0, 2, 4 }
+        local best_damage = 0
+
+        for i = 1, #hitboxes do
+            local hx, hy, hz = entity.hitbox_position(target, hitboxes[i])
+            if hx ~= nil then
+                local _, damage = client.trace_bullet(local_player, ex, ey, ez, hx, hy, hz, true)
+                if damage ~= nil and damage > best_damage then
+                    best_damage = damage
+                end
+            end
+        end
+
+        return best_damage
+    end
+
+    local function should_delay(self, local_player, weapon)
+        if not interface.aimbot.adaptive_delay_shot:get() then
+            return false
+        end
+
+        if not utils.weapon_ready() then
+            return false
+        end
+
+        if interface.aimbot.predictive_shot:get() then
+            return false
+        end
+
+        local threat = client.current_threat()
+        if threat == nil or not entity.is_alive(threat) or entity.is_dormant(threat) then
+            return false
+        end
+
+        if player_list.GetWhitelist(player_list, threat) then
+            return false
+        end
+
+        local score = 0
+        local threat_health = entity.get_prop(threat, "m_iHealth") or 100
+        local enemy_state = utils.get_enemy_state(threat)
+        local precision = resolver and resolver.precision and resolver.precision[threat] or nil
+        local resolved_yaw = math.abs((resolver and resolver.cache and resolver.cache[threat]) or 0)
+        local target_speed = get_target_speed(threat)
+        local net_data = predict_box and predict_box.net_data and predict_box.net_data[threat] or nil
+        local weapon_weight = get_weapon_weight(weapon)
+        local best_damage = estimate_best_damage(local_player, threat)
+
+        if best_damage >= threat_health then
+            return false
+        end
+
+        if precision ~= nil then
+            if precision < 0.52 then
+                score = score + 3
+            elseif precision < 0.64 then
+                score = score + 2
+            elseif precision < 0.74 then
+                score = score + 1
+            end
+        end
+
+        if enemy_state == "air" or enemy_state == "airc" then
+            score = score + 2
+        elseif enemy_state == "slow" or enemy_state == "duck" or enemy_state == "duck move" then
+            score = score + 1
+        end
+
+        if resolved_yaw > 28 then
+            score = score + 2
+        elseif resolved_yaw > 18 then
+            score = score + 1
+        end
+
+        if net_data ~= nil then
+            if net_data.defensive_peek then
+                score = score + 3
+            elseif net_data.force_predict then
+                score = score + 2
+            elseif net_data.lagcomp or net_data.tickbase then
+                score = score + 1
+            end
+        end
+
+        local state_key = resolver and (resolver.state_cache[threat] or enemy_state or "unknown") or "unknown"
+        local feedback = resolver and resolver.feedback and resolver.feedback[threat] and resolver.feedback[threat][state_key] or nil
+        local miss_streak = feedback and (feedback.miss_streak or 0) or 0
+
+        if miss_streak >= 2 then
+            score = score + 3
+        elseif miss_streak == 1 then
+            score = score + 2
+        end
+
+        if target_speed > 120 then
+            score = score + 1
+        end
+
+        if weapon_weight > 0 and ((enemy_state == "air" or enemy_state == "airc") or target_speed > 120) then
+            score = score + 1
+        end
+
+        local lx, ly, lz = entity.get_origin(local_player)
+        local tx, ty, tz = entity.get_origin(threat)
+        if lx ~= nil and tx ~= nil then
+            local distance = player.distance3d(lx, ly, lz, tx, ty, tz)
+            if distance > 900 then
+                score = score + 1
+            elseif distance < 220 then
+                score = score - 1
+            end
+        end
+
+        score = score + weapon_weight
+
+        if not interface.aimbot.enabled_resolver_tweaks:get() and net_data == nil then
+            return false
+        end
+
+        local realtime = globals.realtime()
+        local should_enable = score >= 4
+
+        if should_enable then
+            self._hold_until = realtime + 0.18
+            return true
+        end
+
+        if score >= 2 and realtime < (self._hold_until or 0) then
+            return true
+        end
+
+        return false
+    end
+
+    adaptive_delay_shot.on_setup_command = function(self)
+        if not interface.aimbot.enabled_aimbot:get() or not interface.aimbot.adaptive_delay_shot:get() then
+            restore_manual(self)
+            return
+        end
+
+        local local_player = entity.get_local_player()
+        if not local_player or not entity.is_alive(local_player) then
+            restore_manual(self)
+            return
+        end
+
+        local weapon = entity.get_player_weapon(local_player)
+        if not weapon or not is_scout_weapon(weapon) then
+            restore_manual(self)
+            return
+        end
+
+        set_delay_shot(self, should_delay(self, local_player, weapon))
+    end
+
+    adaptive_delay_shot.shutdown = function(self)
+        restore_manual(self)
+    end
+
+    utils.ui_callback_set(ui_references.delay_shot, function()
+        if adaptive_delay_shot._suppress_callback then
+            return
+        end
+
+        local value = ui.get(ui_references.delay_shot)
+        adaptive_delay_shot._manual_value = value
+        adaptive_delay_shot._applied_value = value
+    end, true)
+end
+
+client.set_event_callback('setup_command', function()
+    adaptive_delay_shot:on_setup_command()
+end)
+
+client.set_event_callback('shutdown', function()
+    adaptive_delay_shot:shutdown()
+end)
+--@endregion
+
 --@region: widgets
 widgets = {} do
     local SNAP = 12
@@ -8038,7 +8271,7 @@ widgets.register({
         if dormant_enabled then
             total_lines = total_lines + 1
         end
-        
+
         local isDT = ui.get(ui_references.double_tap[1]) and ui.get(ui_references.double_tap[2])
         local isOS = ui.get(ui_references.on_shot_anti_aim[1]) and ui.get(ui_references.on_shot_anti_aim[2])
         if isDT or isOS then
@@ -13433,12 +13666,6 @@ auto_r8 = {} do
         end
 
         if not auto_r8.used_r8_this_round then
-            return
-        end
-
-        if not auto_r8.can_send() then
-            auto_r8.used_r8_this_round = false
-            auto_r8.active_pistol_round = 0
             return
         end
 
