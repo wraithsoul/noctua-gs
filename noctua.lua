@@ -6510,14 +6510,17 @@ visuals = {} do
 
         local is_knife = false
         local is_grenade = false
+        local is_bomb = false
 
-        local is_knife = false
         if weapon or weap_name then
             if entity.get_classname(weapon) == "CKnife" then
                 is_knife = true
             end
             if string.find(lower_name, "grenade") or string.find(lower_name, "flashbang") then
                 is_grenade = true
+            end
+            if string.find(lower_name, "c4") then
+                is_bomb = true
             end
         end
 
@@ -6544,7 +6547,7 @@ visuals = {} do
 
         local target_alpha = is_override and 255 or 80
 
-        if is_knife or is_grenade then
+        if is_knife or is_grenade or is_bomb then
             target_alpha = 0
         end
 
