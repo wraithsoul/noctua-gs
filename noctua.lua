@@ -683,7 +683,7 @@ interface = {} do
         empty = '⠀'
     }
  
-    interface.search = interface.header.general:combobox(pui.macros.title .. ' - '.. _version, 'home', 'aimbot', 'antiaim', 'visuals', 'world', 'utility', 'config', 'other')
+    interface.search = interface.header.general:combobox(pui.macros.title .. ' - '.. _version, 'home', 'players', 'aimbot', 'antiaim', 'visuals', 'world', 'utility', 'config', 'other')
 
     interface.home = {
         title = interface.header.fake_lag:label('your stats:'),
@@ -740,8 +740,6 @@ interface = {} do
         show_note = false
     }
 
-    interface.home.kas = interface.kas
-
     interface.home.menu_snow:override(true)
     interface.kas.enabled:override(true)
 
@@ -773,12 +771,12 @@ interface = {} do
         resolver_mode = interface.header.general:combobox('mode', 'autopilot', 'experimental'),
         silent_shot = interface.header.general:checkbox('silent shot'),
         force_recharge = interface.header.general:checkbox('allow force recharge'),
-        noscope_distance = interface.header.general:checkbox('noscope distance'),
-        noscope_weapons = interface.header.general:multiselect('weapons', 'autosnipers', 'scout', 'awp'),
-        noscope_distance_autosnipers = interface.header.general:slider('autosnipers distance', 1, 800, 450, true, ''),
-        noscope_distance_scout = interface.header.general:slider('scout distance', 1, 800, 450, true, ''),
-        noscope_distance_awp = interface.header.general:slider('awp distance', 1, 800, 450, true, ''),
         quick_stop = interface.header.general:checkbox('air stop', 0x00),
+        noscope_distance = interface.header.fake_lag:checkbox('noscope distance'),
+        noscope_weapons = interface.header.fake_lag:multiselect('weapons', 'autosnipers', 'scout', 'awp'),
+        noscope_distance_autosnipers = interface.header.fake_lag:slider('autosnipers distance', 1, 800, 450, true, ''),
+        noscope_distance_scout = interface.header.fake_lag:slider('scout distance', 1, 800, 450, true, ''),
+        noscope_distance_awp = interface.header.fake_lag:slider('awp distance', 1, 800, 450, true, ''),
         hitchance_override = interface.header.fake_lag:checkbox('hitchance override'),
         hitchance_override_hotkey = interface.header.fake_lag:checkbox('override hotkey', 0x00),
         hitchance_override_weapon = interface.header.fake_lag:combobox('weapon', 'autosnipers', 'deagle', 'revolver', 'pistols', 'scout', 'awp'),
@@ -882,10 +880,10 @@ interface = {} do
         aspect_ratio_slider = interface.header.fake_lag:slider('value', 0, aspect_ratio.steps, aspect_ratio.steps/2, true, '', 1, aspect_ratio.ratio_table),
         thirdperson = interface.header.fake_lag:checkbox('override thirdperson distance'),
         thirdperson_slider = interface.header.fake_lag:slider('distance', 30, 150, 50, true, ''),
-        sunlight = interface.header.general:checkbox('override sunlight'),
-        sunlight_x = interface.header.general:slider('sun x', -180, 180, cvar.cl_csm_rot_x:get_float(), true, '', 0.1),
-        sunlight_y = interface.header.general:slider('sun y', -180, 180, cvar.cl_csm_rot_y:get_float(), true, '', 0.1),
-        sunlight_z = interface.header.general:slider('sun z', -180, 180, cvar.cl_csm_rot_z:get_float(), true, '', 0.1),
+        sunlight = interface.header.fake_lag:checkbox('override sunlight'),
+        sunlight_x = interface.header.fake_lag:slider('sun x', -180, 180, cvar.cl_csm_rot_x:get_float(), true, '', 0.1),
+        sunlight_y = interface.header.fake_lag:slider('sun y', -180, 180, cvar.cl_csm_rot_y:get_float(), true, '', 0.1),
+        sunlight_z = interface.header.fake_lag:slider('sun z', -180, 180, cvar.cl_csm_rot_z:get_float(), true, '', 0.1),
         fog = interface.header.general:checkbox('override fog'),
         fog_color = interface.header.general:label('fog color', {180, 200, 255, 255}),
         fog_start = interface.header.general:slider('fog start', 0, 2500, 0, true, ''),
@@ -955,10 +953,10 @@ interface = {} do
         buybot_secondary = interface.header.general:combobox('secondary weapon', '-', 'r8 / deagle', 'tec-9 / five-s / cz-75', 'duals', 'p-250'),
         buybot_utility = interface.header.general:multiselect('utility', 'kevlar', 'helmet', 'defuser', 'taser', 'he', 'molotov', 'smoke'),
         auto_r8 = interface.header.general:checkbox('automatic !r8'),
-        unlock_fd_speed = interface.header.general:checkbox('unlock fd speed'),
         sync_aimbot_hotkeys = interface.header.general:checkbox('sync aimbot hotkeys'),
         party_mode = interface.header.other:checkbox('party mode'),
         reveal_enemy_team_chat = interface.header.other:checkbox('reveal enemy chat'),
+        unlock_fd_speed = interface.header.other:checkbox('unlock fd speed'),
         animation_breakers = interface.header.other:multiselect('animation breakers', 'zero on land', 'earthquake', 'sliding slow motion', 'sliding crouch', 'on ground', 'on air', 'quick peek legs', 'keus scale', 'body lean'),
         on_ground_options = interface.header.other:combobox('on ground', {'frozen', 'walking', 'jitter', 'sliding', 'star'}),
         on_air_options = interface.header.other:combobox('on air', {'frozen', 'walking', 'kinguru'}),
@@ -1058,7 +1056,12 @@ interface = {} do
             fog_color = true,
             fog_start = true,
             fog_end = true,
-            fog_density = true
+            fog_density = true,
+            world_damage = true,
+            world_damage_type = true,
+            grenade_radius = true,
+            grenade_radius_smoke_color = true,
+            grenade_radius_molotov_color = true
         }
 
         local function apply_kas_visibility(element, path)
@@ -1182,15 +1185,15 @@ interface = {} do
         local visibility_config = {
             home = {
                 groups_to_show = { groups.home },
-                groups_to_hide = { groups.aimbot, groups.antiaim, groups.visuals, groups.models, groups.utility, groups.config },
+                groups_to_hide = { groups.kas, groups.aimbot, groups.antiaim, groups.visuals, groups.models, groups.utility, groups.config },
                 element_visibility_logic = function(element, path)
-                    if path[1] == 'kas' then
-                        apply_kas_visibility(element, path)
-                        return
-                    end
-
                     element:set_visible(true)
                 end
+            },
+            players = {
+                groups_to_show = { groups.kas },
+                groups_to_hide = { groups.home, groups.aimbot, groups.antiaim, groups.visuals, groups.models, groups.utility, groups.config },
+                element_visibility_logic = apply_kas_visibility
             },
             kas = {
                 groups_to_show = { groups.kas },
@@ -1457,20 +1460,33 @@ interface = {} do
                         return
                     end
 
-                    if key == 'grenade_radius_molotov_color' then
-                        local grenades = interface.visuals.grenade_radius:get() or {}
-                        element:set_visible(utils.contains(grenades, 'molotov'))
+                    if key == 'aspect_ratio_slider' then
+                        element:set_visible(interface.visuals.aspect_ratio:get())
                         return
                     end
 
-                    if key == 'grenade_radius_smoke_color' then
-                        local grenades = interface.visuals.grenade_radius:get() or {}
-                        element:set_visible(utils.contains(grenades, 'smoke'))
+                    if key == 'thirdperson_slider' then
+                        element:set_visible(interface.visuals.thirdperson:get())
                         return
                     end
 
-                    if key == 'world_damage_type' then
-                        element:set_visible(interface.visuals.world_damage:get())
+                    if key == 'viewmodel_fov' or key == 'viewmodel_x' or key == 'viewmodel_y' or key == 'viewmodel_z' or key == 'opposite_knife_hand' then
+                        element:set_visible(interface.visuals.viewmodel:get())
+                        return
+                    end
+
+                    if key == 'zoom_animation_speed' or key == 'zoom_animation_value' then
+                        element:set_visible(interface.visuals.zoom_animation:get())
+                        return
+                    end
+
+                    if key == 'predict_box_show_box' or key == 'predict_box_show_tickbase' or key == 'predict_box_always_show' or key == 'predict_box_debug_line' or key == 'predict_box_text_color' or key == 'predict_box_box_color' or key == 'predict_box_strength' then
+                        element:set_visible(interface.visuals.predict_box:get())
+                        return
+                    end
+
+                    if key == 'logging_style' or key == 'logging_events' then
+                        element:set_visible(interface.visuals.logging:get())
                         return
                     end
 
@@ -1483,42 +1499,6 @@ interface = {} do
                     interface.visuals.logging_style:set_visible(logging_enabled)
                     interface.visuals.logging_events:set_visible(logging_enabled)
                     interface.visuals.logging_slider:set_visible(false)
-
-                    local show_aspect = visuals_enabled
-                    interface.visuals.aspect_ratio:set_visible(show_aspect)
-                    interface.visuals.aspect_ratio_slider:set_visible(show_aspect and interface.visuals.aspect_ratio:get())
-
-                    local show_thirdperson = visuals_enabled
-                    interface.visuals.thirdperson:set_visible(show_thirdperson)
-                    interface.visuals.thirdperson_slider:set_visible(show_thirdperson and interface.visuals.thirdperson:get())
-
-                    local show_viewmodel = visuals_enabled
-                    interface.visuals.viewmodel:set_visible(show_viewmodel)
-                    local show_viewmodel_settings = show_viewmodel and interface.visuals.viewmodel:get()
-                    interface.visuals.viewmodel_fov:set_visible(show_viewmodel_settings)
-                    interface.visuals.viewmodel_x:set_visible(show_viewmodel_settings)
-                    interface.visuals.viewmodel_y:set_visible(show_viewmodel_settings)
-                    interface.visuals.viewmodel_z:set_visible(show_viewmodel_settings)
-                    interface.visuals.opposite_knife_hand:set_visible(show_viewmodel_settings)
-
-                    interface.visuals.stickman:set_visible(visuals_enabled)
-
-                    local show_zoom = visuals_enabled
-                    interface.visuals.zoom_animation:set_visible(show_zoom)
-                    local show_zoom_settings = show_zoom and interface.visuals.zoom_animation:get()
-                    interface.visuals.zoom_animation_speed:set_visible(show_zoom_settings)
-                    interface.visuals.zoom_animation_value:set_visible(show_zoom_settings)
-
-                    interface.visuals.spawn_zoom:set_visible(visuals_enabled)
-                    interface.visuals.predict_box:set_visible(visuals_enabled)
-                    local show_predict_box = visuals_enabled and interface.visuals.predict_box:get()
-                    interface.visuals.predict_box_show_box:set_visible(show_predict_box)
-                    interface.visuals.predict_box_show_tickbase:set_visible(show_predict_box)
-                    interface.visuals.predict_box_always_show:set_visible(show_predict_box)
-                    interface.visuals.predict_box_debug_line:set_visible(show_predict_box)
-                    interface.visuals.predict_box_text_color:set_visible(show_predict_box)
-                    interface.visuals.predict_box_box_color:set_visible(show_predict_box)
-                    interface.visuals.predict_box_strength:set_visible(show_predict_box)
                 end
             },
             world = {
@@ -1545,6 +1525,23 @@ interface = {} do
 
                     if key == 'fog_color' or key == 'fog_start' or key == 'fog_end' or key == 'fog_density' then
                         element:set_visible(interface.visuals.fog:get())
+                        return
+                    end
+
+                    if key == 'world_damage_type' then
+                        element:set_visible(interface.visuals.world_damage:get())
+                        return
+                    end
+
+                    if key == 'grenade_radius_molotov_color' then
+                        local grenades = interface.visuals.grenade_radius:get() or {}
+                        element:set_visible(utils.contains(grenades, 'molotov'))
+                        return
+                    end
+
+                    if key == 'grenade_radius_smoke_color' then
+                        local grenades = interface.visuals.grenade_radius:get() or {}
+                        element:set_visible(utils.contains(grenades, 'smoke'))
                         return
                     end
 
@@ -10347,7 +10344,7 @@ local kas = {} do
             notify_known_players()
         end
 
-        if interface.search:get() ~= "home" then
+        if interface.search:get() ~= "players" and interface.search:get() ~= "kas" then
             return
         end
 
