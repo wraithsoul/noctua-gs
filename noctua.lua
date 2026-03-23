@@ -11,7 +11,7 @@ information = {} do
     _G.noctua_runtime = _G.noctua_runtime or {}
     _G.noctua_runtime.stats = _G.noctua_runtime.stats or { hits = 0, misses = 0 }
     _G._name = 'noctua'
-    _G._version = '1.4'
+    _G._version = '1.5'
     _G._nickname = nil
 
     information.update_nickname = function()
@@ -13408,30 +13408,33 @@ end
 art = {} do
     local changelog = [[
     Changelog:
+    - Added antiaim tab
     - Added known alias system
     - Added predictive shot (experimental)
     - Added hitchance override
-    - Added streamer mode
-    - Added animation breakers
-    - Added buybot fallback option
-    - Added bomb timer
     - Added grenade radius visualization
     - Added world damage
     - Added world damage animations
-    - Added mismatch reasons
     - Added compatibility mode
     - Added dormant aimbot
     - Added opposite knife hand
     - Added auto r8
     - Added sync aimbot hotkeys
     - Added unlock fd speed
-    - Added animated text blur for damage indicator
+    - Added damage received event
+    - Added predict box
+    - Added override fog
+    - Added override sunlight
+    - Added reveal enemy chat
     - Reworked miss reasons
     - Reworked buybot
-    - Reworked experimental yaw correction
     - Reworked debug window
-    - Reworked dormant aimbot safe point detection
+    - Reworked dormant aimbot safe point
     - Reworked killsay delays
+    - Reworked logging animations
+    - Reworked damage indicator animations
+    - Reworked experimental yaw correction mode
+    - Fixed damage indicator alpha on several weapons
     - Fixed buybot fallback purchasing after primary items
     - Fixed damage indicator color brightening during animation
     - Fixed shutdown restoration
