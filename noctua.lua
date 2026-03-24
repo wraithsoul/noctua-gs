@@ -841,7 +841,6 @@ interface = {} do
     interface.aimbot = {
         enabled_aimbot = interface.header.general:checkbox('enable aimbot'),
         enabled_resolver_tweaks = interface.header.general:checkbox('\aa5ab55ffyaw correction'),
-        resolver_mode = interface.header.general:combobox('mode', 'autopilot', 'experimental'),
         silent_shot = interface.header.general:checkbox('silent shot'),
         force_recharge = interface.header.general:checkbox('allow force recharge'),
         adaptive_delay_shot = interface.header.general:checkbox('adaptive delay shot'),
@@ -1345,8 +1344,6 @@ interface = {} do
 
                     if key == 'enabled_aimbot' then
                         element:set_visible(true)
-                    elseif key == 'resolver_mode' then
-                        element:set_visible(enabled and interface.aimbot.enabled_resolver_tweaks:get())
                     elseif key == 'noscope_distance' then
                         element:set_visible(enabled)
                     elseif key == 'noscope_weapons' then
@@ -4807,7 +4804,6 @@ resolver = {} do
     function resolver:record_shot_result(idx, did_hit, reason)
         if not idx then return end
         if not (interface.aimbot.enabled_aimbot:get() and interface.aimbot.enabled_resolver_tweaks:get()) then return end
-        if interface.aimbot.resolver_mode:get() ~= 'experimental' then return end
 
         local state_key = self.shot_state[idx] or self.state_cache[idx] or "unknown"
         local feedback = self:get_feedback(idx, state_key)
@@ -5234,87 +5230,6 @@ resolver = {} do
         return clamp(precision, 0, 1)
     end
     
-    resolver.logic_autopilot = function(self, idx)
-        local animstate = player.get_animstate(idx)
-        if not animstate then return end
-        if not resolver:updateLayers(idx) then return end
-
-        local vx, vy, vz, velocity_2d = player.get_velocity(idx)
-        if not velocity_2d then return end
-        
-        local max_desync = resolver.getMaxDesyncDelta(idx)
-        if not max_desync then return end
-
-        local walk_to_run, _ = resolver:transition(
-            animstate.flWalkToRunTransition or 0,
-            false,
-            animstate.flLastUpdateIncrement or 0,
-            velocity_2d
-        )
-
-        local enemy_state = utils.get_enemy_state(idx)
-        local prev_state = self.state_cache[idx]
-        if prev_state ~= enemy_state then
-            self.history[idx] = nil
-            self.state_cache[idx] = enemy_state
-        end
-
-        local lby = entity.get_prop(idx, "m_flLowerBodyYawTarget")
-        if not lby then return end
-        
-        local predicted_yaw = resolver:predictedFootYaw(
-            animstate.flLastFeetYaw or 0,
-            animstate.flEyeYaw or 0,
-            lby,
-            walk_to_run,
-            velocity_2d,
-            animstate.flMinBodyYaw or -58,
-            animstate.flMaxBodyYaw or 58,
-            enemy_state
-        )
-        if not predicted_yaw then return end
-
-        local eye_yaw = animstate.flEyeYaw or 0
-        
-        local side = self:calc_side(idx, animstate, velocity_2d, lby)
-        
-        local precision = self:compute_precision(animstate, velocity_2d, lby)
-        self.precision[idx] = precision
-        
-        local base_desync = max_desync * 58
-        
-        local velocity_factor = math.exp(-velocity_2d / 130)
-        
-        local duck_amt = animstate.flDuckAmount or 0
-        local duck_factor = 1 - duck_amt * duck_amt * 0.4
-        
-        local feet_cycle = animstate.flFeetCycle or 0
-        local feet_speed = animstate.m_flFeetSpeedForwardsOrSideWays or 0
-        local cycle_factor = 1 - math.abs(math.sin(feet_cycle * math.pi)) * feet_speed * 0.2
-        
-        local lean_amount = animstate.flLeanAmount or 0
-        local lean_factor = 1 / (1 + math.abs(lean_amount) * 0.01)
-        
-        local stop_to_full = animstate.m_flStopToFullRunningFraction or 0
-        local ground_factor = 0.3 + 0.7 * (1 - stop_to_full)
-        
-        local desync_value = base_desync * velocity_factor * duck_factor * cycle_factor * lean_factor * ground_factor
-        desync_value = mathematic.clamp(desync_value, 0, 58)
-
-        if desync_value > 0 then
-            local amplitude = 0.5 + 0.5 * (self.precision[idx] or 0.5)
-            local raw_yaw = side * desync_value * amplitude
-            local final_yaw = raw_yaw >= 0 and math.floor(raw_yaw + 0.5) or math.ceil(raw_yaw - 0.5)
-            
-            final_yaw = mathematic.clamp(final_yaw, -58, 58)
-
-            resolver.cache[idx] = final_yaw
-            player_list.SetForceBodyYawCheckbox(player_list, idx, true)
-            player_list.SetBodyYaw(player_list, idx, final_yaw)
-            resolver:updateSafety(idx, side, final_yaw, self.precision[idx])
-        end
-    end
-
     resolver.setup = function(self)
         if not (interface.aimbot.enabled_aimbot:get() and interface.aimbot.enabled_resolver_tweaks:get()) then return end
 
@@ -5326,8 +5241,6 @@ resolver = {} do
 
         local enemies = entity.get_players(true)
         if not enemies then return end
-
-        local mode = interface.aimbot.resolver_mode:get()
 
         for _, idx in ipairs(enemies) do
             repeat
@@ -5345,11 +5258,7 @@ resolver = {} do
                     break
                 end
 
-                if mode == 'autopilot' then
-                    self:logic_autopilot(idx)
-                elseif mode == 'experimental' then
-                    self:logic_experimental(idx)
-                end
+                self:logic_experimental(idx)
             until true
         end
     end
