@@ -957,7 +957,7 @@ interface = {} do
         bomb_timer = interface.header.general:checkbox('bomb timer'),
         logging = interface.header.general:checkbox('logging'),
         logging_style = interface.header.general:multiselect('style\nvisuals.logging_style', 'console', 'screen'),
-        logging_events = interface.header.general:multiselect('events\nvisuals.logging_events', 'damage dealt', 'damage received', 'shots fired', 'shots missed', 'purchases'),
+        logging_events = interface.header.general:multiselect('events\nvisuals.logging_events', 'damage dealt', 'damage received', 'evaded shots', 'shots fired', 'shots missed', 'purchases'),
         logging_slider = interface.header.general:slider('slider', 40, 450, 240),
         aspect_ratio = interface.header.fake_lag:checkbox('override aspect ratio'),
         aspect_ratio_slider = interface.header.fake_lag:slider('value', 0, aspect_ratio.steps, aspect_ratio.steps/2, true, '', 1, aspect_ratio.ratio_table),
@@ -8293,6 +8293,8 @@ logging = {} do
         local damage = e.dmg_health or 0
         local hitbox = self.hitgroup_names[(e.hitgroup or 0) + 1] or "body"
         local health = e.health
+        local weapon = e.weapon or ""
+        local is_area_damage = weapon == "hegrenade" or weapon == "inferno" or weapon == "molotov" or weapon == "incgrenade"
 
         if hitbox == "generic" then
             hitbox = "body"
@@ -8303,11 +8305,37 @@ logging = {} do
         end
 
         if doConsole then
-            argLog("took %d damage in %s from %s (%d left)", damage, hitbox, attacker_name, health)
+            if is_area_damage then
+                argLog("took %d damage from %s (%d left)", damage, attacker_name, health)
+            else
+                argLog("took %d damage in %s from %s (%d left)", damage, hitbox, attacker_name, health)
+            end
         end
 
         if doScreen then
-            self:push_format("took %d damage in %s from %s (%d left)", nil, false, damage, hitbox, attacker_name, health)
+            if is_area_damage then
+                self:push_format("took %d damage from %s (%d left)", nil, false, damage, attacker_name, health)
+            else
+                self:push_format("took %d damage in %s from %s (%d left)", nil, false, damage, hitbox, attacker_name, health)
+            end
+        end
+    end
+
+    logging.handleEvadedShot = function(self, attacker_name)
+        local doConsole = self:should_output("console", "evaded shots")
+        local doScreen = self:should_output("screen", "evaded shots")
+        if not doConsole and not doScreen then
+            return
+        end
+
+        attacker_name = attacker_name or "enemy"
+
+        if doConsole then
+            argLog("evaded %s's shot", attacker_name)
+        end
+
+        if doScreen then
+            self:push_format("evaded %s's shot", nil, false, attacker_name)
         end
     end
 
@@ -11064,6 +11092,254 @@ local kas = {} do
 end
 --@endregion
 
+--@region: evaded shots
+evaded_shots = {} do
+    evaded_shots.records = {}
+    evaded_shots.max_age = 0.35
+    evaded_shots.distance_threshold = 42
+    evaded_shots.confirm_delay = 0.06
+
+    function evaded_shots.reset()
+        evaded_shots.records = {}
+    end
+
+    function evaded_shots.is_runtime_enabled()
+        local local_player = entity.get_local_player()
+        return local_player ~= nil and entity.is_alive(local_player) and interface.antiaim.enabled_antiaim:get()
+    end
+
+    function evaded_shots.is_bot(idx)
+        local info = utils.get_player_info(idx)
+        return info and info.__fakeplayer == true
+    end
+
+    function evaded_shots.is_supported_weapon(shooter)
+        local weapon = entity.get_player_weapon(shooter)
+        local info = weapon and csgo_weapons(weapon) or nil
+
+        if info == nil then
+            return false
+        end
+
+        if info.type == 'knife' or info.type == 'grenade' then
+            return false
+        end
+
+        return info.idx ~= 31
+    end
+
+    function evaded_shots.get_eye_position(idx)
+        local ox, oy, oz = entity.get_prop(idx, 'm_vecOrigin')
+        if ox == nil then
+            return nil
+        end
+
+        local view_z = entity.get_prop(idx, 'm_vecViewOffset[2]') or 64
+        return ox, oy, oz + view_z
+    end
+
+    function evaded_shots.get_local_points(local_player)
+        local head_x, head_y, head_z = entity.hitbox_position(local_player, 0)
+        local chest_x, chest_y, chest_z = entity.hitbox_position(local_player, 4)
+        local stomach_x, stomach_y, stomach_z = entity.hitbox_position(local_player, 2)
+        local points = {}
+
+        if head_x ~= nil then
+            points[#points + 1] = { x = head_x, y = head_y, z = head_z }
+        end
+
+        if chest_x ~= nil then
+            points[#points + 1] = { x = chest_x, y = chest_y, z = chest_z }
+        end
+
+        if stomach_x ~= nil then
+            points[#points + 1] = { x = stomach_x, y = stomach_y, z = stomach_z }
+        end
+
+        return points
+    end
+
+    function evaded_shots.point_to_segment_distance(px, py, pz, ax, ay, az, bx, by, bz)
+        local abx = bx - ax
+        local aby = by - ay
+        local abz = bz - az
+        local apx = px - ax
+        local apy = py - ay
+        local apz = pz - az
+        local ab_len_sq = (abx * abx) + (aby * aby) + (abz * abz)
+
+        if ab_len_sq <= 0 then
+            local dx = px - ax
+            local dy = py - ay
+            local dz = pz - az
+            return math.sqrt((dx * dx) + (dy * dy) + (dz * dz))
+        end
+
+        local t = ((apx * abx) + (apy * aby) + (apz * abz)) / ab_len_sq
+        t = mathematic.clamp(t, 0, 1)
+
+        local cx = ax + (abx * t)
+        local cy = ay + (aby * t)
+        local cz = az + (abz * t)
+        local dx = px - cx
+        local dy = py - cy
+        local dz = pz - cz
+
+        return math.sqrt((dx * dx) + (dy * dy) + (dz * dz))
+    end
+
+    function evaded_shots.get_record(shooter)
+        local record = evaded_shots.records[shooter]
+        if record == nil then
+            return nil
+        end
+
+        if globals.realtime() > record.expire_at then
+            evaded_shots.records[shooter] = nil
+            return nil
+        end
+
+        return record
+    end
+
+    function evaded_shots.commit(attacker_name)
+        if logging then
+            logging:handleEvadedShot(attacker_name)
+        end
+
+        if stats and stats.add_evaded then
+            stats.add_evaded()
+        end
+
+        if _G.noctua_session and _G.noctua_session.active then
+            _G.noctua_session.stats.aa_misses = (_G.noctua_session.stats.aa_misses or 0) + 1
+            _G.noctua_session.stats.aa_used = true
+        end
+    end
+
+    function evaded_shots.update()
+        if not evaded_shots.is_runtime_enabled() then
+            return
+        end
+
+        local now = globals.realtime()
+
+        for shooter, record in pairs(evaded_shots.records) do
+            if record.pending_commit_at ~= nil and now >= record.pending_commit_at then
+                evaded_shots.records[shooter] = nil
+                evaded_shots.commit(record.attacker_name)
+            elseif now > record.expire_at then
+                evaded_shots.records[shooter] = nil
+            end
+        end
+    end
+
+    function evaded_shots.on_weapon_fire(e)
+        if not evaded_shots.is_runtime_enabled() then
+            return
+        end
+
+        local local_player = entity.get_local_player()
+        local shooter = client.userid_to_entindex(e.userid)
+        if shooter == nil or shooter == local_player or not entity.is_enemy(shooter) or not entity.is_alive(shooter) or entity.is_dormant(shooter) then
+            return
+        end
+
+        if evaded_shots.is_bot(shooter) then
+            return
+        end
+
+        if not evaded_shots.is_supported_weapon(shooter) then
+            return
+        end
+
+        local sx, sy, sz = evaded_shots.get_eye_position(shooter)
+        if sx == nil then
+            return
+        end
+
+        local points = evaded_shots.get_local_points(local_player)
+        if #points == 0 then
+            return
+        end
+
+        evaded_shots.records[shooter] = {
+            attacker_name = entity.get_player_name(shooter),
+            start_x = sx,
+            start_y = sy,
+            start_z = sz,
+            points = points,
+            expire_at = globals.realtime() + evaded_shots.max_age,
+            pending_commit_at = nil
+        }
+    end
+
+    function evaded_shots.on_player_hurt(e)
+        local local_player = entity.get_local_player()
+        if local_player == nil then
+            return
+        end
+
+        local victim = client.userid_to_entindex(e.userid)
+        if victim ~= local_player then
+            return
+        end
+
+        local attacker = client.userid_to_entindex(e.attacker)
+        if attacker ~= nil then
+            evaded_shots.records[attacker] = nil
+        end
+    end
+
+    function evaded_shots.on_bullet_impact(e)
+        if not evaded_shots.is_runtime_enabled() then
+            return
+        end
+
+        local local_player = entity.get_local_player()
+        local shooter = client.userid_to_entindex(e.userid)
+        if shooter == nil or shooter == local_player then
+            return
+        end
+
+        local record = evaded_shots.get_record(shooter)
+        if record == nil then
+            return
+        end
+
+        local best_distance = math.huge
+        for i = 1, #record.points do
+            local point = record.points[i]
+            local distance = evaded_shots.point_to_segment_distance(
+                point.x, point.y, point.z,
+                record.start_x, record.start_y, record.start_z,
+                e.x, e.y, e.z
+            )
+
+            if distance < best_distance then
+                best_distance = distance
+            end
+        end
+
+        if best_distance > evaded_shots.distance_threshold then
+            return
+        end
+
+        record.pending_commit_at = globals.realtime() + evaded_shots.confirm_delay
+        record.expire_at = math.max(record.expire_at, record.pending_commit_at + 0.01)
+    end
+
+    client.set_event_callback('weapon_fire', evaded_shots.on_weapon_fire)
+    client.set_event_callback('player_hurt', evaded_shots.on_player_hurt)
+    client.set_event_callback('bullet_impact', evaded_shots.on_bullet_impact)
+    client.set_event_callback('paint', evaded_shots.update)
+    client.set_event_callback('round_start', evaded_shots.reset)
+    client.set_event_callback('game_newmap', evaded_shots.reset)
+    client.set_event_callback('cs_game_disconnected', evaded_shots.reset)
+    client.set_event_callback('shutdown', evaded_shots.reset)
+end
+--@endregion
+
 --@region: stats (home)
 stats = {} do
     local DB_KEY = 'noctua.stats'
@@ -11159,7 +11435,7 @@ stats = {} do
         stats.update_ui()
     end)
 
-    function stats.on_evaded(attacker_name, value, mode)
+    function stats.add_evaded()
         state.script.evaded = (state.script.evaded or 0) + 1
         stats.save_db()
         stats.update_ui()
@@ -12950,6 +13226,7 @@ summary = {} do
                 hits = 0,
                 misses = 0,
                 aa_misses = 0,
+                aa_used = false,
                 miss_types = {},
                 resolved = {}, 
                 map_name = ""
@@ -13037,6 +13314,7 @@ summary = {} do
             hits = 0,
             misses = 0,
             aa_misses = 0,
+            aa_used = false,
             miss_types = {},
             resolved = {},
             map_name = globals.mapname()
@@ -13104,10 +13382,12 @@ summary = {} do
             end
         end
 
-        log_val("\nanti-aim\n")
-        log_txt("  - enemies missed ")
-        log_val(string.format("%d ", s.aa_misses))
-        log_txt("times in your anti-aim\n")
+        if s.aa_used then
+            log_val("\nanti-aim\n")
+            log_txt("  - enemies missed ")
+            log_val(string.format("%d ", s.aa_misses))
+            log_txt("times in your anti-aim\n")
+        end
         
         client.color_log(255, 255, 255, "\n")
     end
@@ -13121,6 +13401,9 @@ summary = {} do
                     summary.start_session()
                 else
                     update_enemy_list()
+                    if interface.antiaim.enabled_antiaim:get() then
+                        _G.noctua_session.stats.aa_used = true
+                    end
                 end
             else
                 if _G.noctua_session.active then
@@ -13153,20 +13436,6 @@ summary = {} do
             _G.noctua_session.stats.misses = _G.noctua_session.stats.misses + 1
         end)
 
-        client.set_event_callback('bullet_impact', function(e)
-            if not _G.noctua_session.active then return end
-            local me = entity.get_local_player()
-            if not me or not entity.is_alive(me) then return end
-            local shooter = client.userid_to_entindex(e.userid)
-            if not shooter or shooter == me or not entity.is_enemy(shooter) then return end
-            if is_bot(shooter) then return end
-
-            local lx, ly, lz = entity.hitbox_position(me, 0)
-            local dist = math.sqrt((e.x - lx)^2 + (e.y - ly)^2 + (e.z - lz)^2)
-            if dist < 60 then
-                _G.noctua_session.stats.aa_misses = _G.noctua_session.stats.aa_misses + 1
-            end
-        end)
     end
 
     summary.setup()
