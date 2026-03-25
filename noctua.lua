@@ -2843,7 +2843,7 @@ utils = {} do
         return true
     end
 
-    utils.get_state = (function()
+    utils.get_movement_state = (function()
         local tick_start = 0
         local freeze_start = nil
         return function()
@@ -2905,10 +2905,6 @@ utils = {} do
                 return "duck"
             end
 
-            if ui.get(ui_references.freestanding[1]) and ui.get(ui_references.freestanding[2]) then
-                return "freestand"
-            end
-
             if speed > 8 then
                 return "run"
             end
@@ -2916,6 +2912,16 @@ utils = {} do
             return "idle"
         end
     end)()
+
+    utils.get_state = function()
+        local state = utils.get_movement_state()
+
+        if state == 'idle' and ui.get(ui_references.freestanding[1]) and ui.get(ui_references.freestanding[2]) then
+            return 'freestand'
+        end
+
+        return state
+    end
 
     utils.get_enemy_state = (function()
         local tick_start = 0
@@ -3070,7 +3076,7 @@ antiaim = {} do
     }
 
     function hotkeys.get_freestanding_state()
-        local state = utils.get_state()
+        local state = utils.get_movement_state()
 
         if state == 'air' or state == 'airc' then
             return 'air'
@@ -5455,7 +5461,7 @@ quick_stop_in_air = {} do
             return
         end
 
-        local state = utils.get_state()
+        local state = utils.get_movement_state()
         if state ~= 'air' and state ~= 'airc' then
             self:shutdown()
             return
