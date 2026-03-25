@@ -2669,6 +2669,31 @@ utils = {} do
         return utils.contains(value, option)
     end
 
+    utils.hotkey_mode_map = {
+        [0] = 'Always on',
+        [1] = 'On hotkey',
+        [2] = 'Toggle',
+        [3] = 'Hold'
+    }
+
+    utils.get_hotkey_binding = function(item)
+        local _, mode_idx, keycode = ui.get(item)
+        return mode_idx, keycode
+    end
+
+    utils.set_hotkey_binding = function(item, mode, keycode)
+        if type(mode) == 'number' then
+            mode = utils.hotkey_mode_map[mode]
+        end
+
+        if keycode ~= nil then
+            ui.set(item, mode, keycode)
+            return
+        end
+
+        ui.set(item, mode)
+    end
+
     utils.ragebot_weapon_types = {
         'Global',
         'G3SG1 / SCAR-20',
@@ -3032,6 +3057,11 @@ antiaim = {} do
 
     hotkeys.manual_dir = nil
     hotkeys.manual_data = {}
+    hotkeys.freestanding_binding = {
+        active = false,
+        mode = nil,
+        keycode = nil
+    }
     hotkeys.manual_angles = {
         left = -90,
         right = 90,
@@ -3074,6 +3104,28 @@ antiaim = {} do
         end
 
         return not utils.multiselect_has(disablers, hotkeys.get_freestanding_state())
+    end
+
+    function hotkeys.sync_builtin_freestanding(active)
+        local binding = hotkeys.freestanding_binding
+        local builtin_hotkey = ui_references.freestanding[2]
+
+        if active then
+            if not binding.active then
+                binding.mode, binding.keycode = utils.get_hotkey_binding(builtin_hotkey)
+                binding.active = true
+            end
+
+            utils.set_hotkey_binding(builtin_hotkey, 'Always on', binding.keycode)
+            return
+        end
+
+        if not binding.active then
+            return
+        end
+
+        utils.set_hotkey_binding(builtin_hotkey, binding.mode, binding.keycode)
+        binding.active = false
     end
 
     function hotkeys.get_hotkey_changed(item, active, mode)
@@ -3119,6 +3171,7 @@ antiaim = {} do
     end
 
     function hotkeys.reset()
+        hotkeys.sync_builtin_freestanding(false)
         hotkeys.manual_dir = nil
         hotkeys.manual_data = {}
         _G.noctua_runtime.manual_active = false
@@ -3965,6 +4018,7 @@ antiaim = {} do
     function builder.get_runtime_state()
         _G.noctua_runtime.manual_active = interface.antiaim.hotkeys.manual_yaw:get() and hotkeys.manual_dir ~= nil and not _G.noctua_runtime.use_active
         _G.noctua_runtime.freestanding_active = hotkeys.is_freestanding_active() and not _G.noctua_runtime.manual_active and not _G.noctua_runtime.use_active
+        hotkeys.sync_builtin_freestanding(_G.noctua_runtime.freestanding_active)
 
         if not _G.noctua_runtime.freestanding_active then
             refs.freestanding:override(false)
