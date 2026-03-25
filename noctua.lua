@@ -3931,7 +3931,6 @@ antiaim = {} do
         state.body_yaw = 'static'
         state.body_yaw_offset = safe_head_condition == 'airc+knife' and 1 or 0
         state.freestanding_body_yaw = false
-        state.freestanding = false
     end
 
     function extensions.on_player_hurt(e)
@@ -6577,6 +6576,7 @@ visuals = {} do
         local aa_state = utils.get_state()
         if _G.noctua_runtime.use_active then aa_state = "use"
         elseif _G.noctua_runtime.manual_active then aa_state = "manual"
+        elseif _G.noctua_runtime.freestanding_active then aa_state = "freestand"
         elseif _G.noctua_runtime.safe_head_active then aa_state = "safe head" end
 
         renderer.text(base_x, y, 215, 215, 215, self.windowAlpha, align, 0, indent .. "- state: " .. aa_state)
@@ -6864,6 +6864,8 @@ visuals = {} do
             state = "use"
         elseif _G.noctua_runtime.manual_active then
             state = "manual"
+        elseif _G.noctua_runtime.freestanding_active then
+            state = "freestand"
         elseif _G.noctua_runtime.safe_head_active then
             state = "safe head"
         end
