@@ -5377,74 +5377,50 @@ end
 
 --@region: quick stop in air
 quick_stop_in_air = {} do
-    quick_stop_in_air.ticks = 0
+    quick_stop_in_air.air_strafe = pui.reference('misc', 'movement', 'air strafe')
+    quick_stop_in_air.axis_threshold = 25
+
+    quick_stop_in_air.shutdown = function(self)
+        self.air_strafe:override()
+    end
+
     quick_stop_in_air.setup = function(self, cmd)
-        if not (interface.aimbot.enabled_aimbot:get() and interface.aimbot.quick_stop:get() and interface.aimbot.quick_stop.hotkey:get()) then 
-            return 
+        if not (interface.aimbot.enabled_aimbot:get() and interface.aimbot.quick_stop:get() and interface.aimbot.quick_stop.hotkey:get()) then
+            self:shutdown()
+            return
         end
 
-        local lp = entity.get_local_player()
-        if not lp or not entity.is_alive(lp) then 
-            return 
+        local local_player = entity.get_local_player()
+        if not local_player or not entity.is_alive(local_player) then
+            self:shutdown()
+            return
         end
 
-        local players = entity.get_players(true)
-        if not players then 
-            return 
+        local weapon = entity.get_player_weapon(local_player)
+        if entity.get_classname(weapon) ~= "CWeaponSSG08" then
+            self:shutdown()
+            return
         end
 
-        local ox, oy, oz = entity.get_prop(lp, "m_vecOrigin")
-        local lpvec = { x = ox, y = oy, z = oz }
-
-        local weapon = entity.get_player_weapon(lp)
-        local weap_class = entity.get_classname(weapon)
-
-        if weap_class ~= "CWeaponSSG08" then 
-            return 
+        local state = utils.get_state()
+        if state ~= 'air' and state ~= 'airc' then
+            self:shutdown()
+            return
         end
 
-        local _, _, vz = entity.get_prop(lp, "m_vecVelocity")
-        local check_vel = vz > 0
+        local vx, vy = entity.get_prop(local_player, "m_vecVelocity")
+        vx = math.abs(vx or 0)
+        vy = math.abs(vy or 0)
 
-        local flags = entity.get_prop(lp, "m_fFlags")
-        local jumpcheck = bit.band(flags, 1) == 0 
-
-        local enemy = client.current_threat()
-        if not enemy or not jumpcheck then 
-            return 
-        end
-
-        if not check_vel then 
-            return 
-        end
-
-        for i = 1, #players do
-            local p = players[i]
-            if p then
-                local x1, y1, z1 = entity.get_prop(p, "m_vecOrigin")
-                local dist = player.distance3d(lpvec.x, lpvec.y, lpvec.z, x1, y1, z1)
-                if dist <= 1500 then
-                    if cmd.quick_stop then
-                        if (globals.tickcount() - self.ticks) > 3 then
-                            cmd.in_speed = 1
-                        end
-                    else
-                        self.ticks = globals.tickcount()
-                    end
-                end
-            end
-        end
+        self.air_strafe:override(not (vx < self.axis_threshold and vy < self.axis_threshold))
     end
 end
 
--- client.set_event_callback('paint', function()
---     if (interface.aimbot.enabled_aimbot:get() and interface.aimbot.quick_stop:get() and interface.aimbot.quick_stop.hotkey:get()) then 
---         renderer.indicator(214, 214, 214, 255, 'AS')
---     end
--- end)
-
 client.set_event_callback('setup_command', function(cmd)
     quick_stop_in_air:setup(cmd)
+end)
+client.set_event_callback('shutdown', function()
+    quick_stop_in_air:shutdown()
 end)
 --@endregion
 
