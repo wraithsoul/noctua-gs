@@ -1029,6 +1029,7 @@ interface = {} do
         clantag = interface.header.general:checkbox('clantag'),
         killsay = interface.header.general:checkbox('balabolka'),
         killsay_modes = interface.header.general:multiselect('modes', 'on kill', 'on death', 'on revenge'),
+        killsay_chance = interface.header.general:slider('chance of triggering', 1, 100, 70, true, '%'),
         hitsound = interface.header.general:checkbox('hitsound'),
         buybot = interface.header.general:checkbox('buybot'),
         buybot_primary = interface.header.general:combobox('primary weapon', '-', 'autosnipers', 'scout', 'awp'),
@@ -1687,7 +1688,7 @@ interface = {} do
                             return
                         end
 
-                        if key == "killsay_modes" then
+                        if key == "killsay_modes" or key == "killsay_chance" then
                             element:set_visible(interface.utility.killsay:get())
                             return
                         end
@@ -11750,6 +11751,10 @@ killsay = {} do
     end
 
     killsay.try_send = function(phrase_type, now)
+        if client.random_int(1, 100) > interface.utility.killsay_chance:get() then
+            return false
+        end
+
         if now - killsay.last_say_time < killsay.cooldown then
             return false
         end
@@ -11779,8 +11784,7 @@ killsay = {} do
                 return
             end
 
-            killsay.last_say_time = globals.realtime()
-            killsay.send_phrases("revenge")
+            killsay.try_send("revenge", globals.realtime())
         end)
 
         return true
@@ -14462,6 +14466,7 @@ art = {} do
     - Added override fog
     - Added override sunlight
     - Added reveal enemy chat
+    - Added balabolka trigger chance
     - Reworked miss reasons
     - Reworked buybot
     - Reworked debug window
