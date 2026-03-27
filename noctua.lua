@@ -910,12 +910,15 @@ interface = {} do
             profiles = {}
         },
         fake_lag = {
-            extensions = interface.header.fake_lag:multiselect('extensions\nantiaim.fake_lag.extensions', 'avoid backstab', 'force break lc', 'safe head', 'bombsite e fix', 'break self backtrack', 'vigilant lagcomp breaking', 'correct lag on exploit', 'fast fall', 'fast ladder'),
+            extensions = interface.header.fake_lag:multiselect('extensions\nantiaim.fake_lag.extensions', 'avoid backstab', 'force break lc', 'safe head', 'bombsite e fix', 'break self backtrack', 'vigilant lagcomp breaking', 'correct lag on exploit', 'fast fall', 'fast ladder', 'anti-bruteforce'),
             triggers = interface.header.fake_lag:multiselect('break lc triggers\nantiaim.fake_lag.force_break_lc_triggers', 'flashed', 'damage received', 'reloading', 'weapon switch', 'osaa'),
             safe_head_triggers = interface.header.fake_lag:multiselect('safe head triggers\nantiaim.fake_lag.safe_head_triggers', 'high distance', 'idle', 'duck', 'airc', 'airc+knife', 'airc+zeus'),
             break_self_backtrack_mode = interface.header.fake_lag:combobox('break type based on\nantiaim.fake_lag.break_self_backtrack_mode', 'threat', 'auto'),
             vigilant_controls = interface.header.fake_lag:multiselect('decisive controls\nantiaim.fake_lag.vigilant_controls', 'idle', 'run', 'duck', 'slow', 'air', 'airc'),
-            correct_lag_exploit_type = interface.header.fake_lag:multiselect('exploit type\nantiaim.fake_lag.correct_lag_exploit_type', 'double tap', 'osaa')
+            correct_lag_exploit_type = interface.header.fake_lag:multiselect('exploit type\nantiaim.fake_lag.correct_lag_exploit_type', 'double tap', 'osaa'),
+            anti_bruteforce_triggers = interface.header.fake_lag:multiselect('triggers\nantiaim.fake_lag.anti_bruteforce_triggers', 'enemy shot', 'local shot'),
+            anti_bruteforce_power = interface.header.fake_lag:slider('power\nantiaim.fake_lag.anti_bruteforce_power', 1, 100, 20, true, '%', 1),
+            anti_bruteforce_timer = interface.header.fake_lag:slider('timer\nantiaim.fake_lag.anti_bruteforce_timer', 1, 10, 1, true, 's', 1)
         },
         hotkeys = {
             freestanding = interface.header.other:checkbox('freestanding', 0x00),
@@ -1503,6 +1506,18 @@ interface = {} do
 
                         if key == 'correct_lag_exploit_type' then
                             element:set_visible(utils.multiselect_has(interface.antiaim.fake_lag.extensions:get(), 'correct lag on exploit'))
+                            return
+                        end
+
+                        if key == 'anti_bruteforce_triggers' then
+                            element:set_visible(utils.multiselect_has(interface.antiaim.fake_lag.extensions:get(), 'anti-bruteforce'))
+                            return
+                        end
+
+                        if key == 'anti_bruteforce_power' or key == 'anti_bruteforce_timer' then
+                            local enabled = utils.multiselect_has(interface.antiaim.fake_lag.extensions:get(), 'anti-bruteforce')
+                            local triggers = interface.antiaim.fake_lag.anti_bruteforce_triggers:get()
+                            element:set_visible(enabled and #triggers > 0)
                             return
                         end
 
@@ -3541,6 +3556,11 @@ antiaim = {} do
     extensions.break_self_backtrack_cooldown = 0
     extensions.vigilant_last_state = nil
     extensions.vigilant_next_pulse = 0
+    extensions.anti_bruteforce_until = 0
+    extensions.anti_bruteforce_pending = false
+    extensions.anti_bruteforce_yaw_delta = 0
+    extensions.anti_bruteforce_jitter_delta = 0
+    extensions.anti_bruteforce_body_yaw_delta = 0
 
     function extensions.is_enabled(name)
         return utils.multiselect_has(interface.antiaim.fake_lag.extensions:get(), name)
@@ -3554,6 +3574,18 @@ antiaim = {} do
         return utils.multiselect_has(interface.antiaim.fake_lag.safe_head_triggers:get(), name)
     end
 
+    function extensions.is_anti_bruteforce_trigger_enabled(name)
+        return utils.multiselect_has(interface.antiaim.fake_lag.anti_bruteforce_triggers:get(), name)
+    end
+
+    function extensions.reset_anti_bruteforce()
+        extensions.anti_bruteforce_until = 0
+        extensions.anti_bruteforce_pending = false
+        extensions.anti_bruteforce_yaw_delta = 0
+        extensions.anti_bruteforce_jitter_delta = 0
+        extensions.anti_bruteforce_body_yaw_delta = 0
+    end
+
     function extensions.reset()
         extensions.damage_received_until = 0
         extensions.flash_until = 0
@@ -3561,6 +3593,7 @@ antiaim = {} do
         extensions.break_self_backtrack_cooldown = 0
         extensions.vigilant_last_state = nil
         extensions.vigilant_next_pulse = 0
+        extensions.reset_anti_bruteforce()
         _G.noctua_runtime.safe_head_active = false
         exploit.restore()
         fakelag_refs.on[1]:override()
@@ -3581,6 +3614,86 @@ antiaim = {} do
         local is_osaa = utils.multiselect_has(exploit_types, 'osaa') and extensions.is_osaa_active()
 
         return is_double_tap or is_osaa
+    end
+
+    function extensions.is_supported_fire_weapon(idx)
+        local weapon = entity.get_player_weapon(idx)
+        local weapon_info = weapon and csgo_weapons(weapon) or nil
+
+        if weapon_info == nil then
+            return false
+        end
+
+        return weapon_info.type ~= 'knife' and weapon_info.type ~= 'grenade'
+    end
+
+    function extensions.trigger_anti_bruteforce()
+        if not extensions.is_enabled('anti-bruteforce') then
+            return
+        end
+
+        local triggers = interface.antiaim.fake_lag.anti_bruteforce_triggers:get()
+        if #triggers == 0 then
+            return
+        end
+
+        local timer = math.max(interface.antiaim.fake_lag.anti_bruteforce_timer:get(), 1)
+        extensions.anti_bruteforce_pending = true
+        extensions.anti_bruteforce_until = globals.curtime() + timer
+    end
+
+    function extensions.is_anti_bruteforce_active()
+        if not extensions.is_enabled('anti-bruteforce') then
+            return false
+        end
+
+        return globals.curtime() < extensions.anti_bruteforce_until
+    end
+
+    function extensions.get_anti_bruteforce_delta(limit)
+        if limit <= 0 then
+            return 0
+        end
+
+        local delta = client.random_int(-limit, limit)
+        if delta ~= 0 then
+            return delta
+        end
+
+        return client.random_int(0, 1) == 1 and limit or -limit
+    end
+
+    function extensions.update_anti_bruteforce_adjustment(state)
+        local power = interface.antiaim.fake_lag.anti_bruteforce_power:get() * 0.01
+        local yaw_range = mathematic.clamp(math.floor(math.max(math.abs(state.yaw_offset), 24) * power), 1, 40)
+        local jitter_range = mathematic.clamp(math.floor(math.max(math.abs(state.jitter_offset), 18) * power), 1, 30)
+        local body_yaw_range = mathematic.clamp(math.floor(math.max(math.abs(state.body_yaw_offset), 16) * power), 1, 24)
+
+        extensions.anti_bruteforce_yaw_delta = extensions.get_anti_bruteforce_delta(yaw_range)
+        extensions.anti_bruteforce_jitter_delta = state.jitter_mode ~= 'off' and extensions.get_anti_bruteforce_delta(jitter_range) or 0
+        extensions.anti_bruteforce_body_yaw_delta = state.body_yaw == 'static' and extensions.get_anti_bruteforce_delta(body_yaw_range) or 0
+        extensions.anti_bruteforce_pending = false
+    end
+
+    function extensions.apply_anti_bruteforce(state)
+        if not extensions.is_anti_bruteforce_active() then
+            return
+        end
+
+        if extensions.anti_bruteforce_pending then
+            extensions.update_anti_bruteforce_adjustment(state)
+        end
+
+        state.yaw_offset = mathematic.normalize_yaw(state.yaw_offset + extensions.anti_bruteforce_yaw_delta)
+
+        if state.jitter_mode ~= 'off' then
+            state.jitter_offset = mathematic.clamp(state.jitter_offset + extensions.anti_bruteforce_jitter_delta, -180, 180)
+        end
+
+        if state.body_yaw == 'static' then
+            state.body_yaw_offset = mathematic.clamp(state.body_yaw_offset + extensions.anti_bruteforce_body_yaw_delta, -180, 180)
+        end
+
     end
 
     function extensions.get_eye_position(idx)
@@ -4041,6 +4154,30 @@ antiaim = {} do
         end
     end
 
+    function extensions.on_weapon_fire(e)
+        local local_player = entity.get_local_player()
+        if local_player == nil or not interface.antiaim.enabled_antiaim:get() then
+            return
+        end
+
+        local shooter = client.userid_to_entindex(e.userid)
+        if shooter == nil or not extensions.is_supported_fire_weapon(shooter) then
+            return
+        end
+
+        if shooter == local_player then
+            if extensions.is_anti_bruteforce_trigger_enabled('local shot') then
+                extensions.trigger_anti_bruteforce()
+            end
+
+            return
+        end
+
+        if entity.is_enemy(shooter) and entity.is_alive(shooter) and not entity.is_dormant(shooter) and extensions.is_anti_bruteforce_trigger_enabled('enemy shot') then
+            extensions.trigger_anti_bruteforce()
+        end
+    end
+
     function builder.get_profile(state)
         return interface.antiaim.builder.profiles[state]
     end
@@ -4485,6 +4622,7 @@ antiaim = {} do
 
         extensions.apply(cmd, local_player, settings)
         builder.apply_defensive(cmd, local_player, profile, settings)
+        extensions.apply_anti_bruteforce(settings)
 
         refs.enabled:override(true)
         refs.pitch[1]:override(settings.pitch_mode)
@@ -4544,6 +4682,7 @@ antiaim = {} do
     client.set_event_callback('player_hurt', extensions.on_player_hurt)
     client.set_event_callback('player_blind', extensions.on_player_blind)
     client.set_event_callback('weapon_reload', extensions.on_weapon_reload)
+    client.set_event_callback('weapon_fire', extensions.on_weapon_fire)
     client.set_event_callback('round_start', exploit.reset)
     client.set_event_callback('game_newmap', exploit.reset)
     client.set_event_callback('cs_game_disconnected', exploit.reset)
