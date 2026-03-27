@@ -9865,6 +9865,8 @@ end
 --@region: buybot
 buybot = {} do
     buybot.current_round_number = 0
+    buybot.secondary_delay = 0.05
+    buybot.primary_fallback_delay = 0.16
 
     buybot.primary_console = {
         ["-"] = "",
@@ -9945,64 +9947,68 @@ buybot = {} do
         if client.userid_to_entindex(e.userid) ~= entity.get_local_player() then
             return
         end
+
+        buybot.try_buy()
     end
 
     buybot.try_buy = function()
-        client.delay_call(0.25, function()
-            local local_player = entity.get_local_player()
-            if not local_player then
-                return
-            end
+        local local_player = entity.get_local_player()
+        if not local_player then
+            return
+        end
 
+        if not interface.utility.buybot:get() or buybot.is_pistol_round() then
+            return
+        end
+
+        local primary_item = buybot.primary_console[interface.utility.buybot_primary:get()]
+        local primary_fallback_item = buybot.primary_console[interface.utility.buybot_primary_fallback:get()]
+        local secondary_item = buybot.secondary_console[interface.utility.buybot_secondary:get()]
+        local selected_utilities = interface.utility.buybot_utility:get()
+
+        if primary_item and primary_item ~= "" then
+            client.exec("buy " .. primary_item)
+
+            if primary_fallback_item and primary_fallback_item ~= "" then
+                client.delay_call(buybot.primary_fallback_delay, function()
+                    if not buybot.has_primary_weapon() then
+                        client.exec("buy " .. primary_fallback_item)
+                    end
+                end)
+            end
+        elseif primary_fallback_item and primary_fallback_item ~= "" then
+            client.exec("buy " .. primary_fallback_item)
+        end
+
+        client.delay_call(buybot.secondary_delay, function()
+            local delayed_queue = ""
             local money = entity.get_prop(local_player, "m_iAccount") or 0
-            if not interface.utility.buybot:get() or money <= 1000 or buybot.is_pistol_round() then
+
+            if money <= 800 then
                 return
             end
-
-            local primary_item = buybot.primary_console[interface.utility.buybot_primary:get()]
-            local primary_fallback_item = buybot.primary_console[interface.utility.buybot_primary_fallback:get()]
-            local secondary_item = buybot.secondary_console[interface.utility.buybot_secondary:get()]
-            local selected_utilities = interface.utility.buybot_utility:get()
-            local command_queue = ""
 
             if secondary_item and secondary_item ~= "" then
-                command_queue = command_queue .. "buy " .. secondary_item .. ";"
+                delayed_queue = delayed_queue .. "buy " .. secondary_item .. ";"
             end
 
             if selected_utilities then
                 for _, utility in ipairs(selected_utilities) do
                     local utility_item = buybot.utility_console[utility]
                     if utility_item and utility_item ~= "" then
-                        command_queue = command_queue .. "buy " .. utility_item .. ";"
+                        delayed_queue = delayed_queue .. "buy " .. utility_item .. ";"
                     end
                 end
             end
 
-            if primary_item and primary_item ~= "" then
-                command_queue = command_queue .. "buy " .. primary_item .. ";"
-
-                if primary_fallback_item and primary_fallback_item ~= "" then
-                    client.delay_call(0.4, function()
-                        if not buybot.has_primary_weapon() then
-                            client.exec("buy " .. primary_fallback_item)
-                        end
-                    end)
-                end
-            elseif primary_fallback_item and primary_fallback_item ~= "" then
-                command_queue = command_queue .. "buy " .. primary_fallback_item .. ";"
-            end
-
-            if command_queue ~= "" then
-                client.exec(command_queue)
+            if delayed_queue ~= "" then
+                client.exec(delayed_queue)
             end
         end)
     end
 
     buybot.on_round_prestart = function()
         buybot.current_round_number = buybot.get_next_round_number()
-        if buybot.current_round_number > 0 then
-            buybot.try_buy()
-        end
     end
 
     buybot.reset_round_cache = function()
@@ -10010,6 +10016,7 @@ buybot = {} do
     end
     
     client.set_event_callback("round_prestart", buybot.on_round_prestart)
+    client.set_event_callback("player_spawn", buybot.on_player_spawn)
     client.set_event_callback("cs_game_disconnected", buybot.reset_round_cache)
     client.set_event_callback("game_newmap", buybot.reset_round_cache)
 end
