@@ -14998,7 +14998,7 @@ grenade_radius = {} do
     local TWO_PI = 2 * math.pi
     local CAMERA_NEAR_PLANE = 8
     local BLOB_FILL_ALPHA_MULTIPLIER = 0.2
-    local MAX_RENDER_DISTANCE = 1600
+    local MAX_RENDER_DISTANCE = 1200
 
     local function smooth_contour(points, iterations)
         if #points < 3 then return points end
@@ -15315,8 +15315,14 @@ grenade_radius = {} do
         draw_contour_smooth_limit(smoothed_points, r, g, b, a, outline_limit, camera_origin, camera_forward)
     end
 
-    local function remove_track(id)
-        tracks[id] = nil
+    local function fade_out_track(id)
+        local track = tracks[id]
+        if not track then
+            return
+        end
+
+        track.updated = true
+        track.target_alpha = 0
     end
 
     grenade_radius.on_paint = function()
@@ -15346,7 +15352,7 @@ grenade_radius = {} do
                 local ox, oy, oz = entity.get_prop(idx, "m_vecOrigin")
 
                 if player.distance3d(camera_x, camera_y, camera_z, ox, oy, oz) > MAX_RENDER_DISTANCE then
-                    remove_track(idx)
+                    fade_out_track(idx)
                     goto continue_molotov
                 end
 
@@ -15390,7 +15396,7 @@ grenade_radius = {} do
                     local x, y, z = entity.get_prop(idx, "m_vecOrigin")
 
                     if player.distance3d(camera_x, camera_y, camera_z, x, y, z) > MAX_RENDER_DISTANCE then
-                        remove_track(idx)
+                        fade_out_track(idx)
                         goto continue_smoke
                     end
                     
