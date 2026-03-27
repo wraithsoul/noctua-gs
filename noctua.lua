@@ -2128,6 +2128,9 @@ player_list = {} do
     end
 
     player_list.GetWhitelist = get_checkbox('Add to whitelist', false)
+    player_list.IsWhitelisted = function(self, ent)
+        return self:GetWhitelist(ent)
+    end
 
     player_list.SetWhitelist = function(self, ent, val)
         set_checkbox(self, ent, 'Whitelist', 'Add to whitelist', val)
@@ -5669,6 +5672,14 @@ resolver = {} do
         for _, idx in ipairs(enemies) do
             repeat
                 if not entity.is_alive(idx) or entity.is_dormant(idx) then break end
+                if player_list:IsWhitelisted(idx) then
+                    player_list.SetForceBodyYawCheckbox(player_list, idx, false)
+                    player_list.SetForcePitchCheckbox(player_list, idx, false)
+                    player_list.SetBodyYaw(player_list, idx, 0)
+                    player_list.SetForcePitch(player_list, idx, 0)
+                    player_list.SetCorrection(player_list, idx, false)
+                    break
+                end
                 
                 local player_info = utils.get_player_info(idx)
                 if not player_info then break end
@@ -6440,7 +6451,7 @@ baim_on_lethal = {} do
             return false
         end
 
-        if player_list.GetWhitelist(player_list, idx) then
+        if player_list:IsWhitelisted(idx) then
             return false
         end
 
@@ -15594,7 +15605,7 @@ dormant_aimbot = {} do
                entity.is_enemy(idx) and 
                entity.is_dormant(idx) and
                entity.get_prop(idx, "m_lifeState") == 0 then
-                if player_list.GetWhitelist(player_list, idx) then
+                if player_list:IsWhitelisted(idx) then
                     goto continue_dormant_target
                 end
                 
