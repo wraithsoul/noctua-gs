@@ -945,8 +945,9 @@ interface = {} do
         secondary = interface.header.general:label('secondary color', {215, 240, 255}),
         vgui = interface.header.general:label('vgui color', {255, 255, 255}), -- 140, 140, 140
         crosshair_indicators = interface.header.general:checkbox('crosshair indicator'),
-        crosshair_style = interface.header.general:combobox('style', {'default', 'center', 'emoji'}),
+        crosshair_style = interface.header.general:combobox('style', {'default', 'center', 'emoji', 'half-life'}),
         crosshair_animate_scope = interface.header.general:checkbox('animate on-scope'),
+        manual_arrows = interface.header.general:checkbox('manual arrows'),
         damage_indicator = interface.header.general:checkbox('damage indicator'),
         lc_status = interface.header.general:checkbox('lc status'),
         window = interface.header.general:checkbox('debug window'),
@@ -6862,6 +6863,121 @@ visuals = {} do
         visuals.emoji.on_player_spawn(e)
     end)
 
+    visuals.draw_text_parts = function(self, x, y, alpha, flags, parts)
+        local draw_x = x
+
+        for i = 1, #parts do
+            local part = parts[i]
+            local text = part.text or ''
+            local color = part.color or {255, 255, 255}
+            local part_flags = part.flags or flags or ''
+            renderer.text(draw_x, y, color[1], color[2], color[3], alpha, part_flags, 0, text)
+            draw_x = draw_x + (select(1, renderer.measure_text(part_flags, text)) or 0)
+        end
+
+        return draw_x
+    end
+
+    visuals.manual_arrows = function(self, base_x, base_y)
+        local local_player = entity.get_local_player()
+        local health = local_player and entity.get_prop(local_player, "m_iHealth") or 0
+        local is_scoreboard = client.key_state(0x09)
+        local menu_open = ui.is_menu_open()
+
+        local enabled = interface.visuals.enabled_visuals:get()
+            and interface.visuals.manual_arrows:get()
+            and ((local_player and health > 0 and not is_scoreboard) or menu_open)
+
+        local target_alpha = enabled and 255 or 0
+        self.manual_arrows_alpha = mathematic.lerp(self.manual_arrows_alpha or 0, target_alpha, globals.frametime() * 10)
+
+        if self.manual_arrows_alpha < 1 then
+            return
+        end
+
+        local full_alpha = math.floor(self.manual_arrows_alpha + 0.5)
+        local manual_dir = antiaim and antiaim.hotkeys and antiaim.hotkeys.manual_dir or nil
+        local accent = interface.visuals.accent.color.value
+        local flags = 'b'
+        local arrow_color = {accent[1], accent[2], accent[3]}
+
+        local function draw_centered_arrow(x, y, text)
+            local w, h = renderer.measure_text(flags, text)
+            local draw_x = math.floor(x - ((w or 0) * 0.5) + 0.5)
+            local draw_y = math.floor(y - ((h or 0) * 0.5) + 0.5)
+            renderer.text(draw_x, draw_y, arrow_color[1], arrow_color[2], arrow_color[3], full_alpha, flags, 0, text)
+        end
+
+        local horizontal_offset = 28
+        local vertical_offset = 16
+        local center_x = math.floor(base_x + 0.5)
+        local center_y = math.floor(base_y + 0.5)
+
+        if manual_dir == 'left' then
+            draw_centered_arrow(center_x - horizontal_offset, center_y, '<')
+        elseif manual_dir == 'right' then
+            draw_centered_arrow(center_x + horizontal_offset, center_y, '>')
+        elseif manual_dir == 'forward' then
+            draw_centered_arrow(center_x, center_y - vertical_offset, '^')
+        elseif manual_dir == 'backward' then
+            draw_centered_arrow(center_x, center_y + vertical_offset, 'v')
+        end
+    end
+
+    visuals.draw_half_life_indicators = function(self, base_x, base_y, alpha, is_dt, dt_is_ready, is_os, is_dmg, fake_yaw, baim, sp, fs, accent_color, secondary_color)
+        local text_flags = '-'
+        local lineh = select(2, renderer.measure_text(text_flags, 'A')) or 8
+        local line_step = math.max(5, lineh - 2)
+        local content_y = math.floor(base_y)
+        local full_alpha = math.floor(alpha + 0.5)
+        local beta_alpha = math.floor((50 + ((math.sin(globals.realtime() * 4) * 0.5 + 0.5) * 205)) * (alpha / 255))
+
+        renderer.text(base_x, content_y, 255, 255, 255, full_alpha, text_flags, 0, 'NOCTUA')
+        local title_width = select(1, renderer.measure_text(text_flags, 'NOCTUA ')) or 0
+        renderer.text(base_x + title_width, content_y, accent_color[1], accent_color[2], accent_color[3], beta_alpha, text_flags, 0, 'BETA')
+
+        local y = content_y + line_step
+        local fake_parts = {
+            { text = 'FAKE YAW: ', color = secondary_color, flags = text_flags },
+            { text = fake_yaw, color = {255, 255, 255}, flags = text_flags }
+        }
+        self:draw_text_parts(base_x, y, full_alpha, text_flags, fake_parts)
+        y = y + line_step
+
+        if is_dt then
+            local dt_color = dt_is_ready and {203, 255, 150} or {255, 90, 90}
+            renderer.text(base_x, y, dt_color[1], dt_color[2], dt_color[3], full_alpha, text_flags, 0, 'DT')
+            y = y + line_step
+        end
+
+        if is_os then
+            renderer.text(base_x, y, 255, 255, 255, full_alpha, text_flags, 0, 'OSAA')
+            y = y + line_step
+        end
+
+        if is_dmg then
+            renderer.text(base_x, y, 255, 255, 255, full_alpha, text_flags, 0, 'DMG')
+            y = y + line_step
+        end
+
+        local inactive_alpha = math.floor(full_alpha * 0.6)
+        local flag_parts = {
+            { text = 'BAIM', color = baim and {255, 255, 255} or {180, 180, 180}, flags = text_flags, alpha = baim and full_alpha or inactive_alpha },
+            { text = ' ', color = {255, 255, 255}, flags = text_flags, alpha = full_alpha },
+            { text = 'SP', color = sp and {255, 255, 255} or {180, 180, 180}, flags = text_flags, alpha = sp and full_alpha or inactive_alpha },
+            { text = ' ', color = {255, 255, 255}, flags = text_flags, alpha = full_alpha },
+            { text = 'FS', color = fs and {255, 255, 255} or {180, 180, 180}, flags = text_flags, alpha = fs and full_alpha or inactive_alpha }
+        }
+
+        local draw_x = base_x
+        for i = 1, #flag_parts do
+            local part = flag_parts[i]
+            local color = part.color
+            renderer.text(draw_x, y, color[1], color[2], color[3], part.alpha or full_alpha, part.flags, 0, part.text)
+            draw_x = draw_x + (select(1, renderer.measure_text(part.flags, part.text)) or 0)
+        end
+    end
+
     visuals.indicators = function(self, base_x, base_y)
         local frameTime = globals.frametime()
         local fadeSpeedBase = 10
@@ -6930,10 +7046,51 @@ visuals = {} do
         elseif _G.noctua_runtime.safe_head_active then
             state = "safe head"
         end
+
         local isOS = ui.get(ui_references.on_shot_anti_aim[1]) and ui.get(ui_references.on_shot_anti_aim[2])
         local isDT = ui.get(ui_references.double_tap[1]) and ui.get(ui_references.double_tap[2])
         local isDMG = ui.get(ui_references.minimum_damage_override[1]) and ui.get(ui_references.minimum_damage_override[2])
         local isHC = hitchance_override and hitchance_override._hotkey_active == true and hitchance_override._updated_this_tick == true
+        local fakeYaw = (antiaim and antiaim.builder and antiaim.builder.inverted) and 'R' or 'L'
+        local baim = ui.get(ui_references.body_aim) == true
+        local sp = ui.get(ui_references.safe_point) == true
+        local fs = _G.noctua_runtime.freestanding_active == true
+        local accentColor = {r1, g1, b1}
+        local secondaryColor = {r2, g2, b2}
+
+        local dt = antiaim_funcs.get_double_tap()
+        local tickbase = antiaim_funcs.get_tickbase_shifting()
+
+        local targetRapidAlpha = 0
+        local targetReloadAlpha = 0
+
+        if ui.get(ui_references.double_tap[1]) and ui.get(ui_references.double_tap[2]) then
+            if tickbase >= 4 and dt then
+                targetRapidAlpha = 255
+                targetReloadAlpha = 0
+            elseif not utils.weapon_ready() then
+                targetRapidAlpha = 0
+                targetReloadAlpha = 100
+            else
+                targetRapidAlpha = 255
+                targetReloadAlpha = 0
+            end
+        end
+
+        local dtIsReady = targetRapidAlpha > 0 and targetReloadAlpha == 0
+
+        self.rapidAlpha = mathematic.lerp(self.rapidAlpha or 0, targetRapidAlpha, fade_lerp_t)
+        self.reloadAlpha = mathematic.lerp(self.reloadAlpha or 0, targetReloadAlpha, fade_lerp_t)
+        self.rapidAlpha = mathematic.clamp(self.rapidAlpha, 0, 255)
+        self.reloadAlpha = mathematic.clamp(self.reloadAlpha, 0, 255)
+
+        local smoothRapidAlpha = (self.rapidAlpha / 255) * self.indicatorsAlpha
+        local smoothReloadAlpha = (self.reloadAlpha / 255) * self.indicatorsAlpha
+
+        if style == 'half-life' then
+            self:draw_half_life_indicators(base_x, base_y, self.indicatorsAlpha, isDT, dtIsReady, isOS, isDMG, fakeYaw, baim, sp, fs, accentColor, secondaryColor)
+            return
+        end
 
         local align_text = ((style == 'center') or isEmoji) and 'c' or 'l'
         local align_title = ((style == 'center') or isEmoji) and 'cb' or 'lb'
@@ -6960,33 +7117,6 @@ visuals = {} do
 
         self.element_target_positions.noctua = base_y + 10
         self.element_target_positions.state = self.element_target_positions.noctua + 10
-
-        local dt = antiaim_funcs.get_double_tap()
-        local tickbase = antiaim_funcs.get_tickbase_shifting()
-
-        local targetRapidAlpha = 0
-        local targetReloadAlpha = 0
-
-        if ui.get(ui_references.double_tap[1]) and ui.get(ui_references.double_tap[2]) then
-            if tickbase >= 4 and dt then
-                targetRapidAlpha = 255
-                targetReloadAlpha = 0
-            elseif not utils.weapon_ready() then
-                targetRapidAlpha = 0
-                targetReloadAlpha = 100
-            else
-                targetRapidAlpha = 255
-                targetReloadAlpha = 0
-            end
-        end
-
-        self.rapidAlpha = mathematic.lerp(self.rapidAlpha or 0, targetRapidAlpha, fade_lerp_t)
-        self.reloadAlpha = mathematic.lerp(self.reloadAlpha or 0, targetReloadAlpha, fade_lerp_t)
-        self.rapidAlpha = mathematic.clamp(self.rapidAlpha, 0, 255)
-        self.reloadAlpha = mathematic.clamp(self.reloadAlpha, 0, 255)
-
-        local smoothRapidAlpha = (self.rapidAlpha / 255) * self.indicatorsAlpha
-        local smoothReloadAlpha = (self.reloadAlpha / 255) * self.indicatorsAlpha
 
         if smoothRapidAlpha >= 1 or smoothReloadAlpha >= 1 then
             self.element_target_positions.rapid = self.element_target_positions.state + 10
@@ -7813,6 +7943,11 @@ client.set_event_callback('paint', function()
     stickman:setup()
 end)
 
+client.set_event_callback('paint', function()
+    local sw, sh = client.screen_size()
+    visuals:manual_arrows(sw / 2, sh / 2)
+end)
+
 client.set_event_callback('paint_ui', function()
     widgets.paint()
     confetti:update()
@@ -8028,9 +8163,9 @@ logging = {} do
         end
         
         if edit_mode and real_count == 0 and not self.preview_active then
-            self:push("hit keus's head for 208 / lc: 3 - yaw: -23°", 999999, true)
-            self:push("missed racen's head / lc: 12 - reason: bad code", 999999, true)
-            self:push("forced safe point for Axsiimov / hp: 26 - reason: cs_assault", 999999, true)
+            self:push_format("hit %s's %s for %d / lc: %d - yaw: %s", 999999, true, "keus", "head", 208, 3, "-23°")
+            self:push_format("missed %s's %s / lc: %d - reason: %s", 999999, true, "racen", "head", 12, "bad code")
+            self:push_format("fired at %s's %s for %d / lc: %d - yaw: %s°", 999999, true, "Axsiimov", "head", 26, 1, "17")
             self.preview_active = true
         end
         if (not edit_mode or real_count > 0) and self.preview_active then
@@ -8615,6 +8750,18 @@ widgets.register({
     title = "Indicators",
     defaults = { anchor_x = "center", anchor_y = "center", offset_x = 0, offset_y = 10 },
     get_size = function(st)
+        if interface.visuals.crosshair_style:get() == 'half-life' then
+            local text_flags = '-'
+            local lineh = select(2, renderer.measure_text(text_flags, 'A')) or 8
+            local line_step = math.max(5, lineh - 2)
+            local title_w = (select(1, renderer.measure_text(text_flags, 'NOCTUA BETA')) or 0) + 4
+            local fake_w = select(1, renderer.measure_text(text_flags, 'FAKE YAW: R')) or 0
+            local flags_w = select(1, renderer.measure_text(text_flags, 'BAIM SP FS')) or 0
+            local maxw = math.max(title_w, fake_w, flags_w, 90)
+            local total_h = lineh + (line_step * 5)
+            return maxw, total_h + 4
+        end
+
         local maxw, lineh = 0, select(2, renderer.measure_text("c", "A")) or 12
         local samples = { "noctua", "freestand", "rapid", "reload", "osaa", "dmg", "hc" }
         for i = 1, #samples do
@@ -8659,7 +8806,7 @@ widgets.register({
         end
         if maxw == 0 then maxw = 300 end
         local content_h = ((visible - 1) * line_spacing) + text_h
-        local height = 10 + content_h + 10
+        local height = 6 + content_h + 6
         return maxw, height
     end,
     draw = function(ctx)
@@ -8673,7 +8820,7 @@ widgets.register({
 
         local showing_preview = ctx.edit_mode and real_count == 0
         local runtime_y_offset = showing_preview and 0 or -3
-        local base_y = math.floor(ctx.y + 8 + (text_h / 2) + runtime_y_offset + 0.5)
+        local base_y = math.floor(ctx.y + 2 + (text_h / 2) + runtime_y_offset + 0.5)
         local base_x = math.floor(ctx.cx + 0.5)
         logging:drawAnimatedMessages(base_x, base_y, ctx.edit_mode)
     end,
@@ -14519,12 +14666,15 @@ art = {} do
     - Added override sunlight
     - Added reveal enemy chat
     - Added balabolka trigger chance
+    - Added half-life crosshair indicator style
+    - Added center-screen manual arrows
     - Reworked miss reasons
     - Reworked buybot
     - Reworked debug window
     - Reworked dormant aimbot safe point
     - Reworked killsay delays
     - Reworked logging animations
+    - Reworked logging preview formatting
     - Reworked damage indicator animations
     - Reworked experimental yaw correction mode
     - Fixed damage indicator alpha on several weapons
