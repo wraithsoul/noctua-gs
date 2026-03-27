@@ -14072,6 +14072,8 @@ bomb_timer = {} do
             draw = function(ctx) bomb_timer.paint(ctx.cx, ctx.cy, ctx.edit_mode) end,
             z = 5
         })
+
+        widgets.load_from_db()
     end
 
     bomb_timer.setup()
