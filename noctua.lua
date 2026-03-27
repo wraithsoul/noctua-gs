@@ -7865,7 +7865,17 @@ logging = {} do
         return segments
     end
 
-    logging.push = function(self, text, duration, is_preview, segments)
+    logging.build_text_segments = function(self, text)
+        return {
+            {
+                text = tostring(text or ""),
+                color = {212, 212, 212},
+                flags = ""
+            }
+        }
+    end
+
+    logging.enqueue = function(self, text, duration, is_preview, segments)
         duration = duration or 3
         table.insert(self.animatedMessages, 1, {
             text = text,
@@ -7884,6 +7894,50 @@ logging = {} do
             self.animatedMessages[#self.animatedMessages].removing = true
             self.animatedMessages[#self.animatedMessages].remove_started_at = globals.realtime()
         end
+    end
+
+    logging.push = function(self, text, ...)
+        local message = tostring(text or "")
+        local argv = { ... }
+        local argc = select("#", ...)
+        local duration = 3
+        local is_preview = false
+        local format_index = 1
+
+        if argc > 0 and type(argv[1]) == "number" then
+            duration = argv[1]
+            format_index = 2
+        end
+
+        if argc >= format_index and type(argv[format_index]) == "boolean" then
+            is_preview = argv[format_index]
+            format_index = format_index + 1
+        end
+
+        if argc >= format_index and argv[format_index] == nil and argc > format_index then
+            format_index = format_index + 1
+            if argc >= format_index and type(argv[format_index]) == "boolean" then
+                is_preview = argv[format_index]
+                format_index = format_index + 1
+            end
+        end
+
+        local format_count = argc - format_index + 1
+        local segments
+
+        if format_count > 0 then
+            local format_args = {}
+            for i = format_index, argc do
+                format_args[#format_args + 1] = argv[i]
+            end
+
+            segments = self:build_segments(message, unpack(format_args))
+            message = string.format(message, unpack(format_args))
+        else
+            segments = self:build_text_segments(message)
+        end
+
+        self:enqueue(message, duration, is_preview, segments)
     end
 
     logging.clear_preview = function(self)
@@ -7915,7 +7969,7 @@ logging = {} do
     end
 
     logging.push_format = function(self, fmt, duration, is_preview, ...)
-        self:push(string.format(fmt, ...), duration, is_preview, self:build_segments(fmt, ...))
+        self:push(fmt, duration, is_preview, ...)
     end
 
     logging.get_reason_color = function(self, reason)
@@ -7942,7 +7996,7 @@ logging = {} do
         if segments[#segments] then
             segments[#segments].color = self:get_reason_color(reason)
         end
-        self:push(string.format(fmt, ...), duration, is_preview, segments)
+        self:enqueue(string.format(fmt, ...), duration, is_preview, segments)
     end
 
     logging.console_miss_log = function(self, fmt, ...)
@@ -8589,7 +8643,18 @@ widgets.register({
         local text_h = select(2, renderer.measure_text("c", "A")) or 12
         
         for i = 1, count do
-            local w = select(1, renderer.measure_text("c", logging.animatedMessages[i].text or "")) or 0
+            local message = logging.animatedMessages[i]
+            local w = 0
+
+            if message.segments and #message.segments > 0 then
+                for j = 1, #message.segments do
+                    local seg = message.segments[j]
+                    w = w + (select(1, renderer.measure_text(seg.flags or "", seg.text or "")) or 0)
+                end
+            else
+                w = select(1, renderer.measure_text("c", message.text or "")) or 0
+            end
+
             if w > maxw then maxw = w end
         end
         if maxw == 0 then maxw = 300 end
@@ -10275,13 +10340,18 @@ local kas = {} do
         return "entry_" .. tostring(client.unix_time())
     end
 
-    local function push_kas(text, duration, console_format, console_args)
+    local function push_kas(text, duration, console_format, console_args, screen_format, screen_args)
         local message = tostring(text or "")
         if message:sub(1, 5) ~= "KAS: " then
             message = "KAS: " .. message
         end
 
-        logging:push(message:gsub("^KAS:%s*", ""), duration)
+        if screen_format then
+            logging:push(screen_format, duration, false, unpack(screen_args or {}))
+        else
+            logging:push(message:gsub("^KAS:%s*", ""), duration)
+        end
+
         if console_format then
             argLogWithPrefix("noctua · KAS", console_format, unpack(console_args or {}))
             return
@@ -10370,15 +10440,15 @@ local kas = {} do
         end
 
         if source_name ~= "" then
-            add_clause('was added from "%s"', source_name)
+            add_clause('was added from %s', source_name)
         end
 
         if group_name ~= "" then
-            add_clause('belongs to "%s" group', group_name)
+            add_clause('belongs to %s group', group_name)
         end
 
         if note_text ~= "" then
-            add_clause('has a note "%s"', note_text)
+            add_clause('has a note %s', note_text)
         end
 
         if alias_name ~= "" then
@@ -10387,8 +10457,9 @@ local kas = {} do
                 screen_clauses[i] = string.format(clauses[i].text, unpack(clauses[i].args or {}))
             end
 
+            local base_screen_message = string.format('KAS: The player %s commonly known as %s', display_name, alias_name)
             local message = append_clauses(
-                string.format('KAS: The player "%s" commonly known as "%s"', display_name, alias_name),
+                base_screen_message,
                 screen_clauses,
                 "and",
                 ", "
@@ -10406,7 +10477,17 @@ local kas = {} do
                 console_suffix = ", " .. clause_format
             end
 
-            return message, 'The player "%s" commonly known as "%s"' .. console_suffix .. ".", console_args
+            local screen_format = 'The player %s commonly known as %s'
+            local screen_args = { display_name, alias_name }
+            if #screen_clauses == 1 then
+                screen_format = screen_format .. " and " .. screen_clauses[1] .. "."
+            elseif #screen_clauses > 1 then
+                screen_format = screen_format .. ", " .. join_clauses(screen_clauses) .. "."
+            else
+                screen_format = screen_format .. "."
+            end
+
+            return message, 'The player %s commonly known as %s' .. console_suffix .. ".", console_args, screen_format, screen_args
         end
 
         if #clauses == 0 then
@@ -10419,7 +10500,7 @@ local kas = {} do
         end
 
         local message = append_clauses(
-            string.format('KAS: The player "%s" is not in base', display_name),
+            string.format('KAS: The player %s is not in base', display_name),
             screen_clauses,
             "but",
             ", but "
@@ -10430,7 +10511,7 @@ local kas = {} do
             console_args[#console_args + 1] = clause_args[i]
         end
 
-        return message, 'The player "%s" is not in base, but ' .. clause_format:gsub("^ and ", "") .. ".", console_args
+        return message, 'The player %s is not in base, but ' .. clause_format:gsub("^ and ", "") .. ".", console_args
     end
 
     normalize_entry = function(entry, alias_key)
@@ -11062,10 +11143,10 @@ local kas = {} do
                     if not kas.state.notified_players[steam_id] then
                         local _, entry = find_entry_by_steam_id(steam_id)
                         if entry then
-                            local message, console_format, console_args = build_log_message(entity.get_player_name(ent), entry)
+                            local message, console_format, console_args, screen_format, screen_args = build_log_message(entity.get_player_name(ent), entry)
                             if message then
                                 kas.state.notified_players[steam_id] = true
-                                push_kas(message, 8, console_format, console_args)
+                                push_kas(message, 8, console_format, console_args, screen_format, screen_args)
                             end
                         end
                     end
@@ -14345,7 +14426,7 @@ auto_r8 = {} do
         end
 
         client.exec("say_team !r8")
-        logging:push("swapped to revolver")
+        logging:push("swapped to %s", "revolver")
         auto_r8.has_sent = true
         auto_r8.used_r8_this_round = true
     end
@@ -14430,7 +14511,7 @@ auto_r8 = {} do
         end
 
         client.exec("say_team !deagle")
-        logging:push("swapped back to deagle")
+        logging:push("swapped back to %s", "deagle")
         auto_r8.used_r8_this_round = false
         auto_r8.active_pistol_round = 0
     end
@@ -14592,7 +14673,7 @@ end
 --@endregion
 
 --@region: on load
-logging:push("nice to see you at " .. _name .. " " .. _version .. " (" .. (_nickname or "user") .. ")")
+logging:push("nice to see you at %s %s (%s)", _name, _version, (_nickname or "user"))
 client.exec("play items/flashlight1.wav")
 confetti:push(0, false)
 --@endregion
