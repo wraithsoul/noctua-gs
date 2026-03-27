@@ -911,7 +911,7 @@ interface = {} do
             profiles = {}
         },
         fake_lag = {
-            extensions = interface.header.fake_lag:multiselect('extensions\nantiaim.fake_lag.extensions', 'avoid backstab', 'force break lc', 'safe head', 'bombsite e fix', 'break self backtrack', 'vigilant lagcomp breaking', 'correct lag on exploit', 'fast fall', 'fast ladder', 'anti-bruteforce'),
+            extensions = interface.header.fake_lag:multiselect('extensions\nantiaim.fake_lag.extensions', 'avoid backstab', 'force break lc', 'safe head', 'bombsite e fix', 'break self backtrack', 'vigilant lagcomp breaking', 'correct lag on exploit', 'fast fall', 'fast ladder', 'state smoothing', 'anti-bruteforce'),
             triggers = interface.header.fake_lag:multiselect('\a8c8c8cffforce break lc / \acececefftriggers\nantiaim.fake_lag.force_break_lc_triggers', 'flashed', 'damage received', 'reloading', 'weapon switch', 'osaa'),
             safe_head_triggers = interface.header.fake_lag:multiselect('\a8c8c8cffsafe head / \acececefftriggers\nantiaim.fake_lag.safe_head_triggers', 'high distance', 'idle', 'duck', 'airc', 'airc+knife', 'airc+zeus'),
             break_self_backtrack_mode = interface.header.fake_lag:combobox('\a8c8c8cffself backtrack / \acececeffbreak type\nantiaim.fake_lag.break_self_backtrack_mode', 'threat', 'auto'),
@@ -3631,6 +3631,23 @@ antiaim = {} do
     extensions.break_self_backtrack_cooldown = 0
     extensions.vigilant_last_state = nil
     extensions.vigilant_next_pulse = 0
+    extensions.state_smoothing_bias = 0.55
+    extensions.state_smoothing_states = {
+        default = true,
+        idle = true,
+        run = true,
+        slow = true,
+        air = true,
+        airc = true,
+        duck = true,
+        ['duck move'] = true
+    }
+    extensions.state_smoothing_state_key = nil
+    extensions.state_smoothing_active = false
+    extensions.state_smoothing_progress = 1
+    extensions.state_smoothing_source = nil
+    extensions.state_smoothing_target = nil
+    extensions.state_smoothing_current = nil
     extensions.anti_bruteforce_until = 0
     extensions.anti_bruteforce_pending = false
     extensions.anti_bruteforce_yaw_delta = 0
@@ -3661,6 +3678,97 @@ antiaim = {} do
         extensions.anti_bruteforce_body_yaw_delta = 0
     end
 
+    function extensions.reset_state_smoothing()
+        extensions.state_smoothing_state_key = nil
+        extensions.state_smoothing_active = false
+        extensions.state_smoothing_progress = 1
+        extensions.state_smoothing_source = nil
+        extensions.state_smoothing_target = nil
+        extensions.state_smoothing_current = nil
+    end
+
+    function extensions.copy_state_smoothing_settings(settings)
+        return {
+            yaw_offset = settings.yaw_offset,
+            jitter_offset = settings.jitter_offset,
+            body_yaw_offset = settings.body_yaw_offset,
+            pitch_offset = settings.pitch_offset
+        }
+    end
+
+    function extensions.is_state_smoothing_state(state_key)
+        return extensions.state_smoothing_states[state_key] == true
+    end
+
+    function extensions.get_state_smoothing_duration()
+        local bias = mathematic.clamp(extensions.state_smoothing_bias, 0, 1)
+        return mathematic.lerp(0.05, 0.24, bias)
+    end
+
+    function extensions.lerp_state_smoothing_angle(from, to, t)
+        return mathematic.normalize_yaw(from + mathematic.angle_diff(to, from) * t)
+    end
+
+    function extensions.apply_state_smoothing(state_key, settings)
+        if not extensions.is_enabled('state smoothing') then
+            extensions.reset_state_smoothing()
+            return
+        end
+
+        local current = extensions.state_smoothing_current
+        local smooth_state = extensions.is_state_smoothing_state(state_key)
+
+        if current == nil then
+            current = extensions.copy_state_smoothing_settings(settings)
+            extensions.state_smoothing_current = current
+        end
+
+        if extensions.state_smoothing_state_key ~= state_key then
+            local previous_state = extensions.state_smoothing_state_key
+            local smooth_previous = extensions.is_state_smoothing_state(previous_state)
+
+            if smooth_previous and smooth_state then
+                extensions.state_smoothing_active = true
+                extensions.state_smoothing_progress = 0
+                extensions.state_smoothing_source = extensions.copy_state_smoothing_settings(current)
+                extensions.state_smoothing_target = extensions.copy_state_smoothing_settings(settings)
+            else
+                extensions.state_smoothing_active = false
+                extensions.state_smoothing_progress = 1
+                extensions.state_smoothing_source = nil
+                extensions.state_smoothing_target = nil
+                extensions.state_smoothing_current = extensions.copy_state_smoothing_settings(settings)
+            end
+
+            extensions.state_smoothing_state_key = state_key
+        end
+
+        if not extensions.state_smoothing_active then
+            extensions.state_smoothing_current = extensions.copy_state_smoothing_settings(settings)
+            return
+        end
+
+        local duration = extensions.get_state_smoothing_duration()
+        local progress = mathematic.clamp(extensions.state_smoothing_progress + (globals.frametime() / duration), 0, 1)
+        local eased = 1 - ((1 - progress) * (1 - progress))
+        local source = extensions.state_smoothing_source
+        local target = extensions.state_smoothing_target
+
+        settings.yaw_offset = extensions.lerp_state_smoothing_angle(source.yaw_offset, target.yaw_offset, eased)
+        settings.jitter_offset = mathematic.lerp(source.jitter_offset, target.jitter_offset, eased)
+        settings.body_yaw_offset = mathematic.lerp(source.body_yaw_offset, target.body_yaw_offset, eased)
+        settings.pitch_offset = mathematic.lerp(source.pitch_offset, target.pitch_offset, eased)
+
+        extensions.state_smoothing_progress = progress
+        extensions.state_smoothing_current = extensions.copy_state_smoothing_settings(settings)
+
+        if progress >= 1 then
+            extensions.state_smoothing_active = false
+            extensions.state_smoothing_source = nil
+            extensions.state_smoothing_target = nil
+        end
+    end
+
     function extensions.reset()
         extensions.damage_received_until = 0
         extensions.flash_until = 0
@@ -3668,6 +3776,7 @@ antiaim = {} do
         extensions.break_self_backtrack_cooldown = 0
         extensions.vigilant_last_state = nil
         extensions.vigilant_next_pulse = 0
+        extensions.reset_state_smoothing()
         extensions.reset_anti_bruteforce()
         _G.noctua_runtime.safe_head_active = false
         exploit.restore()
@@ -4592,7 +4701,7 @@ antiaim = {} do
     end
 
     function builder.apply(cmd, local_player)
-        local _, profile = builder.get_active_profile()
+        local state_key, profile = builder.get_active_profile()
 
         if profile == nil then
             builder.unset()
@@ -4695,6 +4804,7 @@ antiaim = {} do
             pitch_offset = _G.noctua_runtime.use_active and mathematic.clamp(cmd.pitch, -89, 89) or 0
         }
 
+        extensions.apply_state_smoothing(state_key, settings)
         extensions.apply(cmd, local_player, settings)
         builder.apply_defensive(cmd, local_player, profile, settings)
         extensions.apply_anti_bruteforce(settings)
