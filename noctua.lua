@@ -371,11 +371,11 @@ aspect_ratio = {} do
     end
 
     aspect_ratio.setup = function()
-        -- if not (interface.visuals.enabled_visuals:get() and interface.visuals.aspect_ratio:get()) then
-        --     aspect_ratio.current_ratio = mathematic.lerp(aspect_ratio.current_ratio, 1, globals.frametime() * 8)
-        --     aspect_ratio.set_ratio(aspect_ratio.current_ratio)
-        --     return
-        -- end
+        if not interface.visuals.aspect_ratio:get() then
+            aspect_ratio.current_ratio = 1
+            aspect_ratio.set_ratio(1)
+            return
+        end
         
         local target_ratio = 2 - (interface.visuals.aspect_ratio_slider:get() * 0.01)
         aspect_ratio.current_ratio = mathematic.lerp(aspect_ratio.current_ratio, target_ratio, globals.frametime() * 8)
