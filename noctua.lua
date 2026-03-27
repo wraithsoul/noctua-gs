@@ -9012,16 +9012,15 @@ logging = {} do
         
         local playerName = entity.get_player_name(victim)
         local damage = e.dmg_health or 0
-        local hitbox = self.hitgroup_names[e.hitgroup + 1] or "body"
         local currentHealth = entity.get_prop(victim, "m_iHealth") or 0
         
         local remainingHealth = math.max(0, currentHealth - damage)
         
         if doConsole then
-            argLog("knifed %s's %s for %d damage (%d left)", playerName, hitbox, damage, remainingHealth)
+            argLog("knifed %s for %d damage (%d left)", playerName, damage, remainingHealth)
         end
         
-        if doScreen then self:push_format("knifed %s's %s for %d damage (%d left)", nil, false, playerName, hitbox, damage, remainingHealth) end
+        if doScreen then self:push_format("knifed %s for %d damage (%d left)", nil, false, playerName, damage, remainingHealth) end
     end
 
     logging.handleDamageTaken = function(self, e)
