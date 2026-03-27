@@ -14120,12 +14120,6 @@ end
 --@region: dormant aimbot
 dormant_aimbot = {} do
     _G.noctua_runtime.dormant_state = "waiting"
-    dormant_aimbot.targets = {}
-    dormant_aimbot.refresh_window = 4
-    dormant_aimbot.shot_cooldown = 10
-    dormant_aimbot.max_extrapolation = 0.10
-    dormant_aimbot.lead_scale = 0.55
-    dormant_aimbot.stale_decay = 0.65
 
     local virtual_hitboxes = {
         { scale = 3.8, hitbox = "pelvis",      z = 28, duck_sub = 6,  priority = 1 },
@@ -14133,10 +14127,6 @@ dormant_aimbot = {} do
         { scale = 3.6, hitbox = "thorax",      z = 45, duck_sub = 10, priority = 3 },
         { scale = 3.2, hitbox = "chest",       z = 51, duck_sub = 12, priority = 4 }
     }
-
-    dormant_aimbot.reset = function()
-        dormant_aimbot.targets = {}
-    end
 
     dormant_aimbot.on_setup_command = function(cmd)
         if not interface.aimbot.dormant_enabled:get() or not interface.aimbot.dormant_enabled.hotkey:get() then return end
@@ -14158,10 +14148,8 @@ dormant_aimbot = {} do
         local min_dmg_cfg = interface.aimbot.dormant_damage:get()
         local max_players = globals.maxplayers()
         local resource = entity.get_player_resource()
-        local current_tick = globals.tickcount()
         local best_safety_score = 0
         local best_x, best_y, best_z
-        local best_idx
 
         if hc_val == 50 then
             local w_idx = bit.band(entity.get_prop(weapon, "m_iItemDefinitionIndex") or 0, 0xFFFF)
@@ -14201,40 +14189,13 @@ dormant_aimbot = {} do
                 if alpha and alpha > alpha_threshold then
                     local ox, oy, oz = entity.get_origin(idx)
                     local vx, vy = player.get_velocity(idx)
-                    local target_state = dormant_aimbot.targets[idx] or {}
-                    local position_changed = target_state.ox == nil
-                        or math.abs((target_state.ox or 0) - ox) > 1
-                        or math.abs((target_state.oy or 0) - oy) > 1
-                        or math.abs((target_state.oz or 0) - oz) > 1
-                    local alpha_changed = target_state.alpha == nil or math.abs((target_state.alpha or 0) - alpha) > 0.02
-
-                    if position_changed or alpha_changed then
-                        target_state.updated_tick = current_tick
-                    end
-
-                    target_state.ox = ox
-                    target_state.oy = oy
-                    target_state.oz = oz
-                    target_state.alpha = alpha
-                    dormant_aimbot.targets[idx] = target_state
                     
                     if math.abs(ox) > 1 then
-                        local age_ticks = target_state.updated_tick and (current_tick - target_state.updated_tick) or 999
-
-                        if age_ticks > dormant_aimbot.refresh_window then
-                            goto continue_dormant_target
-                        end
-
-                        if target_state.last_shot_tick and (current_tick - target_state.last_shot_tick) < dormant_aimbot.shot_cooldown then
-                            goto continue_dormant_target
-                        end
-
                         local dist_sq = (ox-ex)^2 + (oy-ey)^2 + (oz-ez)^2
                         
                         if dist_sq < 9000000 then 
-                            local freshness = 1 - math.min(1, age_ticks / dormant_aimbot.refresh_window)
-                            local lead_scale = dormant_aimbot.lead_scale * (1 - ((1 - freshness) * dormant_aimbot.stale_decay))
-                            local extrapolation = math.min(dormant_aimbot.max_extrapolation, ping + lerp) * lead_scale
+                            local extrapolation = ping + lerp
+                            if extrapolation > 0.2 then extrapolation = 0.2 end
 
                             local pred_x = ox + (vx * extrapolation)
                             local pred_y = oy + (vy * extrapolation)
@@ -14305,7 +14266,6 @@ dormant_aimbot = {} do
                                     local score = (points_hit * 100) + center_dmg - (box.priority * 5)
                                     if score >= point_score_threshold and score > best_safety_score then
                                         best_safety_score = score
-                                        best_idx = idx
                                         best_x, best_y, best_z = valid_point_coords.x, valid_point_coords.y, valid_point_coords.z
                                     end
                                 end
@@ -14329,6 +14289,11 @@ dormant_aimbot = {} do
         local _, _, _, velocity_2d = player.get_velocity(lp)
         local flags = entity.get_prop(lp, "m_fFlags") or 0
         local on_ground = bit.band(flags, 1) == 1
+        local curtime = globals.curtime()
+        local next_att = entity.get_prop(lp, "m_flNextAttack") or 0
+        local next_prim = entity.get_prop(weapon, "m_flNextPrimaryAttack") or 0
+
+        if curtime < next_att or curtime < next_prim then return end
 
         if w_type == "sniperrifle" and entity.get_prop(lp, "m_bIsScoped") == 0 then
             cmd.in_attack2 = 1
@@ -14356,12 +14321,6 @@ dormant_aimbot = {} do
             return
         end
 
-        local curtime = globals.curtime()
-        local next_att = entity.get_prop(lp, "m_flNextAttack") or 0
-        local next_prim = entity.get_prop(weapon, "m_flNextPrimaryAttack") or 0
-        
-        if curtime < next_att or curtime < next_prim then return end
-
         local final_inaccuracy = entity.get_prop(weapon, "m_fAccuracyPenalty") or 0
         
         if final_inaccuracy <= spread_limit then
@@ -14371,20 +14330,10 @@ dormant_aimbot = {} do
             cmd.in_attack = 1
             cmd.buttons = bit.bor(cmd.buttons, 1)
             cmd.no_choke = true
-
-            if best_idx then
-                local target_state = dormant_aimbot.targets[best_idx] or {}
-                target_state.last_shot_tick = current_tick
-                dormant_aimbot.targets[best_idx] = target_state
-            end
         end
     end
 
     client.set_event_callback('setup_command', dormant_aimbot.on_setup_command)
-    client.set_event_callback('round_start', dormant_aimbot.reset)
-    client.set_event_callback('cs_game_disconnected', dormant_aimbot.reset)
-    client.set_event_callback('game_newmap', dormant_aimbot.reset)
-    client.set_event_callback('shutdown', dormant_aimbot.reset)
 end
 --@endregion
 
