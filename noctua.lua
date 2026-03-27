@@ -1842,9 +1842,9 @@ end)
 vgui = {} do
     local engine_client = ffi.cast(ffi.typeof('void***'), client.create_interface('engine.dll', 'VEngineClient014'))
     local console_is_visible = ffi.cast(ffi.typeof('bool(__thiscall*)(void*)'), engine_client[0][11])
+    local console_material = materialsystem.find_material('vgui_white')
 
     local materials = {
-        'vgui_white',
         'vgui/hud/800corner1',
         'vgui/hud/800corner2', 
         'vgui/hud/800corner3',
@@ -1865,11 +1865,14 @@ vgui = {} do
     end
     
     local last_r, last_g, last_b, last_a = 0, 0, 0, 0
+    local last_console_visible = false
     
     client.set_event_callback('paint', function()
         local r, g, b, a = unpack(interface.visuals.vgui.color.value)
+        local console_visible = console_material and console_is_visible(engine_client)
+        local color_changed = r ~= last_r or g ~= last_g or b ~= last_b or a ~= last_a
 
-        if r ~= last_r or g ~= last_g or b ~= last_b or a ~= last_a then
+        if color_changed then
             for _, material in pairs(material_cache) do
                 material:alpha_modulate(a)
                 material:color_modulate(r, g, b)
@@ -1877,12 +1880,27 @@ vgui = {} do
             
             last_r, last_g, last_b, last_a = r, g, b, a
         end
+
+        if console_visible ~= last_console_visible or console_visible and color_changed then
+            console_material:alpha_modulate(console_visible and a or 255)
+            console_material:color_modulate(
+                console_visible and r or 255,
+                console_visible and g or 255,
+                console_visible and b or 255
+            )
+            last_console_visible = console_visible
+        end
     end)
 
     client.set_event_callback('shutdown', function()
         for _, material in pairs(material_cache) do
             material:alpha_modulate(255)
             material:color_modulate(255, 255, 255)
+        end
+
+        if console_material then
+            console_material:alpha_modulate(255)
+            console_material:color_modulate(255, 255, 255)
         end
     end)
 end
