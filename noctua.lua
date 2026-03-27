@@ -512,7 +512,7 @@ sunlight = {} do
     end
 
     sunlight.setup = function()
-        if not (interface.visuals.enabled_visuals:get() and interface.visuals.sunlight:get()) then
+        if not (interface.world.enabled_world:get() and interface.world.sunlight:get()) then
             sunlight.restore()
             return
         end
@@ -522,9 +522,9 @@ sunlight = {} do
             sunlight.last_set_override = 1
         end
 
-        local sun_x = interface.visuals.sunlight_x:get()
-        local sun_y = interface.visuals.sunlight_y:get()
-        local sun_z = interface.visuals.sunlight_z:get()
+        local sun_x = interface.world.sunlight_x:get()
+        local sun_y = interface.world.sunlight_y:get()
+        local sun_z = interface.world.sunlight_z:get()
 
         if sunlight.last_set_x == nil or math.abs(sun_x - sunlight.last_set_x) > 0.001 then
             cvar.cl_csm_rot_x:set_raw_float(sun_x)
@@ -596,21 +596,21 @@ fog = {} do
     end
 
     fog.setup = function()
-        if not (interface.visuals.enabled_visuals:get() and interface.visuals.fog:get()) then
+        if not (interface.world.enabled_world:get() and interface.world.fog:get()) then
             fog.restore()
             return
         end
 
-        local color_value = interface.visuals.fog_color.color.value
-        local density = interface.visuals.fog_density:get() * 0.01
+        local color_value = interface.world.fog_color.color.value
+        local density = interface.world.fog_density:get() * 0.01
 
         reference.visuals.effects.remove_fog:override(false)
         set_fog_cvar("fog_override", 1)
         set_fog_cvar("fog_enable", 1)
         set_fog_cvar("fog_enableskybox", 1)
         set_fog_cvar("fog_color", string.format("%d %d %d", color_value[1], color_value[2], color_value[3]))
-        set_fog_cvar("fog_start", interface.visuals.fog_start:get())
-        set_fog_cvar("fog_end", interface.visuals.fog_end:get())
+        set_fog_cvar("fog_start", interface.world.fog_start:get())
+        set_fog_cvar("fog_end", interface.world.fog_end:get())
         set_fog_cvar("fog_maxdensity", density)
         fog.active = true
     end
@@ -941,6 +941,7 @@ interface = {} do
 
     interface.visuals = {
         enabled_visuals = interface.header.general:checkbox('enable visuals'),
+        enabled_world = interface.header.general:checkbox('enable world'),
         accent = interface.header.general:label('accent color', {157, 230, 254}),
         secondary = interface.header.general:label('secondary color', {215, 240, 255}),
         vgui = interface.header.general:label('vgui color', {255, 255, 255}), -- 140, 140, 140
@@ -1002,6 +1003,7 @@ interface = {} do
     }
 
     interface.world = {
+        enabled_world = interface.visuals.enabled_world,
         sunlight = interface.visuals.sunlight,
         sunlight_x = interface.visuals.sunlight_x,
         sunlight_y = interface.visuals.sunlight_y,
@@ -1010,7 +1012,12 @@ interface = {} do
         fog_color = interface.visuals.fog_color,
         fog_start = interface.visuals.fog_start,
         fog_end = interface.visuals.fog_end,
-        fog_density = interface.visuals.fog_density
+        fog_density = interface.visuals.fog_density,
+        world_damage = interface.visuals.world_damage,
+        world_damage_type = interface.visuals.world_damage_type,
+        grenade_radius = interface.visuals.grenade_radius,
+        grenade_radius_smoke_color = interface.visuals.grenade_radius_smoke_color,
+        grenade_radius_molotov_color = interface.visuals.grenade_radius_molotov_color
     }
 
     interface.config = {
@@ -1130,23 +1137,6 @@ interface = {} do
             visuals = interface.visuals,
             utility = interface.utility,
             config = interface.config
-        }
-
-        local world_keys = {
-            sunlight = true,
-            sunlight_x = true,
-            sunlight_y = true,
-            sunlight_z = true,
-            fog = true,
-            fog_color = true,
-            fog_start = true,
-            fog_end = true,
-            fog_density = true,
-            world_damage = true,
-            world_damage_type = true,
-            grenade_radius = true,
-            grenade_radius_smoke_color = true,
-            grenade_radius_molotov_color = true
         }
 
         local function apply_kas_visibility(element, path)
@@ -1557,7 +1547,21 @@ interface = {} do
                         return
                     end
 
-                    if world_keys[key] then
+                    if key == 'enabled_world'
+                        or key == 'sunlight'
+                        or key == 'sunlight_x'
+                        or key == 'sunlight_y'
+                        or key == 'sunlight_z'
+                        or key == 'fog'
+                        or key == 'fog_color'
+                        or key == 'fog_start'
+                        or key == 'fog_end'
+                        or key == 'fog_density'
+                        or key == 'world_damage'
+                        or key == 'world_damage_type'
+                        or key == 'grenade_radius'
+                        or key == 'grenade_radius_smoke_color'
+                        or key == 'grenade_radius_molotov_color' then
                         element:set_visible(false)
                         return
                     end
@@ -1636,41 +1640,59 @@ interface = {} do
                 groups_to_hide = { groups.home, groups.kas, groups.aimbot, groups.antiaim, groups.models, groups.utility, groups.config },
                 element_visibility_logic = function(element, path)
                     local key = path[#path]
-                    local visuals_enabled = interface.visuals.enabled_visuals:get()
 
-                    if not world_keys[key] then
+                    if key ~= 'enabled_world'
+                        and key ~= 'sunlight'
+                        and key ~= 'sunlight_x'
+                        and key ~= 'sunlight_y'
+                        and key ~= 'sunlight_z'
+                        and key ~= 'fog'
+                        and key ~= 'fog_color'
+                        and key ~= 'fog_start'
+                        and key ~= 'fog_end'
+                        and key ~= 'fog_density'
+                        and key ~= 'world_damage'
+                        and key ~= 'world_damage_type'
+                        and key ~= 'grenade_radius'
+                        and key ~= 'grenade_radius_smoke_color'
+                        and key ~= 'grenade_radius_molotov_color' then
                         element:set_visible(false)
                         return
                     end
 
-                    if not visuals_enabled then
+                    if key == 'enabled_world' then
+                        element:set_visible(true)
+                        return
+                    end
+
+                    if not interface.world.enabled_world:get() then
                         element:set_visible(false)
                         return
                     end
 
                     if key == 'sunlight_x' or key == 'sunlight_y' or key == 'sunlight_z' then
-                        element:set_visible(interface.visuals.sunlight:get())
+                        element:set_visible(interface.world.sunlight:get())
                         return
                     end
 
                     if key == 'fog_color' or key == 'fog_start' or key == 'fog_end' or key == 'fog_density' then
-                        element:set_visible(interface.visuals.fog:get())
+                        element:set_visible(interface.world.fog:get())
                         return
                     end
 
                     if key == 'world_damage_type' then
-                        element:set_visible(interface.visuals.world_damage:get())
+                        element:set_visible(interface.world.world_damage:get())
                         return
                     end
 
                     if key == 'grenade_radius_molotov_color' then
-                        local grenades = interface.visuals.grenade_radius:get() or {}
+                        local grenades = interface.world.grenade_radius:get() or {}
                         element:set_visible(utils.contains(grenades, 'molotov'))
                         return
                     end
 
                     if key == 'grenade_radius_smoke_color' then
-                        local grenades = interface.visuals.grenade_radius:get() or {}
+                        local grenades = interface.world.grenade_radius:get() or {}
                         element:set_visible(utils.contains(grenades, 'smoke'))
                         return
                     end
@@ -8100,7 +8122,7 @@ logging = {} do
     end
 
     logging.should_output = function(self, style, event_name)
-        if not interface.visuals.logging:get() then
+        if not interface.visuals.enabled_visuals:get() or not interface.visuals.logging:get() then
             return false
         end
 
@@ -8685,7 +8707,7 @@ logging = {} do
     end
 
     logging.setup_logweapon = function()
-        if not interface.visuals.logging:get() then 
+        if not interface.visuals.enabled_visuals:get() or not interface.visuals.logging:get() then 
             ui.set_enabled(logging.logweapon_original, true)
             return 
         end
@@ -8700,7 +8722,7 @@ logging = {} do
     end
     
     logging.on_item_purchase = function(e)
-        if not interface.visuals.logging:get() then return end
+        if not interface.visuals.enabled_visuals:get() or not interface.visuals.logging:get() then return end
         local doConsole = logging:should_output("console", "purchases")
         
         if not doConsole then return end
@@ -8720,7 +8742,7 @@ logging = {} do
     end
     
     logging.on_round_prestart = function(e)
-        if not interface.visuals.logging:get() then
+        if not interface.visuals.enabled_visuals:get() or not interface.visuals.logging:get() then
             return
         end
 
@@ -13921,7 +13943,7 @@ world_damage = {} do
     world_damage.markers = {}
 
     world_damage.on_player_hurt = function(e)
-        if not interface.visuals.enabled_visuals:get() or not interface.visuals.world_damage:get() then return end
+        if not interface.world.enabled_world:get() or not interface.world.world_damage:get() then return end
 
         local attacker = client.userid_to_entindex(e.attacker)
         local victim = client.userid_to_entindex(e.userid)
@@ -13940,7 +13962,7 @@ world_damage = {} do
         local x, y, z = entity.hitbox_position(victim, hitbox_idx)
         if not x then return end
 
-        local damage_type = interface.visuals.world_damage_type:get()
+        local damage_type = interface.world.world_damage_type:get()
         local is_static = damage_type == 'static'
         local spread = is_static and 0 or 15
         local drift = is_static and 0 or 15
@@ -13962,7 +13984,7 @@ world_damage = {} do
     end
 
     world_damage.on_paint = function()
-        if not interface.visuals.enabled_visuals:get() or not interface.visuals.world_damage:get() then 
+        if not interface.world.enabled_world:get() or not interface.world.world_damage:get() then 
             world_damage.markers = {}
             return 
         end
@@ -14146,10 +14168,10 @@ grenade_radius = {} do
     end
 
     grenade_radius.on_paint = function()
-        if not interface.visuals.enabled_visuals:get() then return end
-        if not interface.visuals.grenade_radius:get() then return end
+        if not interface.world.enabled_world:get() then return end
+        if not interface.world.grenade_radius:get() then return end
 
-        local selection = interface.visuals.grenade_radius:get()
+        local selection = interface.world.grenade_radius:get()
         local show_smoke = utils.contains(selection, 'smoke')
         local show_molotov = utils.contains(selection, 'molotov')
         local frame_time = globals.frametime() * 6
@@ -14229,8 +14251,8 @@ grenade_radius = {} do
             end
         end
 
-        local r_mol, g_mol, b_mol, a_mol = unpack(interface.visuals.grenade_radius_molotov_color.color.value)
-        local r_sm, g_sm, b_sm, a_sm = unpack(interface.visuals.grenade_radius_smoke_color.color.value)
+        local r_mol, g_mol, b_mol, a_mol = unpack(interface.world.grenade_radius_molotov_color.color.value)
+        local r_sm, g_sm, b_sm, a_sm = unpack(interface.world.grenade_radius_smoke_color.color.value)
 
         for id, track in pairs(tracks) do
             if not track.updated then
