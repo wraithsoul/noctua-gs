@@ -911,14 +911,14 @@ interface = {} do
         },
         fake_lag = {
             extensions = interface.header.fake_lag:multiselect('extensions\nantiaim.fake_lag.extensions', 'avoid backstab', 'force break lc', 'safe head', 'bombsite e fix', 'break self backtrack', 'vigilant lagcomp breaking', 'correct lag on exploit', 'fast fall', 'fast ladder', 'anti-bruteforce'),
-            triggers = interface.header.fake_lag:multiselect('break lc triggers\nantiaim.fake_lag.force_break_lc_triggers', 'flashed', 'damage received', 'reloading', 'weapon switch', 'osaa'),
-            safe_head_triggers = interface.header.fake_lag:multiselect('safe head triggers\nantiaim.fake_lag.safe_head_triggers', 'high distance', 'idle', 'duck', 'airc', 'airc+knife', 'airc+zeus'),
-            break_self_backtrack_mode = interface.header.fake_lag:combobox('break type based on\nantiaim.fake_lag.break_self_backtrack_mode', 'threat', 'auto'),
-            vigilant_controls = interface.header.fake_lag:multiselect('decisive controls\nantiaim.fake_lag.vigilant_controls', 'idle', 'run', 'duck', 'slow', 'air', 'airc'),
-            correct_lag_exploit_type = interface.header.fake_lag:multiselect('exploit type\nantiaim.fake_lag.correct_lag_exploit_type', 'double tap', 'osaa'),
-            anti_bruteforce_triggers = interface.header.fake_lag:multiselect('triggers\nantiaim.fake_lag.anti_bruteforce_triggers', 'enemy shot', 'local shot'),
-            anti_bruteforce_power = interface.header.fake_lag:slider('power\nantiaim.fake_lag.anti_bruteforce_power', 1, 100, 20, true, '%', 1),
-            anti_bruteforce_timer = interface.header.fake_lag:slider('timer\nantiaim.fake_lag.anti_bruteforce_timer', 1, 10, 1, true, 's', 1)
+            triggers = interface.header.fake_lag:multiselect('\a8c8c8cffforce break lc / \acececefftriggers\nantiaim.fake_lag.force_break_lc_triggers', 'flashed', 'damage received', 'reloading', 'weapon switch', 'osaa'),
+            safe_head_triggers = interface.header.fake_lag:multiselect('\a8c8c8cffsafe head / \acececefftriggers\nantiaim.fake_lag.safe_head_triggers', 'high distance', 'idle', 'duck', 'airc', 'airc+knife', 'airc+zeus'),
+            break_self_backtrack_mode = interface.header.fake_lag:combobox('\a8c8c8cffself backtrack / \acececeffbreak type\nantiaim.fake_lag.break_self_backtrack_mode', 'threat', 'auto'),
+            vigilant_controls = interface.header.fake_lag:multiselect('\a8c8c8cffvigilant / \acececeffcontrols\nantiaim.fake_lag.vigilant_controls', 'idle', 'run', 'duck', 'slow', 'air', 'airc'),
+            correct_lag_exploit_type = interface.header.fake_lag:multiselect('\a8c8c8cffexploit lag / \acececefftype\nantiaim.fake_lag.correct_lag_exploit_type', 'double tap', 'osaa'),
+            anti_bruteforce_triggers = interface.header.fake_lag:multiselect('\a8c8c8cffanti-bruteforce / \acececefftriggers\nantiaim.fake_lag.anti_bruteforce_triggers', 'enemy shot', 'local shot'),
+            anti_bruteforce_power = interface.header.fake_lag:slider('\a8c8c8cffanti-bruteforce / \acececeffvariance\nantiaim.fake_lag.anti_bruteforce_power', 1, 20, 20, true, '%', 1),
+            anti_bruteforce_timer = interface.header.fake_lag:slider('\a8c8c8cffanti-bruteforce / \acececeffduration\nantiaim.fake_lag.anti_bruteforce_timer', 1, 10, 1, true, 's', 1)
         },
         hotkeys = {
             freestanding = interface.header.other:checkbox('freestanding', 0x00),
