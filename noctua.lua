@@ -5871,6 +5871,10 @@ adaptive_delay_shot = {} do
             return false
         end
 
+        if (entity.get_prop(threat, "m_ArmorValue")) <= 0 then
+            return false
+        end
+
         local score = 0
         local threat_health = entity.get_prop(threat, "m_iHealth") or 100
         local enemy_state = utils.get_enemy_state(threat)
