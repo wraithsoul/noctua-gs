@@ -842,6 +842,7 @@ interface = {} do
         enabled_aimbot = interface.header.general:checkbox('enable aimbot'),
         enabled_resolver_tweaks = interface.header.general:checkbox('\aa5ab55ffyaw correction'),
         silent_shot = interface.header.general:checkbox('silent shot'),
+        baim_on_lethal = interface.header.general:combobox('baim on lethal', 'off', 'prefer', 'force'),
         force_recharge = interface.header.general:checkbox('allow force recharge'),
         adaptive_delay_shot = interface.header.general:checkbox('adaptive delay shot'),
         quick_stop = interface.header.general:checkbox('air stop', 0x00),
@@ -962,7 +963,7 @@ interface = {} do
         bomb_timer = interface.header.general:checkbox('bomb timer'),
         logging = interface.header.general:checkbox('logging'),
         logging_style = interface.header.general:multiselect('style\nvisuals.logging_style', 'console', 'screen'),
-        logging_events = interface.header.general:multiselect('events\nvisuals.logging_events', 'damage dealt', 'damage received', 'evaded shots', 'shots fired', 'shots missed', 'purchases'),
+        logging_events = interface.header.general:multiselect('events\nvisuals.logging_events', 'damage dealt', 'damage received', 'evaded shots', 'shots fired', 'shots missed', 'purchases', 'baim on lethal'),
         logging_slider = interface.header.general:slider('slider', 40, 450, 240),
         aspect_ratio = interface.header.fake_lag:checkbox('override aspect ratio'),
         aspect_ratio_slider = interface.header.fake_lag:slider('value', 0, aspect_ratio.steps, aspect_ratio.steps/2, true, '', 1, aspect_ratio.ratio_table),
@@ -1881,7 +1882,7 @@ vgui = {} do
             last_r, last_g, last_b, last_a = r, g, b, a
         end
 
-        if console_visible ~= last_console_visible or console_visible and color_changed then
+        if console_material and (console_visible ~= last_console_visible or console_visible and color_changed) then
             console_material:alpha_modulate(console_visible and a or 255)
             console_material:color_modulate(
                 console_visible and r or 255,
@@ -2824,6 +2825,62 @@ utils = {} do
     utils.get_active_min_damage = function()
         local override_enabled = ui.get(ui_references.minimum_damage_override[1]) and ui.get(ui_references.minimum_damage_override[2])
         return override_enabled and ui.get(ui_references.minimum_damage_override[3]) or ui.get(ui_references.minimum_damage)
+    end
+
+    utils.estimate_best_trace_damage = function(local_player, target, hitboxes)
+        local ex, ey, ez = client.eye_position()
+        if ex == nil then
+            return 0
+        end
+
+        local best_damage = 0
+
+        for i = 1, #hitboxes do
+            local hx, hy, hz = entity.hitbox_position(target, hitboxes[i])
+            if hx ~= nil then
+                local _, damage = client.trace_bullet(local_player, ex, ey, ez, hx, hy, hz, true)
+                if damage ~= nil and damage > best_damage then
+                    best_damage = damage
+                end
+            end
+        end
+
+        return best_damage
+    end
+
+    utils.estimate_best_damage = function(local_player, target)
+        return utils.estimate_best_trace_damage(local_player, target, { 0, 2, 4 })
+    end
+
+    utils.estimate_best_body_damage = function(local_player, target)
+        return utils.estimate_best_trace_damage(local_player, target, { 2, 3, 4, 5, 6 })
+    end
+
+    utils.estimate_stomach_damage = function(local_player, target)
+        local weapon = entity.get_player_weapon(local_player)
+        local weapon_info = weapon and csgo_weapons(weapon) or nil
+        if weapon_info == nil then
+            return 0
+        end
+
+        local ex, ey, ez = client.eye_position()
+        local hx, hy, hz = entity.hitbox_position(target, 5)
+        if ex == nil or hx == nil then
+            return 0
+        end
+
+        local distance = player.distance3d(ex, ey, ez, hx, hy, hz)
+        local damage = weapon_info.damage * math.pow(weapon_info.range_modifier, math.min(weapon_info.range or distance, distance) * 0.002)
+        local armor_ratio = weapon_info.armor_ratio or 1
+
+        damage = damage * 1.25
+
+        local armor = entity.get_prop(target, 'm_ArmorValue') or 0
+        if armor > 0 then
+            damage = damage * (armor_ratio * 0.5)
+        end
+
+        return damage
     end
 
     utils.antiaim_states = antiaim_state_options
@@ -6006,28 +6063,6 @@ adaptive_delay_shot = {} do
         return weapon_info ~= nil and weapon_info.idx == 40
     end
 
-    local function estimate_best_damage(local_player, target)
-        local ex, ey, ez = client.eye_position()
-        if ex == nil then
-            return 0
-        end
-
-        local hitboxes = { 0, 2, 4 }
-        local best_damage = 0
-
-        for i = 1, #hitboxes do
-            local hx, hy, hz = entity.hitbox_position(target, hitboxes[i])
-            if hx ~= nil then
-                local _, damage = client.trace_bullet(local_player, ex, ey, ez, hx, hy, hz, true)
-                if damage ~= nil and damage > best_damage then
-                    best_damage = damage
-                end
-            end
-        end
-
-        return best_damage
-    end
-
     local function should_delay(self, local_player, weapon)
         if not interface.aimbot.adaptive_delay_shot:get() then
             return false
@@ -6062,7 +6097,7 @@ adaptive_delay_shot = {} do
         local target_speed = get_target_speed(threat)
         local net_data = predict_box and predict_box.net_data and predict_box.net_data[threat] or nil
         local weapon_weight = get_weapon_weight(weapon)
-        local best_damage = estimate_best_damage(local_player, threat)
+        local best_damage = utils.estimate_best_damage(local_player, threat)
 
         if best_damage >= threat_health then
             return false
@@ -6192,6 +6227,169 @@ end)
 
 client.set_event_callback('shutdown', function()
     adaptive_delay_shot:shutdown()
+end)
+--@endregion
+
+--@region: baim on lethal
+baim_on_lethal = {} do
+    baim_on_lethal.original_overrides = {}
+    baim_on_lethal.active_overrides = {}
+    baim_on_lethal.locked_targets = {}
+
+    local function get_override_value()
+        local mode = interface.aimbot.baim_on_lethal:get()
+        if mode == 'prefer' then
+            return 'On'
+        end
+
+        if mode == 'force' then
+            return 'Force'
+        end
+
+        return nil
+    end
+
+    local function restore_target(self, idx)
+        local original = self.original_overrides[idx]
+        if original == nil then
+            return
+        end
+
+        player_list.SetPreferBodyAimOverride(player_list, idx, original)
+        self.original_overrides[idx] = nil
+        self.active_overrides[idx] = nil
+        self.locked_targets[idx] = nil
+    end
+
+    local function restore_all(self)
+        for idx in pairs(self.active_overrides) do
+            restore_target(self, idx)
+        end
+
+        self.locked_targets = {}
+    end
+
+    local function apply_override(self, idx, value)
+        if self.active_overrides[idx] == value then
+            return
+        end
+
+        if self.original_overrides[idx] == nil then
+            self.original_overrides[idx] = player_list.GetPreferBodyAimOverride(player_list, idx)
+        end
+
+        player_list.SetPreferBodyAimOverride(player_list, idx, value)
+        self.active_overrides[idx] = value
+        self.locked_targets[idx] = true
+
+        local player_name = entity.get_player_name(idx) or 'unknown'
+        local mode_label = value == 'Force' and 'force' or 'prefer'
+        local reason = 'stomach lethal'
+
+        if logging and logging.should_output and logging:should_output('console', 'baim on lethal') then
+            argLog("forced %s body aim on %s / reason: %s", mode_label, player_name, reason)
+        end
+
+        if logging and logging.should_output and logging:should_output('screen', 'baim on lethal') then
+            logging:push_format("forced %s body aim on %s / reason: %s", nil, false, mode_label, player_name, reason)
+        end
+    end
+
+    local function is_lethal_target(local_player, idx)
+        if idx == nil or not entity.is_alive(idx) then
+            return false
+        end
+
+        local health = entity.get_prop(idx, "m_iHealth") or 0
+        if health <= 0 then
+            return false
+        end
+
+        if baim_on_lethal.locked_targets[idx] then
+            return true
+        end
+
+        if entity.is_dormant(idx) then
+            return false
+        end
+
+        if player_list.GetWhitelist(player_list, idx) then
+            return false
+        end
+
+        return utils.estimate_stomach_damage(local_player, idx) >= health
+    end
+
+    baim_on_lethal.on_setup_command = function(self)
+        local override_value = get_override_value()
+        if not interface.aimbot.enabled_aimbot:get() or override_value == nil then
+            restore_all(self)
+            return
+        end
+
+        local local_player = entity.get_local_player()
+        if not local_player or not entity.is_alive(local_player) then
+            restore_all(self)
+            return
+        end
+
+        local lethal_targets = {}
+        local enemies = entity.get_players(true) or {}
+
+        for i = 1, #enemies do
+            local enemy = enemies[i]
+            if is_lethal_target(local_player, enemy) then
+                lethal_targets[enemy] = true
+                apply_override(self, enemy, override_value)
+            end
+        end
+
+        for idx in pairs(self.active_overrides) do
+            if not lethal_targets[idx] and not self.locked_targets[idx] then
+                restore_target(self, idx)
+            end
+        end
+    end
+
+    baim_on_lethal.shutdown = function(self)
+        restore_all(self)
+    end
+end
+
+client.set_event_callback('setup_command', function()
+    baim_on_lethal:on_setup_command()
+end)
+
+client.set_event_callback('round_start', function()
+    baim_on_lethal:shutdown()
+end)
+
+client.set_event_callback('game_newmap', function()
+    baim_on_lethal:shutdown()
+end)
+
+client.set_event_callback('cs_game_disconnected', function()
+    baim_on_lethal:shutdown()
+end)
+
+client.set_event_callback('player_death', function(e)
+    local victim = client.userid_to_entindex(e.userid)
+    if victim ~= nil then
+        baim_on_lethal.locked_targets[victim] = nil
+        if baim_on_lethal.active_overrides[victim] ~= nil then
+            local original = baim_on_lethal.original_overrides[victim]
+            if original ~= nil then
+                player_list.SetPreferBodyAimOverride(player_list, victim, original)
+            end
+
+            baim_on_lethal.original_overrides[victim] = nil
+            baim_on_lethal.active_overrides[victim] = nil
+        end
+    end
+end)
+
+client.set_event_callback('shutdown', function()
+    baim_on_lethal:shutdown()
 end)
 --@endregion
 
@@ -14842,6 +15040,8 @@ art = {} do
     - Added override sunlight
     - Added reveal enemy chat
     - Added balabolka trigger chance
+    - Added baim on lethal override
+    - Added baim on lethal logging event
     - Added half-life crosshair indicator style
     - Added center-screen manual arrows
     - Reworked miss reasons
@@ -14853,9 +15053,11 @@ art = {} do
     - Reworked logging preview formatting
     - Reworked damage indicator animations
     - Reworked experimental yaw correction mode
+    - Fixed bomb timer widget position restore after reload
     - Fixed damage indicator alpha on several weapons
     - Fixed buybot fallback purchasing after primary items
     - Fixed damage indicator color brightening during animation
+    - Fixed vgui color affecting the crosshair while preserving console tint
     - Fixed shutdown restoration
     - Fixed config synchronization
     ]]
