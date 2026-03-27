@@ -14343,12 +14343,14 @@ auto_r8 = {} do
     auto_r8.used_r8_this_round = false
     auto_r8.freeze_started_at = nil
     auto_r8.active_pistol_round = 0
+    auto_r8.last_round_number = 0
 
     auto_r8.reset = function()
         auto_r8.has_sent = false
         auto_r8.used_r8_this_round = false
         auto_r8.freeze_started_at = nil
         auto_r8.active_pistol_round = 0
+        auto_r8.last_round_number = 0
     end
 
     auto_r8.reset_freeze_state = function()
@@ -14374,7 +14376,7 @@ auto_r8 = {} do
             return
         end
 
-        client.exec("say_team !r8")
+        client.exec("r8")
         logging:push("swapped to %s", "revolver")
         auto_r8.has_sent = true
         auto_r8.used_r8_this_round = true
@@ -14404,6 +14406,36 @@ auto_r8 = {} do
         return round_number == 1 or round_number == (rounds_per_half + 1)
     end
 
+    auto_r8.sync_round_state = function()
+        local game_rules = entity.get_game_rules()
+        if not game_rules then
+            return
+        end
+
+        if entity.get_prop(game_rules, "m_bWarmupPeriod") == 1 then
+            return
+        end
+
+        local round_number = auto_r8.get_next_round_number(game_rules)
+        if round_number ~= auto_r8.last_round_number then
+            auto_r8.has_sent = false
+            auto_r8.freeze_started_at = nil
+            auto_r8.active_pistol_round = 0
+            auto_r8.last_round_number = round_number
+        end
+
+        if entity.get_prop(game_rules, "m_bFreezePeriod") ~= 1 then
+            return
+        end
+
+        if not auto_r8.is_pistol_round(round_number) then
+            return
+        end
+
+        auto_r8.freeze_started_at = auto_r8.freeze_started_at or globals.realtime()
+        auto_r8.active_pistol_round = round_number
+    end
+
     auto_r8.can_send = function()
         local local_player = entity.get_local_player()
         if not local_player then
@@ -14424,6 +14456,7 @@ auto_r8 = {} do
             return
         end
 
+        auto_r8.sync_round_state()
         auto_r8.try_send()
     end
 
@@ -14434,18 +14467,7 @@ auto_r8 = {} do
             return
         end
 
-        local game_rules = entity.get_game_rules()
-        if not game_rules then
-            return
-        end
-
-        local round_number = auto_r8.get_next_round_number(game_rules)
-        if not auto_r8.is_pistol_round(round_number) then
-            return
-        end
-
-        auto_r8.freeze_started_at = globals.realtime()
-        auto_r8.active_pistol_round = round_number
+        auto_r8.sync_round_state()
         auto_r8.try_send()
     end
 
@@ -14459,7 +14481,7 @@ auto_r8 = {} do
             return
         end
 
-        client.exec("say_team !deagle")
+        client.exec("deagle")
         logging:push("swapped back to %s", "deagle")
         auto_r8.used_r8_this_round = false
         auto_r8.active_pistol_round = 0
