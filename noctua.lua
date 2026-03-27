@@ -2796,6 +2796,10 @@ utils = {} do
         return utils.new_vec(a.x - b.x, a.y - b.y, a.z - b.z)
     end
 
+    utils.vec_dot = function(a, b)
+        return (a.x * b.x) + (a.y * b.y) + (a.z * b.z)
+    end
+
     utils.vec_length_2d = function(v)
         return math.sqrt((v.x * v.x) + (v.y * v.y))
     end
@@ -2812,6 +2816,18 @@ utils = {} do
         local pitch = math.deg(math.atan2(-dz, hyp))
         local yaw = math.deg(math.atan2(dy, dx))
         return pitch, yaw
+    end
+
+    utils.angle_to_forward = function(pitch, yaw)
+        local pitch_rad = math.rad(pitch)
+        local yaw_rad = math.rad(yaw)
+        local cos_pitch = math.cos(pitch_rad)
+
+        return utils.new_vec(
+            cos_pitch * math.cos(yaw_rad),
+            cos_pitch * math.sin(yaw_rad),
+            -math.sin(pitch_rad)
+        )
     end
 
     utils.blend_vec = function(current, target, factor)
@@ -14498,6 +14514,9 @@ grenade_radius = {} do
     local anim_data = {}
     local tracks = {}
     local TWO_PI = 2 * math.pi
+    local CAMERA_NEAR_PLANE = 8
+    local BLOB_FILL_ALPHA_MULTIPLIER = 0.2
+    local MAX_RENDER_DISTANCE = 1600
 
     local function smooth_contour(points, iterations)
         if #points < 3 then return points end
@@ -14520,23 +14539,224 @@ grenade_radius = {} do
         return smoothed
     end
 
-    local function draw_contour_smooth_limit(points, r, g, b, a, limit_fraction)
-        if #points < 2 then return end
-        
+    local function clip_contour_to_camera(points, camera_origin, camera_forward)
+        if #points < 3 then return points end
+
+        local clipped = {}
+        local prev = points[#points]
+        local prev_depth = utils.vec_dot(utils.vec_sub(prev, camera_origin), camera_forward)
+        local prev_inside = prev_depth >= CAMERA_NEAR_PLANE
+
+        for i = 1, #points do
+            local current = points[i]
+            local current_depth = utils.vec_dot(utils.vec_sub(current, camera_origin), camera_forward)
+            local current_inside = current_depth >= CAMERA_NEAR_PLANE
+
+            if prev_inside ~= current_inside then
+                local factor = (CAMERA_NEAR_PLANE - prev_depth) / (current_depth - prev_depth)
+                clipped[#clipped + 1] = utils.blend_vec(prev, current, factor)
+            end
+
+            if current_inside then
+                clipped[#clipped + 1] = current
+            end
+
+            prev = current
+            prev_depth = current_depth
+            prev_inside = current_inside
+        end
+
+        return clipped
+    end
+
+    local function build_limited_contour(points, limit_fraction)
+        if #points < 2 or limit_fraction <= 0 then
+            return {}
+        end
+
+        local limited = { points[1] }
         local total_segments = #points
         local draw_amount = total_segments * limit_fraction
-        
         local full_segments = math.floor(draw_amount)
         local remainder = draw_amount - full_segments
 
+        for i = 1, full_segments do
+            local next_idx = (i % #points) + 1
+            limited[#limited + 1] = points[next_idx]
+        end
+
+        if remainder > 0.01 then
+            local curr_idx = (full_segments % #points) + 1
+            local next_idx = (curr_idx % #points) + 1
+            limited[#limited + 1] = utils.blend_vec(points[curr_idx], points[next_idx], remainder)
+        end
+
+        return limited
+    end
+
+    local function clip_polyline_to_camera(points, camera_origin, camera_forward)
+        if #points < 2 then
+            return {}
+        end
+
+        local clipped = {}
+        local path_active = false
+
+        for i = 1, #points - 1 do
+            local current = points[i]
+            local next = points[i + 1]
+            local current_depth = utils.vec_dot(utils.vec_sub(current, camera_origin), camera_forward)
+            local next_depth = utils.vec_dot(utils.vec_sub(next, camera_origin), camera_forward)
+            local current_inside = current_depth >= CAMERA_NEAR_PLANE
+            local next_inside = next_depth >= CAMERA_NEAR_PLANE
+
+            if current_inside and next_inside then
+                if not path_active then
+                    clipped[#clipped + 1] = { point = current }
+                    path_active = true
+                end
+
+                clipped[#clipped + 1] = { point = next }
+            elseif current_inside ~= next_inside then
+                local factor = (CAMERA_NEAR_PLANE - current_depth) / (next_depth - current_depth)
+                local intersection = utils.blend_vec(current, next, factor)
+
+                if current_inside then
+                    if not path_active then
+                        clipped[#clipped + 1] = { point = current }
+                    end
+
+                    clipped[#clipped + 1] = { point = intersection }
+                    clipped[#clipped + 1] = { break_line = true }
+                    path_active = false
+                else
+                    clipped[#clipped + 1] = { point = intersection }
+                    clipped[#clipped + 1] = { point = next }
+                    path_active = true
+                end
+            else
+                path_active = false
+            end
+        end
+
+        return clipped
+    end
+
+    local function project_polygon_to_screen(points)
+        if #points < 3 then return nil end
+
+        local screen_points = {}
+        for i = 1, #points do
+            local point = points[i]
+            local sx, sy = renderer.world_to_screen(point.x, point.y, point.z)
+            if not sx or not sy then
+                return nil
+            end
+
+            screen_points[#screen_points + 1] = { x = sx, y = sy }
+        end
+
+        return screen_points
+    end
+
+    local function get_polygon_centroid(points)
+        local signed_area = 0
+        local centroid_x = 0
+        local centroid_y = 0
+
+        for i = 1, #points do
+            local current = points[i]
+            local next = points[(i % #points) + 1]
+            local cross = (current.x * next.y) - (next.x * current.y)
+            signed_area = signed_area + cross
+            centroid_x = centroid_x + ((current.x + next.x) * cross)
+            centroid_y = centroid_y + ((current.y + next.y) * cross)
+        end
+
+        if math.abs(signed_area) < 0.001 then
+            centroid_x, centroid_y = 0, 0
+            for i = 1, #points do
+                centroid_x = centroid_x + points[i].x
+                centroid_y = centroid_y + points[i].y
+            end
+
+            return centroid_x / #points, centroid_y / #points
+        end
+
+        local factor = 1 / (3 * signed_area)
+        return centroid_x * factor, centroid_y * factor
+    end
+
+    local function draw_filled_polygon(points, r, g, b, a)
+        if a <= 0 or #points < 3 then return end
+
+        local screen_points = project_polygon_to_screen(points)
+        if not screen_points then return end
+
+        local center_x, center_y = get_polygon_centroid(screen_points)
+
+        for i = 1, #screen_points do
+            local current = screen_points[i]
+            local next = screen_points[(i % #screen_points) + 1]
+            local cross = ((current.x - center_x) * (next.y - center_y)) - ((current.y - center_y) * (next.x - center_x))
+
+            if cross < 0 then
+                renderer.triangle(center_x, center_y, next.x, next.y, current.x, current.y, r, g, b, a)
+            else
+                renderer.triangle(center_x, center_y, current.x, current.y, next.x, next.y, r, g, b, a)
+            end
+        end
+    end
+
+    local function draw_projected_polyline(points, r, g, b, a)
+        local prev_sx, prev_sy = nil, nil
+
+        for i = 1, #points do
+            local entry = points[i]
+
+            if entry.break_line then
+                prev_sx, prev_sy = nil, nil
+            else
+                local sx, sy = renderer.world_to_screen(entry.point.x, entry.point.y, entry.point.z)
+
+                if sx and sy then
+                    if prev_sx and prev_sy then
+                        renderer.line(prev_sx, prev_sy, sx, sy, r, g, b, a)
+                    end
+
+                    prev_sx, prev_sy = sx, sy
+                else
+                    prev_sx, prev_sy = nil, nil
+                end
+            end
+        end
+    end
+
+    local function draw_contour_smooth_limit(points, r, g, b, a, limit_fraction, camera_origin, camera_forward)
+        if #points < 2 then return end
+
+        if limit_fraction < 0.995 then
+            local limited_points = build_limited_contour(points, limit_fraction)
+            if #limited_points < 2 then return end
+
+            local clipped_path = clip_polyline_to_camera(limited_points, camera_origin, camera_forward)
+            if #clipped_path == 0 then return end
+
+            draw_projected_polyline(clipped_path, r, g, b, a)
+            return
+        end
+
+        local clipped_points = clip_contour_to_camera(points, camera_origin, camera_forward)
+        if #clipped_points < 2 then return end
+
         local prev_sx, prev_sy = nil, nil
         local first_sx, first_sy = nil, nil
+        local saw_hidden_points = false
 
-        for i = 1, full_segments + 1 do
-            local idx = ((i - 1) % #points) + 1
-            local p = points[idx]
+        for i = 1, #clipped_points do
+            local p = clipped_points[i]
             local sx, sy = renderer.world_to_screen(p.x, p.y, p.z)
-            
+
             if sx and sy then
                 if prev_sx and prev_sy then
                     renderer.line(prev_sx, prev_sy, sx, sy, r, g, b, a)
@@ -14545,33 +14765,17 @@ grenade_radius = {} do
                 end
                 prev_sx, prev_sy = sx, sy
             else
+                saw_hidden_points = true
                 prev_sx, prev_sy = nil, nil
             end
         end
 
-        if remainder > 0.01 and prev_sx and prev_sy then
-            local curr_idx = (full_segments % #points) + 1
-            local next_idx = (curr_idx % #points) + 1
-            
-            local p_curr = points[curr_idx]
-            local p_next = points[next_idx]
-
-            local last_x = p_curr.x + (p_next.x - p_curr.x) * remainder
-            local last_y = p_curr.y + (p_next.y - p_curr.y) * remainder
-            local last_z = p_curr.z
-
-            local last_sx, last_sy = renderer.world_to_screen(last_x, last_y, last_z)
-            if last_sx and last_sy then
-                renderer.line(prev_sx, prev_sy, last_sx, last_sy, r, g, b, a)
-            end
-        end
-        
-        if limit_fraction >= 0.995 and first_sx and prev_sx then
-             renderer.line(prev_sx, prev_sy, first_sx, first_sy, r, g, b, a)
+        if not saw_hidden_points and first_sx and prev_sx then
+            renderer.line(prev_sx, prev_sy, first_sx, first_sy, r, g, b, a)
         end
     end
 
-    local function draw_blob(circles, base_radius, r, g, b, a, outline_limit)
+    local function draw_blob(circles, base_radius, r, g, b, a, outline_limit, camera_origin, camera_forward)
         if #circles == 0 then return end
 
         local avg_x, avg_y, avg_z = 0, 0, 0
@@ -14592,37 +14796,45 @@ grenade_radius = {} do
             local theta = i * step
             local dir_x = math.cos(theta)
             local dir_y = math.sin(theta)
-            local max_dist = 0
+            local best_x, best_y = nil, nil
+            local best_projection = nil
 
             for _, c in ipairs(circles) do
                 local R = base_radius * c.scale
-                local Vx = avg_x - c.x
-                local Vy = avg_y - c.y
-                
-                local B = 2 * (Vx * dir_x + Vy * dir_y)
-                local C = Vx*Vx + Vy*Vy - R*R
-                local det = B*B - 4*C
+                local point_x = c.x + (dir_x * R)
+                local point_y = c.y + (dir_y * R)
+                local projection = (point_x * dir_x) + (point_y * dir_y)
 
-                if det >= 0 then
-                    local sqrt_det = math.sqrt(det)
-                    local t1 = (-B + sqrt_det) / 2
-                    local t2 = (-B - sqrt_det) / 2
-                    max_dist = math.max(max_dist, t1, t2)
+                if best_projection == nil or projection > best_projection then
+                    best_projection = projection
+                    best_x = point_x
+                    best_y = point_y
                 end
             end
 
-            if max_dist > 0 then
+            if best_projection ~= nil then
                 table.insert(contour_points, {
-                    x = avg_x + dir_x * max_dist,
-                    y = avg_y + dir_y * max_dist,
+                    x = best_x,
+                    y = best_y,
                     z = avg_z
                 })
             end
         end
 
         local smoothed_points = smooth_contour(contour_points, 3)
-        
-        draw_contour_smooth_limit(smoothed_points, r, g, b, a, outline_limit)
+        local clipped_points = clip_contour_to_camera(smoothed_points, camera_origin, camera_forward)
+        if #clipped_points < 3 then return end
+        local fill_alpha = math.floor(a * BLOB_FILL_ALPHA_MULTIPLIER)
+
+        if fill_alpha > 1 then
+            draw_filled_polygon(clipped_points, r, g, b, fill_alpha)
+        end
+
+        draw_contour_smooth_limit(smoothed_points, r, g, b, a, outline_limit, camera_origin, camera_forward)
+    end
+
+    local function remove_track(id)
+        tracks[id] = nil
     end
 
     grenade_radius.on_paint = function()
@@ -14634,7 +14846,10 @@ grenade_radius = {} do
         local show_molotov = utils.contains(selection, 'molotov')
         local frame_time = globals.frametime() * 6
         local cur_time_sec = globals.curtime()
-        
+        local camera_x, camera_y, camera_z = client.camera_position()
+        local camera_pitch, camera_yaw = client.camera_angles()
+        local camera_origin = utils.new_vec(camera_x, camera_y, camera_z)
+        local camera_forward = utils.angle_to_forward(camera_pitch, camera_yaw)
         local smoke_duration = 18.0
 
         for id, track in pairs(tracks) do
@@ -14647,6 +14862,11 @@ grenade_radius = {} do
                 local circles = {}
                 local fire_count = entity.get_prop(idx, "m_fireCount") or 0
                 local ox, oy, oz = entity.get_prop(idx, "m_vecOrigin")
+
+                if player.distance3d(camera_x, camera_y, camera_z, ox, oy, oz) > MAX_RENDER_DISTANCE then
+                    remove_track(idx)
+                    goto continue_molotov
+                end
 
                 for i = 0, fire_count do
                     local key = idx .. "_f_" .. i
@@ -14675,6 +14895,8 @@ grenade_radius = {} do
                     tracks[idx].updated = true
                     tracks[idx].target_alpha = 1
                 end
+
+                ::continue_molotov::
             end
         end
 
@@ -14684,6 +14906,11 @@ grenade_radius = {} do
                 local begin_tick = entity.get_prop(idx, "m_nSmokeEffectTickBegin")
                 if begin_tick and begin_tick > 0 then
                     local x, y, z = entity.get_prop(idx, "m_vecOrigin")
+
+                    if player.distance3d(camera_x, camera_y, camera_z, x, y, z) > MAX_RENDER_DISTANCE then
+                        remove_track(idx)
+                        goto continue_smoke
+                    end
                     
                     local key = "smoke_grow_" .. idx
                     anim_data[key] = mathematic.lerp(anim_data[key] or 0, 1, frame_time)
@@ -14706,6 +14933,8 @@ grenade_radius = {} do
                     tracks[idx].updated = true
                     tracks[idx].target_alpha = 1
                 end
+
+                ::continue_smoke::
             end
         end
 
@@ -14727,7 +14956,7 @@ grenade_radius = {} do
                 if track.type == 'molotov' then
                     local final_a = math.floor(a_mol * render_alpha)
                     if final_a > 1 then
-                        draw_blob(track.circles, 60, r_mol, g_mol, b_mol, final_a, 1.0)
+                        draw_blob(track.circles, 60, r_mol, g_mol, b_mol, final_a, 1.0, camera_origin, camera_forward)
                     end
 
                 elseif track.type == 'smoke' then
@@ -14736,8 +14965,8 @@ grenade_radius = {} do
                         local elapsed = cur_time_sec - track.start_time
                         local progress = 1.0 - (elapsed / smoke_duration)
                         if progress < 0 then progress = 0 end
-                        
-                        draw_blob(track.circles, 144, r_sm, g_sm, b_sm, final_a, progress)
+
+                        draw_blob(track.circles, 144, r_sm, g_sm, b_sm, final_a, progress, camera_origin, camera_forward)
                     end
                 end
             end
@@ -15170,6 +15399,7 @@ art = {} do
     - Fixed vgui color affecting the crosshair while preserving console tint
     - Fixed shutdown restoration
     - Fixed config synchronization
+    - Fixed grenade radius contour and fill rendering near camera and during molotov spawn
     ]]
 
     local star = [[
