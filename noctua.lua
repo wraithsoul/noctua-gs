@@ -953,6 +953,7 @@ interface = {} do
         crosshair_style = interface.header.general:combobox('style', {'default', 'center', 'emoji', 'half-life'}),
         crosshair_animate_scope = interface.header.general:checkbox('animate on-scope'),
         manual_arrows = interface.header.general:checkbox('manual arrows'),
+        keystrokes = interface.header.general:checkbox('keystrokes'),
         damage_indicator = interface.header.general:checkbox('damage indicator'),
         lc_status = interface.header.general:checkbox('lc status'),
         window = interface.header.general:checkbox('debug window'),
@@ -6686,6 +6687,8 @@ widgets = {} do
                 return interface.visuals.watermark:get()
             elseif id == "crosshair_indicators" then
                 return interface.visuals.crosshair_indicators:get()
+            elseif id == "keystrokes" then
+                return interface.visuals.keystrokes:get()
             elseif id == "lc_status" then
                 return interface.visuals.lc_status:get()
             elseif id == "screen_logging" then
@@ -6738,6 +6741,8 @@ widgets = {} do
                 return interface.visuals.watermark:get()
             elseif id == "crosshair_indicators" then
                 return interface.visuals.crosshair_indicators:get()
+            elseif id == "keystrokes" then
+                return interface.visuals.keystrokes:get()
             elseif id == "lc_status" then
                 return interface.visuals.lc_status:get()
             elseif id == "damage_indicator" then
@@ -7791,6 +7796,40 @@ visuals = {} do
         if smoothHcAlpha >= 1 then
             renderer.text((x_hc or x_draw), self.element_positions.hc, 255, 255, 255, smoothHcAlpha, align_text, 1000, "hc")
         end
+    end
+
+    visuals.keystrokes = function(self, x, y)
+        local local_player = entity.get_local_player()
+        if not local_player or not entity.is_alive(local_player) then
+            return
+        end
+
+        if not (interface.visuals.enabled_visuals:get() and interface.visuals.keystrokes:get()) then
+            return
+        end
+
+        local text_inactive = { 180, 180, 180, 153 }
+        local text_active = { 255, 255, 255, 255 }
+
+        local line_flags = 'c'
+        local line_h = select(2, renderer.measure_text(line_flags, 'w')) or 10
+        local row_gap = 2
+        local key_gap = 8
+        local top_y = math.floor(y + 0.5)
+        local row2_y = top_y + line_h + row_gap
+        local row3_y = row2_y + line_h + row_gap
+
+        local function draw_text(offset_x, offset_y, label, active)
+            local color = active and text_active or text_inactive
+            renderer.text(math.floor(x + offset_x + 0.5), math.floor(y + offset_y + 0.5), color[1], color[2], color[3], color[4], line_flags, 0, label)
+        end
+
+        draw_text(0, 0, 'w', client.key_state(0x57))
+        draw_text(-(key_gap * 2), line_h + row_gap, 'a', client.key_state(0x41))
+        draw_text(0, line_h + row_gap, 's', client.key_state(0x53))
+        draw_text(key_gap * 2, line_h + row_gap, 'd', client.key_state(0x44))
+        draw_text(-(key_gap * 2), (line_h + row_gap) * 2, 'ctrl', client.key_state(0x11))
+        draw_text(key_gap * 2, (line_h + row_gap) * 2, 'space', client.key_state(0x20))
     end
 
     visuals.damage_indicator = function(self, x, y)
@@ -9293,6 +9332,19 @@ widgets.register({
         visuals:indicators(ctx.x + ctx.w / 2, ctx.y)
     end,
     z = 10
+})
+
+widgets.register({
+    id = "keystrokes",
+    title = "Keystrokes",
+    defaults = { anchor_x = "center", anchor_y = "center", offset_x = 0, offset_y = 82 },
+    get_size = function(st)
+        return 84, 40
+    end,
+    draw = function(ctx)
+        visuals:keystrokes(ctx.x + ctx.w / 2, ctx.y)
+    end,
+    z = 9
 })
 
 widgets.register({
