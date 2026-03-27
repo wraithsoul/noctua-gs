@@ -1040,7 +1040,7 @@ interface = {} do
         clantag = interface.header.general:checkbox('clantag'),
         killsay = interface.header.general:checkbox('balabolka'),
         killsay_modes = interface.header.general:multiselect('modes', 'on kill', 'on death', 'on revenge'),
-        killsay_chance = interface.header.general:slider('chance of triggering', 1, 100, 70, true, '%'),
+        killsay_chance = interface.header.general:slider('chance of triggering', 0, 100, 70, true, '%'),
         hitsound = interface.header.general:checkbox('hitsound'),
         buybot = interface.header.general:checkbox('buybot'),
         buybot_primary = interface.header.general:combobox('primary weapon', '-', 'autosnipers', 'scout', 'awp'),
@@ -11967,6 +11967,7 @@ end
 --@region: killsay
 killsay = {} do
     killsay.last_say_time = 0
+    killsay.busy_until = 0
     killsay.cooldown = 2.0
     killsay.round_token = 0
     killsay.pending_revenge = nil
@@ -12102,6 +12103,7 @@ killsay = {} do
     
     killsay.send_phrases = function(phrase_type)
         local initial_delay = client.random_float(0.95, 1.45)
+        local round_token = killsay.round_token
         
         if phrase_type == "death" or phrase_type == "revenge" then
             initial_delay = initial_delay + client.random_float(0.55, 0.95)
@@ -12132,19 +12134,26 @@ killsay = {} do
             cumulative_delay = cumulative_delay + phrase_delay
             
             client.delay_call(cumulative_delay, function()
+                if killsay.round_token ~= round_token then
+                    return
+                end
+
                 client.exec("say " .. phrases[i])
             end)
         end
+
+        return cumulative_delay
     end
 
     killsay.reset_revenge = function()
         killsay.round_token = killsay.round_token + 1
         killsay.pending_revenge = nil
         killsay.revenge_targets = {}
+        killsay.busy_until = 0
     end
 
     killsay.try_send = function(phrase_type, now)
-        if client.random_int(1, 100) > interface.utility.killsay_chance:get() then
+        if now < killsay.busy_until then
             return false
         end
 
@@ -12152,34 +12161,18 @@ killsay = {} do
             return false
         end
 
-        killsay.last_say_time = now
-        killsay.send_phrases(phrase_type)
-        return true
-    end
-
-    killsay.queue_revenge = function(now)
-        local delay = killsay.cooldown - (now - killsay.last_say_time)
-        if delay <= 0 then
-            return killsay.try_send("revenge", now)
+        local chance = math.floor(tonumber(interface.utility.killsay_chance:get()) or 100)
+        if chance <= 0 then
+            return false
         end
 
-        local round_token = killsay.round_token
-        killsay.pending_revenge = round_token
+        if chance < 100 and client.random_int(0, 99) >= chance then
+            return false
+        end
 
-        client.delay_call(delay, function()
-            if killsay.pending_revenge ~= round_token or killsay.round_token ~= round_token then
-                return
-            end
-
-            killsay.pending_revenge = nil
-
-            if not interface.utility.killsay:get() or not utils.contains(interface.utility.killsay_modes:get(), "on revenge") then
-                return
-            end
-
-            killsay.try_send("revenge", globals.realtime())
-        end)
-
+        killsay.last_say_time = now
+        local sequence_duration = killsay.send_phrases(phrase_type) or 0
+        killsay.busy_until = now + math.max(killsay.cooldown, sequence_duration)
         return true
     end
     
@@ -12215,9 +12208,7 @@ killsay = {} do
         elseif attacker ~= local_player and killsay.revenge_targets[victim] and utils.contains(modes, "on revenge") then
             killsay.revenge_targets[victim] = nil
 
-            if not killsay.try_send("revenge", now) then
-                killsay.queue_revenge(now)
-            end
+            killsay.try_send("revenge", now)
         end
     end
     
