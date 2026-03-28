@@ -962,6 +962,7 @@ interface = {} do
         watermark_show = interface.header.general:multiselect('show', 'script', 'player', 'time', 'ping'),
         -- shared = interface.header.general:checkbox('shared identity (wip)'),
         bomb_timer = interface.header.general:checkbox('bomb timer'),
+        slowdown_indicator = interface.header.general:checkbox('slowdown indicator'),
         logging = interface.header.general:checkbox('logging'),
         logging_style = interface.header.general:multiselect('style\nvisuals.logging_style', 'console', 'screen'),
         logging_events = interface.header.general:multiselect('events\nvisuals.logging_events', 'damage dealt', 'damage received', 'evaded shots', 'shots fired', 'shots missed', 'purchases', 'baim on lethal'),
@@ -6710,6 +6711,8 @@ widgets = {} do
                 return utils.contains(opts, "screen")
             elseif id == "bomb_timer" then
                 return interface.visuals.bomb_timer:get()
+            elseif id == "slowdown_indicator" then
+                return interface.visuals.slowdown_indicator:get()
             end
             return true
         end
@@ -6766,6 +6769,8 @@ widgets = {} do
                 return utils.contains(opts, "screen")
             elseif id == "bomb_timer" then
                 return interface.visuals.bomb_timer:get()
+            elseif id == "slowdown_indicator" then
+                return interface.visuals.slowdown_indicator:get()
             end
             return true
         end
@@ -14840,6 +14845,26 @@ summary = {} do
     summary.setup()
 end
 
+--@region: status line indicator
+status_line_indicator = {} do
+    status_line_indicator.width = 180
+    status_line_indicator.height = 26
+
+    function status_line_indicator.draw(x, y, text, progress, color, alpha)
+        local width = status_line_indicator.width
+        local start_y = math.floor(y - 9)
+        local rect_x = math.floor(x - width / 2)
+        local rect_y = start_y + 16
+        local fill_w = math.floor(width * mathematic.clamp(progress, 0, 1))
+        local r, g, b = unpack(color)
+
+        renderer.rectangle(rect_x, rect_y, width, 2, 50, 50, 50, math.floor(70 * alpha))
+        renderer.rectangle(rect_x, rect_y, fill_w, 2, r, g, b, math.floor(255 * alpha))
+        renderer.text(x, start_y, 255, 255, 255, math.floor(255 * alpha), "c", 0, text)
+    end
+end
+--@endregion
+
 --@region: bomb timer
 bomb_timer = {} do
     bomb_timer.state = {
@@ -14980,15 +15005,7 @@ bomb_timer = {} do
             s.cached_color = bar_col
         end
 
-        local w = 180
-        local start_y = math.floor(y - 9)
-        local rect_x, rect_y = math.floor(x - w / 2), start_y + 16
-        local fill_w = math.floor(w * s.cached_progress)
-        local r, g, b = unpack(s.cached_color)
-
-        renderer.rectangle(rect_x, rect_y, w, 2, 50, 50, 50, math.floor(70 * s.alpha))
-        renderer.rectangle(rect_x, rect_y, fill_w, 2, r, g, b, math.floor(255 * s.alpha))
-        renderer.text(x, start_y, 255, 255, 255, math.floor(255 * s.alpha), "c", 0, s.cached_text)
+        status_line_indicator.draw(x, y, s.cached_text, s.cached_progress, s.cached_color, s.alpha)
     end
 
     bomb_timer.setup = function()
@@ -15032,7 +15049,7 @@ bomb_timer = {} do
             id = "bomb_timer",
             title = "Bomb Timer",
             defaults = { anchor_x = "center", anchor_y = "center", offset_x = 0, offset_y = -400 },
-            get_size = function() return 180, 26 end,
+            get_size = function() return status_line_indicator.width, status_line_indicator.height end,
             draw = function(ctx) bomb_timer.paint(ctx.cx, ctx.cy, ctx.edit_mode) end,
             z = 5
         })
@@ -15041,6 +15058,89 @@ bomb_timer = {} do
     end
 
     bomb_timer.setup()
+end
+--@endregion
+
+--@region: slowdown indicator
+slowdown_indicator = {} do
+    slowdown_indicator.state = {
+        alpha = 0,
+        cached_text = "slowed down",
+        cached_progress = 1,
+        cached_color = {255, 255, 255}
+    }
+
+    slowdown_indicator.paint = function(x, y, edit_mode)
+        local s = slowdown_indicator.state
+        if not (interface.visuals.enabled_visuals:get() and interface.visuals.slowdown_indicator:get()) then
+            s.alpha = 0
+            return
+        end
+
+        local active = false
+        local text_str = "slowed down"
+        local bar_val = 1
+        local accent_r, accent_g, accent_b = unpack(interface.visuals.accent.color.value)
+        local bar_col = {accent_r, accent_g, accent_b}
+
+        local local_player = entity.get_local_player()
+        if local_player ~= nil and entity.is_alive(local_player) then
+            local velocity_modifier = entity.get_prop(local_player, "m_flVelocityModifier")
+            if velocity_modifier ~= nil then
+                bar_val = mathematic.clamp(velocity_modifier, 0.01, 1)
+                active = bar_val < 0.999
+
+                local severity = 1 - bar_val
+                bar_col = {
+                    math.floor(accent_r + ((255 - accent_r) * severity) + 0.5),
+                    math.floor(accent_g * (1 - severity) + 0.5),
+                    math.floor(accent_b * (1 - severity) + 0.5)
+                }
+            end
+        end
+
+        if not active and edit_mode then
+            active = true
+            bar_val = 0.5
+            local severity = 1 - bar_val
+            bar_col = {
+                math.floor(accent_r + ((255 - accent_r) * severity) + 0.5),
+                math.floor(accent_g * (1 - severity) + 0.5),
+                math.floor(accent_b * (1 - severity) + 0.5)
+            }
+            s.alpha = 1
+        end
+
+        s.alpha = mathematic.lerp(s.alpha, active and 1 or 0, globals.frametime() * 6)
+
+        if s.alpha < 0.01 then
+            s.cached_progress = 1
+            return
+        end
+
+        if active then
+            s.cached_text = text_str
+            s.cached_progress = mathematic.lerp(s.cached_progress, bar_val, globals.frametime() * 12)
+            s.cached_color = bar_col
+        end
+
+        status_line_indicator.draw(x, y, s.cached_text, s.cached_progress, s.cached_color, s.alpha)
+    end
+
+    slowdown_indicator.setup = function()
+        widgets.register({
+            id = "slowdown_indicator",
+            title = "Slowdown",
+            defaults = { anchor_x = "center", anchor_y = "center", offset_x = 0, offset_y = -370 },
+            get_size = function() return status_line_indicator.width, status_line_indicator.height end,
+            draw = function(ctx) slowdown_indicator.paint(ctx.cx, ctx.cy, ctx.edit_mode) end,
+            z = 5
+        })
+
+        widgets.load_from_db()
+    end
+
+    slowdown_indicator.setup()
 end
 --@endregion
 
