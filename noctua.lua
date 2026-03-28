@@ -2732,6 +2732,19 @@ utils = {} do
         return utils.contains(value, option)
     end
 
+    utils.is_warmup_period = function(game_rules)
+        return game_rules ~= nil and entity.get_prop(game_rules, "m_bWarmupPeriod") == 1
+    end
+
+    utils.get_round_number = function(game_rules)
+        if game_rules == nil or utils.is_warmup_period(game_rules) then
+            return 0
+        end
+
+        local rounds_played = entity.get_prop(game_rules, "m_totalRoundsPlayed") or 0
+        return rounds_played + 1
+    end
+
     utils.hotkey_mode_map = {
         [0] = 'Always on',
         [1] = 'On hotkey',
@@ -9106,7 +9119,7 @@ logging = {} do
         end
     end
 
-    logging.handleEvadedShot = function(self, attacker_name)
+    logging.handleEvadedShot = function(self, attacker_name, hitbox)
         local doConsole = self:should_output("console", "evaded shots")
         local doScreen = self:should_output("screen", "evaded shots")
         if not doConsole and not doScreen then
@@ -9116,11 +9129,19 @@ logging = {} do
         attacker_name = attacker_name or "enemy"
 
         if doConsole then
-            argLog("evaded %s's shot", attacker_name)
+            if hitbox ~= nil then
+                argLog("evaded %s's shot / hitbox: %s", attacker_name, hitbox)
+            else
+                argLog("evaded %s's shot", attacker_name)
+            end
         end
 
         if doScreen then
-            self:push_format("evaded %s's shot", nil, false, attacker_name)
+            if hitbox ~= nil then
+                self:push_format("evaded %s's shot / hitbox: %s", nil, false, attacker_name, hitbox)
+            else
+                self:push_format("evaded %s's shot", nil, false, attacker_name)
+            end
         end
     end
 
@@ -9281,19 +9302,20 @@ logging = {} do
             return
         end
 
-        local game_rules = entity.get_all("CCSGameRulesProxy")[1]
+        local game_rules = entity.get_game_rules()
         if not game_rules then
             return
         end
 
-        if entity.get_prop(game_rules, "m_bWarmupPeriod") == 1 then
+        client.color_log(255, 255, 255, "\n\0")
+
+        if utils.is_warmup_period(game_rules) then
+            logging.round_counter = 0
+            argLog("warmup")
             return
         end
 
-        local rounds_played = entity.get_prop(game_rules, "m_totalRoundsPlayed") or 0
-        logging.round_counter = rounds_played + 1
-
-        client.color_log(255, 255, 255, "\n\0")
+        logging.round_counter = utils.get_round_number(game_rules)
         argLog("round %d", logging.round_counter)
     end
 end
@@ -10022,17 +10044,7 @@ buybot = {} do
     }
 
     buybot.get_next_round_number = function()
-        local game_rules = entity.get_all("CCSGameRulesProxy")[1]
-        if not game_rules then
-            return 0
-        end
-
-        if entity.get_prop(game_rules, "m_bWarmupPeriod") == 1 then
-            return 0
-        end
-
-        local rounds_played = entity.get_prop(game_rules, "m_totalRoundsPlayed") or 0
-        return rounds_played + 1
+        return utils.get_round_number(entity.get_game_rules())
     end
 
     buybot.is_pistol_round = function()
@@ -12529,15 +12541,15 @@ evaded_shots = {} do
         local points = {}
 
         if head_x ~= nil then
-            points[#points + 1] = { x = head_x, y = head_y, z = head_z }
+            points[#points + 1] = { name = 'head', x = head_x, y = head_y, z = head_z }
         end
 
         if chest_x ~= nil then
-            points[#points + 1] = { x = chest_x, y = chest_y, z = chest_z }
+            points[#points + 1] = { name = 'chest', x = chest_x, y = chest_y, z = chest_z }
         end
 
         if stomach_x ~= nil then
-            points[#points + 1] = { x = stomach_x, y = stomach_y, z = stomach_z }
+            points[#points + 1] = { name = 'stomach', x = stomach_x, y = stomach_y, z = stomach_z }
         end
 
         return points
@@ -12586,9 +12598,9 @@ evaded_shots = {} do
         return record
     end
 
-    function evaded_shots.commit(attacker_name)
+    function evaded_shots.commit(attacker_name, hitbox)
         if logging then
-            logging:handleEvadedShot(attacker_name)
+            logging:handleEvadedShot(attacker_name, hitbox)
         end
 
         if stats and stats.add_evaded then
@@ -12611,7 +12623,7 @@ evaded_shots = {} do
         for shooter, record in pairs(evaded_shots.records) do
             if record.pending_commit_at ~= nil and now >= record.pending_commit_at then
                 evaded_shots.records[shooter] = nil
-                evaded_shots.commit(record.attacker_name)
+                evaded_shots.commit(record.attacker_name, record.hitbox)
             elseif now > record.expire_at then
                 evaded_shots.records[shooter] = nil
             end
@@ -12653,6 +12665,8 @@ evaded_shots = {} do
             start_y = sy,
             start_z = sz,
             points = points,
+            hitbox = nil,
+            hitbox_distance = math.huge,
             expire_at = globals.realtime() + evaded_shots.max_age,
             pending_commit_at = nil
         }
@@ -12692,6 +12706,7 @@ evaded_shots = {} do
         end
 
         local best_distance = math.huge
+        local best_hitbox = nil
         for i = 1, #record.points do
             local point = record.points[i]
             local distance = evaded_shots.point_to_segment_distance(
@@ -12702,11 +12717,17 @@ evaded_shots = {} do
 
             if distance < best_distance then
                 best_distance = distance
+                best_hitbox = point.name
             end
         end
 
         if best_distance > evaded_shots.distance_threshold then
             return
+        end
+
+        if best_distance < record.hitbox_distance then
+            record.hitbox_distance = best_distance
+            record.hitbox = best_hitbox
         end
 
         record.pending_commit_at = globals.realtime() + evaded_shots.confirm_delay
@@ -15859,16 +15880,7 @@ auto_r8 = {} do
     end
 
     auto_r8.get_next_round_number = function(game_rules)
-        if not game_rules then
-            return 0
-        end
-
-        if entity.get_prop(game_rules, "m_bWarmupPeriod") == 1 then
-            return 0
-        end
-
-        local rounds_played = entity.get_prop(game_rules, "m_totalRoundsPlayed") or 0
-        return rounds_played + 1
+        return utils.get_round_number(game_rules)
     end
 
     auto_r8.is_pistol_round = function(round_number)
@@ -15888,7 +15900,7 @@ auto_r8 = {} do
             return
         end
 
-        if entity.get_prop(game_rules, "m_bWarmupPeriod") == 1 then
+        if utils.is_warmup_period(game_rules) then
             return
         end
 
