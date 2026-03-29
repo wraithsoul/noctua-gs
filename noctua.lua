@@ -15353,12 +15353,22 @@ grenade_radius = {} do
     local anim_data = {}
     local tracks = {}
     local predict_deadlines = {}
+    local predict_cache = {}
     local TWO_PI = 2 * math.pi
     local CAMERA_NEAR_PLANE = 8
     local BLOB_FILL_ALPHA_MULTIPLIER = 0.2
     local MAX_RENDER_DISTANCE = 1200
     local HULL_EXTENT = 2
     local HULL_SAMPLES = { utils.new_vec(0, 0, 0) }
+    local HULL_BROAD_SAMPLES = {
+        utils.new_vec(0, 0, 0),
+        utils.new_vec(HULL_EXTENT, 0, 0),
+        utils.new_vec(-HULL_EXTENT, 0, 0),
+        utils.new_vec(0, HULL_EXTENT, 0),
+        utils.new_vec(0, -HULL_EXTENT, 0),
+        utils.new_vec(0, 0, HULL_EXTENT),
+        utils.new_vec(0, 0, -HULL_EXTENT)
+    }
     local COLLISION_NORMAL_TOLERANCE = 0.03
     local COLLISION_FACE_EPSILON = HULL_EXTENT * 0.5
     local COLLISION_FACE_BIAS = 0.01
@@ -15372,7 +15382,8 @@ grenade_radius = {} do
     local DOWN_TRACE_HEIGHT = 128
     local DOWN_TRACE_OFFSET = 10
     local MAX_BOUNCES = 20
-    local PREDICT_STEP_SCALE = 0.5
+    local PREDICT_FINE_STEP_SCALE = 0.5
+    local PREDICT_FINE_STEP_WINDOW = 0.16
     local PREDICT_BASE_RADIUS = 72
     local PREDICT_ALPHA_MULTIPLIER = 0.40
     local PREDICT_OUTLINE_LIMIT = 1.0
@@ -15380,6 +15391,11 @@ grenade_radius = {} do
     local PREDICT_JITTER_DISTANCE = 10
     local PREDICT_SNAP_DISTANCE = 80
     local PREDICT_BLOB_JITTER_DISTANCE = 12
+    local PREDICT_SAMPLE_RENDER_DISTANCE = 1000
+    local PREDICT_SAMPLE_FADE_DISTANCE = 120
+    local SMOKE_RADIUS = 144
+    local SMOKE_BLINK_SPEED = 14
+    local SMOKE_BLINK_MIN_ALPHA = 0.35
     local PREDICT_CONTOUR_SMOOTH = 1
     local PREDICT_RING_DISTANCE = 56
     local PREDICT_INNER_DISTANCE = 28
@@ -15387,6 +15403,7 @@ grenade_radius = {} do
     local HARD_TIMER_CONTACT_MAX_AGE = 0.35
     local HARD_TIMER_CONTACT_MAX_XY = 96
     local HARD_TIMER_CONTACT_Z_DELTA = 40
+    local HARD_TIMER_SIM_LEAD_TICKS = 1.0
     local BLOB_LAYER_THRESHOLD = 18
     local PREDICT_CIRCLES = {
         { x = 0.00, y = 0.00, scale = 1.00 },
@@ -15427,6 +15444,20 @@ grenade_radius = {} do
         end
 
         return math.max(deadline - current_time, 0), deadline, true
+    end
+
+    local function clear_missing_predict_runtime(active)
+        for idx in pairs(predict_deadlines) do
+            if not active[idx] then
+                predict_deadlines[idx] = nil
+            end
+        end
+
+        for idx in pairs(predict_cache) do
+            if not active[idx] then
+                predict_cache[idx] = nil
+            end
+        end
     end
 
     local function smooth_contour(points, iterations)
@@ -15985,6 +16016,43 @@ grenade_radius = {} do
         local best_fraction = 1
         local best_entindex = -1
         local hit_points = {}
+        local broadphase_hit = false
+
+        for i = 1, #HULL_BROAD_SAMPLES do
+            local offset = HULL_BROAD_SAMPLES[i]
+            local sample_start = utils.vec_add(start_pos, offset)
+            local sample_end = utils.vec_add(end_pos, offset)
+            local fraction, entindex
+
+            if ignored_ent ~= nil then
+                fraction, entindex = trace_line_filtered(skip_ent, ignored_ent, sample_start, sample_end)
+            else
+                fraction, entindex = trace_line_vec(skip_ent, sample_start, sample_end)
+            end
+
+            if fraction < best_fraction then
+                best_fraction = fraction
+                best_entindex = entindex
+            end
+
+            if fraction < 1 then
+                broadphase_hit = true
+                break
+            end
+        end
+
+        if not broadphase_hit then
+            return {
+                fraction = 1,
+                entindex = -1,
+                endpos = end_pos,
+                normal = nil,
+                hit_world = false
+            }
+        end
+
+        best_fraction = 1
+        best_entindex = -1
 
         for i = 1, #HULL_SAMPLES do
             local offset = HULL_SAMPLES[i]
@@ -16144,6 +16212,35 @@ grenade_radius = {} do
         return ground, "downtrace"
     end
 
+    local function is_point_in_smoke(point, smoke_points)
+        for i = 1, #smoke_points do
+            local smoke = smoke_points[i]
+            if player.distance3d(point.x, point.y, point.z, smoke.x, smoke.y, smoke.z) <= SMOKE_RADIUS then
+                return true
+            end
+        end
+
+        return false
+    end
+
+    local function is_predicted_blob_in_smoke(track, smoke_points)
+        if #smoke_points == 0 then
+            return false
+        end
+
+        if track.preview_point ~= nil and is_point_in_smoke(track.preview_point, smoke_points) then
+            return true
+        end
+
+        for i = 1, #track.circles do
+            if is_point_in_smoke(track.circles[i], smoke_points) then
+                return true
+            end
+        end
+
+        return false
+    end
+
     local function should_detonate_on_bounce(trace)
         if trace == nil or trace.fraction >= 1 or trace.normal == nil then
             return false
@@ -16198,6 +16295,7 @@ grenade_radius = {} do
         local current_time = globals.curtime()
         local gravity = (cvar.sv_gravity and cvar.sv_gravity:get_float() or 800) * 0.4
         local throw_remaining = get_molotov_throw_remaining(idx, current_time)
+        local sim_throw_remaining = math.max(throw_remaining - (tick_interval * HARD_TIMER_SIM_LEAD_TICKS), 0)
         local trace_skip_ent = get_predict_trace_skip_ent(idx)
         local ignored_ent = idx
         local position = utils.new_vec(pos_x, pos_y, pos_z)
@@ -16206,9 +16304,11 @@ grenade_radius = {} do
         local bounce_count = 0
         local speed = math.sqrt((vel_x * vel_x) + (vel_y * vel_y) + (vel_z * vel_z))
         local last_ground_contact
+        local fine_step_until = 0
 
-        while elapsed < MOLOTOV_MAX_SIM_TIME and elapsed < throw_remaining do
-            local step_time = math.min(tick_interval * PREDICT_STEP_SCALE, throw_remaining - elapsed)
+        while elapsed < MOLOTOV_MAX_SIM_TIME and elapsed < sim_throw_remaining do
+            local step_scale = elapsed < fine_step_until and PREDICT_FINE_STEP_SCALE or 1.0
+            local step_time = math.min(tick_interval * step_scale, sim_throw_remaining - elapsed)
             local step_velocity = utils.new_vec(velocity.x, velocity.y, velocity.z)
             local next_velocity_z = velocity.z - (gravity * step_time)
             local move = utils.new_vec(
@@ -16228,6 +16328,7 @@ grenade_radius = {} do
                     step_velocity.y,
                     step_velocity.z + ((next_velocity_z - step_velocity.z) * trace.fraction)
                 )
+                fine_step_until = math.max(fine_step_until, impact_elapsed + PREDICT_FINE_STEP_WINDOW)
 
                 local nearby_ground = resolve_nearby_ground_point(trace_skip_ent, ignored_ent, position, 24)
                 if nearby_ground ~= nil then
@@ -16301,7 +16402,7 @@ grenade_radius = {} do
             elapsed = elapsed + step_time
         end
 
-        if elapsed >= throw_remaining then
+        if elapsed >= sim_throw_remaining then
             local point, ground_source = resolve_hard_timer_ground_point(trace_skip_ent, ignored_ent, position, elapsed, last_ground_contact)
             return {
                 point = point,
@@ -16343,6 +16444,19 @@ grenade_radius = {} do
         local camera_origin = utils.new_vec(camera_x, camera_y, camera_z)
         local camera_forward = utils.angle_to_forward(camera_pitch, camera_yaw)
         local smoke_duration = 18.0
+        local smoke_projectiles = entity.get_all("CSmokeGrenadeProjectile")
+        local active_smoke_points = {}
+
+        for i = 1, #smoke_projectiles do
+            local idx = smoke_projectiles[i]
+            local begin_tick = entity.get_prop(idx, "m_nSmokeEffectTickBegin")
+            if begin_tick and begin_tick > 0 then
+                local x, y, z = entity.get_prop(idx, "m_vecOrigin")
+                if x ~= nil then
+                    active_smoke_points[#active_smoke_points + 1] = utils.new_vec(x, y, z)
+                end
+            end
+        end
 
         for id, track in pairs(tracks) do
             track.updated = false
@@ -16395,13 +16509,23 @@ grenade_radius = {} do
         if show_molotov_predict then
             local projectiles = entity.get_all(PROJECTILE_CLASSNAME)
             local active_predict_projectiles = {}
+            local current_tick = globals.tickcount()
             for i = 1, #projectiles do
                 local idx = projectiles[i]
                 local x, y, z = entity.get_prop(idx, "m_vecOrigin")
                 active_predict_projectiles[idx] = true
 
                 if x and player.distance3d(camera_x, camera_y, camera_z, x, y, z) <= MAX_RENDER_DISTANCE then
-                    local prediction = predict_molotov_landing(idx)
+                    local cache = predict_cache[idx]
+                    if cache == nil or cache.tick ~= current_tick then
+                        cache = {
+                            tick = current_tick,
+                            prediction = predict_molotov_landing(idx)
+                        }
+                        predict_cache[idx] = cache
+                    end
+
+                    local prediction = cache.prediction
                     local track_id = "molotov_predict_" .. idx
 
                     if prediction ~= nil and prediction.point ~= nil then
@@ -16427,7 +16551,15 @@ grenade_radius = {} do
                         end
 
                         track.type = 'molotov_predict'
-                        local grounded_center, circles = build_predicted_fire_circles(get_predict_trace_skip_ent(idx), idx, display_point)
+                        local grounded_center = cache.grounded_center
+                        local circles = cache.circles
+                        if cache.circle_point == nil or utils.vec_distance(cache.circle_point, display_point) > PREDICT_BLOB_JITTER_DISTANCE then
+                            grounded_center, circles = build_predicted_fire_circles(get_predict_trace_skip_ent(idx), idx, display_point)
+                            cache.grounded_center = grounded_center
+                            cache.circles = circles
+                            cache.circle_point = display_point
+                        end
+
                         if track.eta_anchor == nil or prediction.eta > ((track.eta_total or 0) + 0.15) then
                             track.eta_anchor = cur_time_sec
                             track.eta_total = prediction.eta
@@ -16453,15 +16585,9 @@ grenade_radius = {} do
                     tracks["molotov_predict_" .. idx] = nil
                 end
             end
-            for idx in pairs(predict_deadlines) do
-                if not active_predict_projectiles[idx] then
-                    predict_deadlines[idx] = nil
-                end
-            end
+            clear_missing_predict_runtime(active_predict_projectiles)
         else
-            for idx in pairs(predict_deadlines) do
-                predict_deadlines[idx] = nil
-            end
+            clear_missing_predict_runtime({})
             for id, track in pairs(tracks) do
                 if type(id) == "string" and id:find("molotov_predict_", 1, true) == 1 then
                     tracks[id] = nil
@@ -16470,8 +16596,7 @@ grenade_radius = {} do
         end
 
         if show_smoke then
-            local smokes = entity.get_all("CSmokeGrenadeProjectile")
-            for _, idx in ipairs(smokes) do
+            for _, idx in ipairs(smoke_projectiles) do
                 local begin_tick = entity.get_prop(idx, "m_nSmokeEffectTickBegin")
                 if begin_tick and begin_tick > 0 then
                     local x, y, z = entity.get_prop(idx, "m_vecOrigin")
@@ -16531,7 +16656,35 @@ grenade_radius = {} do
                 elseif track.type == 'molotov_predict' then
                     local final_a = math.floor(a_mol * render_alpha * PREDICT_ALPHA_MULTIPLIER)
                     if final_a > 1 then
-                        draw_blob(track.circles, PREDICT_BASE_RADIUS, r_mol, g_mol, b_mol, final_a, PREDICT_OUTLINE_LIMIT, camera_origin, camera_forward, PREDICT_CONTOUR_SMOOTH)
+                        local sample_blink = 1
+                        if is_predicted_blob_in_smoke(track, active_smoke_points) then
+                            sample_blink = mathematic.lerp(SMOKE_BLINK_MIN_ALPHA, 1.0, (math.sin(cur_time_sec * SMOKE_BLINK_SPEED) * 0.5) + 0.5)
+                        end
+
+                        local sample_target_alpha = 0
+                        if track.preview_point ~= nil then
+                            local sample_distance = player.distance3d(
+                                camera_x,
+                                camera_y,
+                                camera_z,
+                                track.preview_point.x,
+                                track.preview_point.y,
+                                track.preview_point.z
+                            )
+
+                            if sample_distance <= PREDICT_SAMPLE_RENDER_DISTANCE then
+                                sample_target_alpha = 1
+                            elseif sample_distance < (PREDICT_SAMPLE_RENDER_DISTANCE + PREDICT_SAMPLE_FADE_DISTANCE) then
+                                sample_target_alpha = 1 - ((sample_distance - PREDICT_SAMPLE_RENDER_DISTANCE) / PREDICT_SAMPLE_FADE_DISTANCE)
+                            end
+                        end
+
+                        track.sample_alpha = mathematic.lerp(track.sample_alpha or 0, sample_target_alpha, frame_time)
+
+                        local sample_final_a = math.floor(final_a * track.sample_alpha * sample_blink)
+                        if sample_final_a > 1 then
+                            draw_blob(track.circles, PREDICT_BASE_RADIUS, r_mol, g_mol, b_mol, sample_final_a, PREDICT_OUTLINE_LIMIT, camera_origin, camera_forward, PREDICT_CONTOUR_SMOOTH)
+                        end
 
                         if track.preview_point ~= nil and track.eta ~= nil then
                             local text_x, text_y = renderer.world_to_screen(track.preview_point.x, track.preview_point.y, track.preview_point.z + 6)
@@ -16566,7 +16719,7 @@ grenade_radius = {} do
                         local progress = 1.0 - (elapsed / smoke_duration)
                         if progress < 0 then progress = 0 end
 
-                        draw_blob(track.circles, 144, r_sm, g_sm, b_sm, final_a, progress, camera_origin, camera_forward)
+                        draw_blob(track.circles, SMOKE_RADIUS, r_sm, g_sm, b_sm, final_a, progress, camera_origin, camera_forward)
                     end
                 end
             end
