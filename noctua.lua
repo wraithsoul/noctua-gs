@@ -879,7 +879,6 @@ interface = {} do
         enabled_aimbot = interface.header.general:checkbox('enable aimbot'),
         enabled_resolver_tweaks = interface.header.general:checkbox('\aa5ab55ffyaw correction'),
         silent_shot = interface.header.general:checkbox('silent shot'),
-        baim_on_lethal = interface.header.general:combobox('baim on lethal', 'off', 'prefer', 'force'),
         force_recharge = interface.header.general:checkbox('allow force recharge'),
         adaptive_delay_shot = interface.header.general:checkbox('adaptive delay shot'),
         quick_stop = interface.header.general:checkbox('air stop', 0x00),
@@ -902,7 +901,8 @@ interface = {} do
         dormant_enabled = interface.header.general:checkbox('dormant aimbot', 0x00),
         dormant_hitchance = interface.header.general:slider('hit chance', 50, 100, 50, true, '%', 1, {[50] = 'auto'}),
         dormant_damage = interface.header.general:slider('minimum damage', 1, 100, 7, true, ''),
-        predictive_shot = interface.header.other:checkbox('\aa5ab55ffpredictive shot (awp only, experimental)')
+        predictive_shot = interface.header.other:checkbox('\aa5ab55ffpredictive shot (awp only, experimental)'),
+        baim_on_lethal = interface.header.other:combobox('baim on lethal', 'off', 'prefer', 'force')
     }
 
     local function create_antiaim_builder_profile(state_key)
@@ -1033,6 +1033,7 @@ interface = {} do
         enemy_ping_warn = interface.header.other:checkbox('enemy ping warning'),
         enemy_ping_minimum = interface.header.other:slider('minimum latency to show', 10, 100, 80, true, 'ms'),
         grenade_radius = interface.header.other:multiselect('grenade radius', 'smoke', 'molotov'),
+        grenade_radius_molotov_predict = interface.header.other:checkbox('predict landing (beta)'),
         grenade_radius_smoke_color = interface.header.other:label('smoke color', {173, 216, 230, 255}),
         grenade_radius_molotov_color = interface.header.other:label('molotov color', {255, 204, 203, 255}),
         predict_box = interface.header.other:checkbox('predict box'),
@@ -1059,6 +1060,7 @@ interface = {} do
         world_damage = interface.visuals.world_damage,
         world_damage_type = interface.visuals.world_damage_type,
         grenade_radius = interface.visuals.grenade_radius,
+        grenade_radius_molotov_predict = interface.visuals.grenade_radius_molotov_predict,
         grenade_radius_smoke_color = interface.visuals.grenade_radius_smoke_color,
         grenade_radius_molotov_color = interface.visuals.grenade_radius_molotov_color
     }
@@ -1616,6 +1618,7 @@ interface = {} do
                         or key == 'world_damage'
                         or key == 'world_damage_type'
                         or key == 'grenade_radius'
+                        or key == 'grenade_radius_molotov_predict'
                         or key == 'grenade_radius_smoke_color'
                         or key == 'grenade_radius_molotov_color' then
                         element:set_visible(false)
@@ -1710,6 +1713,7 @@ interface = {} do
                         and key ~= 'world_damage'
                         and key ~= 'world_damage_type'
                         and key ~= 'grenade_radius'
+                        and key ~= 'grenade_radius_molotov_predict'
                         and key ~= 'grenade_radius_smoke_color'
                         and key ~= 'grenade_radius_molotov_color' then
                         element:set_visible(false)
@@ -1742,6 +1746,12 @@ interface = {} do
                     end
 
                     if key == 'grenade_radius_molotov_color' then
+                        local grenades = interface.world.grenade_radius:get() or {}
+                        element:set_visible(utils.contains(grenades, 'molotov'))
+                        return
+                    end
+
+                    if key == 'grenade_radius_molotov_predict' then
                         local grenades = interface.world.grenade_radius:get() or {}
                         element:set_visible(utils.contains(grenades, 'molotov'))
                         return
@@ -2856,12 +2866,49 @@ utils = {} do
         return (a.x * b.x) + (a.y * b.y) + (a.z * b.z)
     end
 
+    utils.vec_scale = function(v, scale)
+        return utils.new_vec(v.x * scale, v.y * scale, v.z * scale)
+    end
+
+    utils.vec_lerp = function(a, b, t)
+        return utils.new_vec(
+            mathematic.lerp(a.x, b.x, t),
+            mathematic.lerp(a.y, b.y, t),
+            mathematic.lerp(a.z, b.z, t)
+        )
+    end
+
+    utils.vec_length_sqr = function(v)
+        return (v.x * v.x) + (v.y * v.y) + (v.z * v.z)
+    end
+
+    utils.vec_length = function(v)
+        return math.sqrt(utils.vec_length_sqr(v))
+    end
+
+    utils.vec_normalize = function(v)
+        local length = utils.vec_length(v)
+        if length <= 0.0001 then
+            return utils.new_vec(0, 0, 0)
+        end
+
+        return utils.vec_scale(v, 1 / length)
+    end
+
     utils.vec_length_2d = function(v)
         return math.sqrt((v.x * v.x) + (v.y * v.y))
     end
 
     utils.vec_distance = function(a, b)
         return player.distance3d(a.x, a.y, a.z, b.x, b.y, b.z)
+    end
+
+    utils.is_player_index = function(entindex)
+        if entindex == nil or entindex <= 0 or entindex > globals.maxplayers() then
+            return false
+        end
+
+        return entity.get_classname(entindex) == "CCSPlayer"
     end
 
     utils.calc_angle = function(src_x, src_y, src_z, dst_x, dst_y, dst_z)
@@ -15305,10 +15352,82 @@ end
 grenade_radius = {} do
     local anim_data = {}
     local tracks = {}
+    local predict_deadlines = {}
     local TWO_PI = 2 * math.pi
     local CAMERA_NEAR_PLANE = 8
     local BLOB_FILL_ALPHA_MULTIPLIER = 0.2
     local MAX_RENDER_DISTANCE = 1200
+    local HULL_EXTENT = 2
+    local HULL_SAMPLES = { utils.new_vec(0, 0, 0) }
+    local COLLISION_NORMAL_TOLERANCE = 0.03
+    local COLLISION_FACE_EPSILON = HULL_EXTENT * 0.5
+    local COLLISION_FACE_BIAS = 0.01
+    local COLLISION_PUSH_EPSILON = 0.25
+    local COLLISION_WEIGHT_BLEND = 1.15
+    local GRENADE_SLEEP_VELOCITY = 20
+    local GRENADE_SLEEP_VELOCITY_SQR = GRENADE_SLEEP_VELOCITY * GRENADE_SLEEP_VELOCITY
+    local GRENADE_MIN_DAMAGE_SPEED_SQR = 96000
+    local PROJECTILE_CLASSNAME = "CMolotovProjectile"
+    local MOLOTOV_ICON = images.get_weapon_icon("weapon_molotov")
+    local DOWN_TRACE_HEIGHT = 128
+    local DOWN_TRACE_OFFSET = 10
+    local MAX_BOUNCES = 20
+    local PREDICT_STEP_SCALE = 0.5
+    local PREDICT_BASE_RADIUS = 72
+    local PREDICT_ALPHA_MULTIPLIER = 0.40
+    local PREDICT_OUTLINE_LIMIT = 1.0
+    local PREDICT_SMOOTHING = 0.35
+    local PREDICT_JITTER_DISTANCE = 10
+    local PREDICT_SNAP_DISTANCE = 80
+    local PREDICT_BLOB_JITTER_DISTANCE = 12
+    local PREDICT_CONTOUR_SMOOTH = 1
+    local PREDICT_RING_DISTANCE = 56
+    local PREDICT_INNER_DISTANCE = 28
+    local MOLOTOV_MAX_SIM_TIME = 8.0
+    local HARD_TIMER_CONTACT_MAX_AGE = 0.35
+    local HARD_TIMER_CONTACT_MAX_XY = 96
+    local HARD_TIMER_CONTACT_Z_DELTA = 40
+    local BLOB_LAYER_THRESHOLD = 18
+    local PREDICT_CIRCLES = {
+        { x = 0.00, y = 0.00, scale = 1.00 },
+        { x = 1.00, y = 0.00, scale = 0.95 },
+        { x = -1.00, y = 0.00, scale = 0.95 },
+        { x = 0.00, y = 1.00, scale = 0.95 },
+        { x = 0.00, y = -1.00, scale = 0.95 },
+        { x = 0.72, y = 0.72, scale = 0.84 },
+        { x = -0.72, y = 0.72, scale = 0.84 },
+        { x = 0.72, y = -0.72, scale = 0.84 },
+        { x = -0.72, y = -0.72, scale = 0.84 }
+    }
+
+    for x = -1, 1 do
+        for y = -1, 1 do
+            for z = -1, 1 do
+                if x ~= 0 or y ~= 0 or z ~= 0 then
+                    HULL_SAMPLES[#HULL_SAMPLES + 1] = utils.new_vec(
+                        x * HULL_EXTENT,
+                        y * HULL_EXTENT,
+                        z * HULL_EXTENT
+                    )
+                end
+            end
+        end
+    end
+
+    local function get_molotov_throw_remaining(idx, current_time)
+        local detonate_time = entity.get_prop(idx, "m_flDetonateTime")
+        if detonate_time ~= nil then
+            return math.max(detonate_time - current_time, 0), detonate_time, false
+        end
+
+        local deadline = predict_deadlines[idx]
+        if deadline == nil then
+            deadline = current_time + (cvar.molotov_throw_detonate_time and cvar.molotov_throw_detonate_time:get_float() or 2.0)
+            predict_deadlines[idx] = deadline
+        end
+
+        return math.max(deadline - current_time, 0), deadline, true
+    end
 
     local function smooth_contour(points, iterations)
         if #points < 3 then return points end
@@ -15567,7 +15686,7 @@ grenade_radius = {} do
         end
     end
 
-    local function draw_blob(circles, base_radius, r, g, b, a, outline_limit, camera_origin, camera_forward)
+    local function draw_blob(circles, base_radius, r, g, b, a, outline_limit, camera_origin, camera_forward, smooth_iterations)
         if #circles == 0 then return end
 
         local avg_x, avg_y, avg_z = 0, 0, 0
@@ -15588,7 +15707,7 @@ grenade_radius = {} do
             local theta = i * step
             local dir_x = math.cos(theta)
             local dir_y = math.sin(theta)
-            local best_x, best_y = nil, nil
+            local best_x, best_y, best_z = nil, nil, nil
             local best_projection = nil
 
             for _, c in ipairs(circles) do
@@ -15601,6 +15720,7 @@ grenade_radius = {} do
                     best_projection = projection
                     best_x = point_x
                     best_y = point_y
+                    best_z = c.z
                 end
             end
 
@@ -15608,12 +15728,12 @@ grenade_radius = {} do
                 table.insert(contour_points, {
                     x = best_x,
                     y = best_y,
-                    z = avg_z
+                    z = best_z or avg_z
                 })
             end
         end
 
-        local smoothed_points = smooth_contour(contour_points, 3)
+        local smoothed_points = smooth_contour(contour_points, smooth_iterations or 3)
         local clipped_points = clip_contour_to_camera(smoothed_points, camera_origin, camera_forward)
         if #clipped_points < 3 then return end
         local fill_alpha = math.floor(a * BLOB_FILL_ALPHA_MULTIPLIER)
@@ -15623,6 +15743,47 @@ grenade_radius = {} do
         end
 
         draw_contour_smooth_limit(smoothed_points, r, g, b, a, outline_limit, camera_origin, camera_forward)
+    end
+
+    local function split_circles_by_height(circles, threshold)
+        if #circles <= 1 then
+            return { circles }
+        end
+
+        local sorted = {}
+        for i = 1, #circles do
+            sorted[i] = circles[i]
+        end
+
+        table.sort(sorted, function(a, b)
+            return a.z < b.z
+        end)
+
+        local layers = {}
+        local current_layer = { sorted[1] }
+        local current_z = sorted[1].z
+
+        for i = 2, #sorted do
+            local circle = sorted[i]
+            if math.abs(circle.z - current_z) > threshold then
+                layers[#layers + 1] = current_layer
+                current_layer = { circle }
+                current_z = circle.z
+            else
+                current_layer[#current_layer + 1] = circle
+                current_z = (current_z + circle.z) * 0.5
+            end
+        end
+
+        layers[#layers + 1] = current_layer
+        return layers
+    end
+
+    local function draw_blob_layers(circles, base_radius, r, g, b, a, outline_limit, camera_origin, camera_forward)
+        local layers = split_circles_by_height(circles, BLOB_LAYER_THRESHOLD)
+        for i = 1, #layers do
+            draw_blob(layers[i], base_radius, r, g, b, a, outline_limit, camera_origin, camera_forward)
+        end
     end
 
     local function fade_out_track(id)
@@ -15635,6 +15796,538 @@ grenade_radius = {} do
         track.target_alpha = 0
     end
 
+    local function trace_line_vec(skip_ent, start_pos, end_pos)
+        local fraction, entindex = client.trace_line(
+            skip_ent,
+            start_pos.x, start_pos.y, start_pos.z,
+            end_pos.x, end_pos.y, end_pos.z
+        )
+
+        return fraction or 1, entindex or -1
+    end
+
+    local is_molotov_passthrough_entity
+    local is_molotov_non_detonate_surface
+
+    local function trace_line_filtered(skip_ent, ignored_ent, start_pos, end_pos)
+        local trace_start = start_pos
+        local total_fraction = 0
+
+        for _ = 1, 6 do
+            local fraction, entindex = trace_line_vec(skip_ent, trace_start, end_pos)
+            if fraction >= 1 then
+                return 1, -1
+            end
+
+            local segment_fraction = (1 - total_fraction) * fraction
+            local absolute_fraction = total_fraction + segment_fraction
+
+            if entindex ~= ignored_ent and not utils.is_player_index(entindex) and not is_molotov_passthrough_entity(entindex) then
+                return absolute_fraction, entindex
+            end
+
+            local next_fraction = math.min(fraction + 0.01, 1)
+            trace_start = utils.blend_vec(trace_start, end_pos, next_fraction)
+            total_fraction = total_fraction + ((1 - total_fraction) * next_fraction)
+        end
+
+        return 1, -1
+    end
+
+    is_molotov_passthrough_entity = function(entindex)
+        if entindex == nil or entindex <= 0 then
+            return false
+        end
+
+        local classname = entity.get_classname(entindex)
+        return classname == "func_breakable"
+            or classname == "func_breakable_surf"
+    end
+
+    is_molotov_non_detonate_surface = function(entindex)
+        if entindex == nil or entindex <= 0 then
+            return false
+        end
+
+        local classname = entity.get_classname(entindex)
+        return classname == "func_breakable"
+            or classname == "func_breakable_surf"
+            or classname == "func_ladder"
+    end
+
+    local function is_world_trace_entindex(entindex)
+        return entindex == nil or entindex <= 0
+    end
+
+    local function estimate_collision_normal(hits, best_fraction, move_delta)
+        local usable_hits = {}
+
+        for i = 1, #hits do
+            if hits[i].fraction <= best_fraction + COLLISION_NORMAL_TOLERANCE then
+                usable_hits[#usable_hits + 1] = hits[i]
+            end
+        end
+
+        local axis_hits = {
+            x_pos = 1,
+            x_neg = 1,
+            y_pos = 1,
+            y_neg = 1,
+            z_pos = 1,
+            z_neg = 1
+        }
+
+        for i = 1, #usable_hits do
+            local hit = usable_hits[i]
+            local offset = hit.offset
+
+            if offset.x >= COLLISION_FACE_EPSILON and hit.fraction < axis_hits.x_pos then
+                axis_hits.x_pos = hit.fraction
+            end
+            if offset.x <= -COLLISION_FACE_EPSILON and hit.fraction < axis_hits.x_neg then
+                axis_hits.x_neg = hit.fraction
+            end
+
+            if offset.y >= COLLISION_FACE_EPSILON and hit.fraction < axis_hits.y_pos then
+                axis_hits.y_pos = hit.fraction
+            end
+            if offset.y <= -COLLISION_FACE_EPSILON and hit.fraction < axis_hits.y_neg then
+                axis_hits.y_neg = hit.fraction
+            end
+
+            if offset.z >= COLLISION_FACE_EPSILON and hit.fraction < axis_hits.z_pos then
+                axis_hits.z_pos = hit.fraction
+            end
+            if offset.z <= -COLLISION_FACE_EPSILON and hit.fraction < axis_hits.z_neg then
+                axis_hits.z_neg = hit.fraction
+            end
+        end
+
+        local face_normal = utils.new_vec(0, 0, 0)
+        local weighted_normal = utils.new_vec(0, 0, 0)
+
+        if axis_hits.x_pos <= best_fraction + COLLISION_NORMAL_TOLERANCE and axis_hits.x_pos + COLLISION_FACE_BIAS < axis_hits.x_neg then
+            face_normal.x = face_normal.x - 1
+        elseif axis_hits.x_neg <= best_fraction + COLLISION_NORMAL_TOLERANCE and axis_hits.x_neg + COLLISION_FACE_BIAS < axis_hits.x_pos then
+            face_normal.x = face_normal.x + 1
+        end
+
+        if axis_hits.y_pos <= best_fraction + COLLISION_NORMAL_TOLERANCE and axis_hits.y_pos + COLLISION_FACE_BIAS < axis_hits.y_neg then
+            face_normal.y = face_normal.y - 1
+        elseif axis_hits.y_neg <= best_fraction + COLLISION_NORMAL_TOLERANCE and axis_hits.y_neg + COLLISION_FACE_BIAS < axis_hits.y_pos then
+            face_normal.y = face_normal.y + 1
+        end
+
+        if axis_hits.z_pos <= best_fraction + COLLISION_NORMAL_TOLERANCE and axis_hits.z_pos + COLLISION_FACE_BIAS < axis_hits.z_neg then
+            face_normal.z = face_normal.z - 1
+        elseif axis_hits.z_neg <= best_fraction + COLLISION_NORMAL_TOLERANCE and axis_hits.z_neg + COLLISION_FACE_BIAS < axis_hits.z_pos then
+            face_normal.z = face_normal.z + 1
+        end
+
+        for i = 1, #usable_hits do
+            local hit = usable_hits[i]
+            local weight = 1.0 - mathematic.clamp((hit.fraction - best_fraction) / math.max(COLLISION_NORMAL_TOLERANCE, 0.0001), 0, 1)
+            weighted_normal.x = weighted_normal.x - (hit.offset.x * weight)
+            weighted_normal.y = weighted_normal.y - (hit.offset.y * weight)
+            weighted_normal.z = weighted_normal.z - (hit.offset.z * weight)
+        end
+
+        local has_face_normal = utils.vec_length_sqr(face_normal) > 0.0001
+        local has_weighted_normal = utils.vec_length_sqr(weighted_normal) > 0.0001
+
+        if has_face_normal then
+            face_normal = utils.vec_normalize(face_normal)
+        end
+
+        if has_weighted_normal then
+            weighted_normal = utils.vec_normalize(weighted_normal)
+        end
+
+        if has_face_normal and has_weighted_normal then
+            local blended = utils.new_vec(
+                (face_normal.x * COLLISION_WEIGHT_BLEND) + weighted_normal.x,
+                (face_normal.y * COLLISION_WEIGHT_BLEND) + weighted_normal.y,
+                (face_normal.z * COLLISION_WEIGHT_BLEND) + weighted_normal.z
+            )
+
+            if utils.vec_length_sqr(blended) > 0.0001 then
+                blended = utils.vec_normalize(blended)
+                if utils.vec_dot(blended, move_delta) > 0 then
+                    blended = utils.vec_scale(blended, -1)
+                end
+
+                return blended
+            end
+        elseif has_face_normal then
+            if utils.vec_dot(face_normal, move_delta) > 0 then
+                face_normal = utils.vec_scale(face_normal, -1)
+            end
+
+            return face_normal
+        elseif has_weighted_normal then
+            if utils.vec_dot(weighted_normal, move_delta) > 0 then
+                weighted_normal = utils.vec_scale(weighted_normal, -1)
+            end
+
+            return weighted_normal
+        end
+
+        local reverse = utils.vec_scale(move_delta, -1)
+        if math.abs(reverse.z) < 0.001 then
+            reverse.z = 0
+        end
+
+        return utils.vec_normalize(reverse)
+    end
+
+    local function trace_hull(skip_ent, start_pos, end_pos, ignored_ent)
+        local move_delta = utils.vec_sub(end_pos, start_pos)
+        local best_fraction = 1
+        local best_entindex = -1
+        local hit_points = {}
+
+        for i = 1, #HULL_SAMPLES do
+            local offset = HULL_SAMPLES[i]
+            local sample_start = utils.vec_add(start_pos, offset)
+            local sample_end = utils.vec_add(end_pos, offset)
+            local fraction, entindex
+
+            if ignored_ent ~= nil then
+                fraction, entindex = trace_line_filtered(skip_ent, ignored_ent, sample_start, sample_end)
+            else
+                fraction, entindex = trace_line_vec(skip_ent, sample_start, sample_end)
+            end
+
+            if fraction < best_fraction then
+                best_fraction = fraction
+                best_entindex = entindex
+            end
+
+            if fraction < 1 then
+                hit_points[#hit_points + 1] = {
+                    offset = offset,
+                    fraction = fraction,
+                    entindex = entindex,
+                    point = utils.blend_vec(sample_start, sample_end, fraction)
+                }
+            end
+        end
+
+        return {
+            fraction = best_fraction,
+            entindex = best_entindex,
+            endpos = utils.blend_vec(start_pos, end_pos, best_fraction),
+            normal = best_fraction < 1 and estimate_collision_normal(hit_points, best_fraction, move_delta) or nil,
+            hit_world = is_world_trace_entindex(best_entindex) and best_fraction < 1
+        }
+    end
+
+    local function resolve_bounce(skip_ent, trace, velocity, tick_interval, ignored_ent)
+        if trace.normal == nil then
+            return trace.endpos, velocity
+        end
+
+        local surface_elasticity = utils.is_player_index(trace.entindex) and 0.3 or 1.0
+        local total_elasticity = mathematic.clamp(0.45 * surface_elasticity, 0.0, 0.9)
+        local backoff = utils.vec_dot(velocity, trace.normal) * 2.0
+        local clipped = utils.new_vec(
+            velocity.x - (trace.normal.x * backoff),
+            velocity.y - (trace.normal.y * backoff),
+            velocity.z - (trace.normal.z * backoff)
+        )
+
+        if math.abs(clipped.x) < 1 then clipped.x = 0 end
+        if math.abs(clipped.y) < 1 then clipped.y = 0 end
+        if math.abs(clipped.z) < 1 then clipped.z = 0 end
+
+        clipped = utils.vec_scale(clipped, total_elasticity)
+
+        local speed_sqr = utils.vec_length_sqr(clipped)
+        if trace.normal.z > 0.7 or (trace.normal.z > 0.1 and speed_sqr < GRENADE_SLEEP_VELOCITY_SQR) then
+            if speed_sqr > GRENADE_MIN_DAMAGE_SPEED_SQR then
+                local normalized = utils.vec_normalize(clipped)
+                local along = utils.vec_dot(normalized, trace.normal)
+                if along > 0.5 then
+                    clipped = utils.vec_scale(clipped, 1.0 - along + 0.5)
+                    speed_sqr = utils.vec_length_sqr(clipped)
+                end
+            end
+
+            if speed_sqr < GRENADE_SLEEP_VELOCITY_SQR then
+                return trace.endpos, utils.new_vec(0, 0, 0)
+            end
+        end
+
+        local impact_origin = utils.vec_add(trace.endpos, utils.vec_scale(trace.normal, COLLISION_PUSH_EPSILON))
+        local remaining_move = utils.vec_scale(clipped, (1.0 - trace.fraction) * tick_interval)
+        local remainder_trace = trace_hull(skip_ent, impact_origin, utils.vec_add(impact_origin, remaining_move), ignored_ent)
+        return remainder_trace.endpos, clipped
+    end
+
+    local function is_valid_molotov_surface(normal)
+        if normal == nil then
+            return false
+        end
+
+        local slope_limit = cvar.weapon_molotov_maxdetonateslope and cvar.weapon_molotov_maxdetonateslope:get_float() or 30.0
+        return normal.z >= math.cos(math.rad(slope_limit))
+    end
+
+    local function get_predict_trace_skip_ent(fallback_ent)
+        local local_player = entity.get_local_player()
+        return local_player or fallback_ent
+    end
+
+    local function trace_down_point(skip_ent, ignored_ent, position)
+        local start_z = position.z + DOWN_TRACE_OFFSET
+        local end_z = position.z - DOWN_TRACE_HEIGHT
+        local fraction, entindex = trace_line_filtered(
+            get_predict_trace_skip_ent(skip_ent),
+            ignored_ent,
+            utils.new_vec(position.x, position.y, start_z),
+            utils.new_vec(position.x, position.y, end_z)
+        )
+
+        if fraction >= 1 then
+            return nil
+        end
+
+        if utils.is_player_index(entindex)
+            or entindex == ignored_ent
+            or is_molotov_non_detonate_surface(entindex)
+        then
+            return nil
+        end
+
+        return utils.new_vec(
+            position.x,
+            position.y,
+            start_z + ((end_z - start_z) * fraction)
+        )
+    end
+
+    local function resolve_ground_point(skip_ent, ignored_ent, position, touch_trace)
+        if touch_trace and touch_trace.hit_world and is_valid_molotov_surface(touch_trace.normal) then
+            return touch_trace.endpos
+        end
+
+        return trace_down_point(skip_ent, ignored_ent, position)
+    end
+
+    local function resolve_nearby_ground_point(skip_ent, ignored_ent, position, max_drop)
+        local ground = trace_down_point(skip_ent, ignored_ent, position)
+        if ground == nil then
+            return nil
+        end
+
+        if (position.z - ground.z) > max_drop then
+            return nil
+        end
+
+        return ground
+    end
+
+    local function resolve_hard_timer_ground_point(skip_ent, ignored_ent, position, elapsed, last_ground_contact)
+        local ground = resolve_ground_point(skip_ent, ignored_ent, position)
+        if ground == nil then
+            return nil, "none"
+        end
+
+        if last_ground_contact ~= nil
+            and (elapsed - last_ground_contact.elapsed) <= HARD_TIMER_CONTACT_MAX_AGE
+            and utils.vec_length_2d(utils.vec_sub(last_ground_contact.point, ground)) <= HARD_TIMER_CONTACT_MAX_XY
+            and ground.z < (last_ground_contact.point.z - HARD_TIMER_CONTACT_Z_DELTA)
+        then
+            return last_ground_contact.point, "cached_contact"
+        end
+
+        return ground, "downtrace"
+    end
+
+    local function should_detonate_on_bounce(trace)
+        if trace == nil or trace.fraction >= 1 or trace.normal == nil then
+            return false
+        end
+
+        if utils.is_player_index(trace.entindex) or is_molotov_non_detonate_surface(trace.entindex) then
+            return false
+        end
+
+        return is_valid_molotov_surface(trace.normal)
+    end
+
+    local function build_predicted_fire_circles(skip_ent, ignored_ent, point)
+        local origin = resolve_ground_point(skip_ent, ignored_ent, point)
+        if origin == nil then
+            return nil, nil
+        end
+
+        local circles = {}
+
+        for i = 1, #PREDICT_CIRCLES do
+            local pattern = PREDICT_CIRCLES[i]
+            local candidate = utils.new_vec(
+                origin.x + (pattern.x * (i <= 5 and PREDICT_INNER_DISTANCE or PREDICT_RING_DISTANCE)),
+                origin.y + (pattern.y * (i <= 5 and PREDICT_INNER_DISTANCE or PREDICT_RING_DISTANCE)),
+                origin.z
+            )
+            local grounded = resolve_ground_point(skip_ent, ignored_ent, candidate)
+            if grounded ~= nil then
+                circles[#circles + 1] = {
+                    x = grounded.x,
+                    y = grounded.y,
+                    z = grounded.z,
+                    scale = pattern.scale
+                }
+            end
+        end
+
+        return origin, circles
+    end
+
+    local function predict_molotov_landing(idx)
+        local pos_x, pos_y, pos_z = entity.get_prop(idx, "m_vecOrigin")
+        local vel_x = entity.get_prop(idx, "m_vecVelocity[0]")
+        local vel_y = entity.get_prop(idx, "m_vecVelocity[1]")
+        local vel_z = entity.get_prop(idx, "m_vecVelocity[2]")
+        if pos_x == nil or vel_x == nil then
+            return nil
+        end
+
+        local tick_interval = globals.tickinterval()
+        local current_time = globals.curtime()
+        local gravity = (cvar.sv_gravity and cvar.sv_gravity:get_float() or 800) * 0.4
+        local throw_remaining = get_molotov_throw_remaining(idx, current_time)
+        local trace_skip_ent = get_predict_trace_skip_ent(idx)
+        local ignored_ent = idx
+        local position = utils.new_vec(pos_x, pos_y, pos_z)
+        local velocity = utils.new_vec(vel_x, vel_y, vel_z)
+        local elapsed = 0
+        local bounce_count = 0
+        local speed = math.sqrt((vel_x * vel_x) + (vel_y * vel_y) + (vel_z * vel_z))
+        local last_ground_contact
+
+        while elapsed < MOLOTOV_MAX_SIM_TIME and elapsed < throw_remaining do
+            local step_time = math.min(tick_interval * PREDICT_STEP_SCALE, throw_remaining - elapsed)
+            local step_velocity = utils.new_vec(velocity.x, velocity.y, velocity.z)
+            local next_velocity_z = velocity.z - (gravity * step_time)
+            local move = utils.new_vec(
+                velocity.x * step_time,
+                velocity.y * step_time,
+                ((velocity.z + next_velocity_z) * 0.5) * step_time
+            )
+            velocity.z = next_velocity_z
+
+            local trace = trace_hull(trace_skip_ent, position, utils.vec_add(position, move), ignored_ent)
+            position = trace.endpos
+
+            if trace.fraction < 1 then
+                local impact_elapsed = elapsed + (step_time * trace.fraction)
+                local impact_velocity = utils.new_vec(
+                    step_velocity.x,
+                    step_velocity.y,
+                    step_velocity.z + ((next_velocity_z - step_velocity.z) * trace.fraction)
+                )
+
+                local nearby_ground = resolve_nearby_ground_point(trace_skip_ent, ignored_ent, position, 24)
+                if nearby_ground ~= nil then
+                    last_ground_contact = {
+                        point = nearby_ground,
+                        elapsed = impact_elapsed
+                    }
+                end
+
+                if trace.hit_world and impact_velocity.z <= 0 then
+                    local impact_ground = resolve_nearby_ground_point(trace_skip_ent, ignored_ent, position, 18)
+                    if impact_ground ~= nil then
+                        return {
+                            point = impact_ground,
+                            eta = impact_elapsed,
+                            bounce_count = bounce_count,
+                            speed = speed,
+                            reason = "near_ground_world_hit",
+                            world_hit = trace.hit_world,
+                            hit_entindex = trace.entindex,
+                            hit_normal_z = trace.normal and trace.normal.z or nil,
+                            sim_position = position,
+                            throw_remaining = throw_remaining,
+                            ground_source = "nearby_world_hit"
+                        }
+                    end
+                end
+
+                if should_detonate_on_bounce(trace) then
+                    return {
+                        point = resolve_ground_point(trace_skip_ent, ignored_ent, position, trace),
+                        eta = impact_elapsed,
+                        bounce_count = bounce_count,
+                        speed = speed,
+                        reason = "bounce_detonate",
+                        world_hit = trace.hit_world,
+                        hit_entindex = trace.entindex,
+                        hit_normal_z = trace.normal and trace.normal.z or nil,
+                        sim_position = position,
+                        throw_remaining = throw_remaining,
+                        ground_source = "bounce_touch"
+                    }
+                end
+
+                if is_molotov_passthrough_entity(trace.entindex) then
+                    velocity = utils.vec_scale(impact_velocity, 0.4)
+                else
+                    position, velocity = resolve_bounce(trace_skip_ent, trace, impact_velocity, step_time, ignored_ent)
+                end
+
+                bounce_count = bounce_count + 1
+
+                if bounce_count > MAX_BOUNCES then
+                    return {
+                        point = resolve_ground_point(trace_skip_ent, ignored_ent, position, trace),
+                        eta = impact_elapsed,
+                        bounce_count = bounce_count,
+                        speed = speed,
+                        reason = "bounce_limit",
+                        world_hit = trace.hit_world,
+                        hit_entindex = trace.entindex,
+                        hit_normal_z = trace.normal and trace.normal.z or nil,
+                        sim_position = position,
+                        throw_remaining = throw_remaining,
+                        ground_source = "bounce_limit"
+                    }
+                end
+            end
+
+            speed = utils.vec_length(velocity)
+            elapsed = elapsed + step_time
+        end
+
+        if elapsed >= throw_remaining then
+            local point, ground_source = resolve_hard_timer_ground_point(trace_skip_ent, ignored_ent, position, elapsed, last_ground_contact)
+            return {
+                point = point,
+                eta = throw_remaining,
+                bounce_count = bounce_count,
+                speed = speed,
+                reason = "hard_timer",
+                sim_position = position,
+                throw_remaining = throw_remaining,
+                ground_source = ground_source
+            }
+        end
+
+        local point, ground_source = resolve_hard_timer_ground_point(trace_skip_ent, ignored_ent, position, elapsed, last_ground_contact)
+        return {
+            point = point,
+            eta = elapsed,
+            bounce_count = bounce_count,
+            speed = speed,
+            reason = "sim_timeout",
+            sim_position = position,
+            throw_remaining = throw_remaining,
+            ground_source = ground_source
+        }
+    end
+
     grenade_radius.on_paint = function()
         if not interface.world.enabled_world:get() then return end
         if not interface.world.grenade_radius:get() then return end
@@ -15642,6 +16335,7 @@ grenade_radius = {} do
         local selection = interface.world.grenade_radius:get()
         local show_smoke = utils.contains(selection, 'smoke')
         local show_molotov = utils.contains(selection, 'molotov')
+        local show_molotov_predict = show_molotov and interface.world.grenade_radius_molotov_predict:get()
         local frame_time = globals.frametime() * 6
         local cur_time_sec = globals.curtime()
         local camera_x, camera_y, camera_z = client.camera_position()
@@ -15695,6 +16389,83 @@ grenade_radius = {} do
                 end
 
                 ::continue_molotov::
+            end
+        end
+
+        if show_molotov_predict then
+            local projectiles = entity.get_all(PROJECTILE_CLASSNAME)
+            local active_predict_projectiles = {}
+            for i = 1, #projectiles do
+                local idx = projectiles[i]
+                local x, y, z = entity.get_prop(idx, "m_vecOrigin")
+                active_predict_projectiles[idx] = true
+
+                if x and player.distance3d(camera_x, camera_y, camera_z, x, y, z) <= MAX_RENDER_DISTANCE then
+                    local prediction = predict_molotov_landing(idx)
+                    local track_id = "molotov_predict_" .. idx
+
+                    if prediction ~= nil and prediction.point ~= nil then
+                        local point = prediction.point
+                        if not tracks[track_id] then
+                            tracks[track_id] = { alpha = 0 }
+                        end
+
+                        local track = tracks[track_id]
+                        local display_point = point
+
+                        if track.preview_point ~= nil then
+                            local delta = player.distance3d(
+                                track.preview_point.x, track.preview_point.y, track.preview_point.z,
+                                point.x, point.y, point.z
+                            )
+
+                            if delta <= PREDICT_JITTER_DISTANCE then
+                                display_point = track.preview_point
+                            elseif delta < PREDICT_SNAP_DISTANCE then
+                                display_point = utils.vec_lerp(track.preview_point, point, PREDICT_SMOOTHING)
+                            end
+                        end
+
+                        track.type = 'molotov_predict'
+                        local grounded_center, circles = build_predicted_fire_circles(get_predict_trace_skip_ent(idx), idx, display_point)
+                        if track.eta_anchor == nil or prediction.eta > ((track.eta_total or 0) + 0.15) then
+                            track.eta_anchor = cur_time_sec
+                            track.eta_total = prediction.eta
+                        end
+
+                        track.eta = math.max((track.eta_total or prediction.eta) - (cur_time_sec - track.eta_anchor), 0)
+
+                        if grounded_center ~= nil and circles ~= nil and #circles > 0 then
+                            if not (track.preview_point ~= nil and track.circles ~= nil and utils.vec_distance(track.preview_point, grounded_center) <= PREDICT_BLOB_JITTER_DISTANCE) then
+                                track.preview_point = grounded_center
+                                track.circles = circles
+                            end
+
+                            track.updated = true
+                            track.target_alpha = 1
+                        else
+                            tracks[track_id] = nil
+                        end
+                    else
+                        tracks[track_id] = nil
+                    end
+                else
+                    tracks["molotov_predict_" .. idx] = nil
+                end
+            end
+            for idx in pairs(predict_deadlines) do
+                if not active_predict_projectiles[idx] then
+                    predict_deadlines[idx] = nil
+                end
+            end
+        else
+            for idx in pairs(predict_deadlines) do
+                predict_deadlines[idx] = nil
+            end
+            for id, track in pairs(tracks) do
+                if type(id) == "string" and id:find("molotov_predict_", 1, true) == 1 then
+                    tracks[id] = nil
+                end
             end
         end
 
@@ -15754,7 +16525,38 @@ grenade_radius = {} do
                 if track.type == 'molotov' then
                     local final_a = math.floor(a_mol * render_alpha)
                     if final_a > 1 then
-                        draw_blob(track.circles, 60, r_mol, g_mol, b_mol, final_a, 1.0, camera_origin, camera_forward)
+                        draw_blob_layers(track.circles, 60, r_mol, g_mol, b_mol, final_a, 1.0, camera_origin, camera_forward)
+                    end
+
+                elseif track.type == 'molotov_predict' then
+                    local final_a = math.floor(a_mol * render_alpha * PREDICT_ALPHA_MULTIPLIER)
+                    if final_a > 1 then
+                        draw_blob(track.circles, PREDICT_BASE_RADIUS, r_mol, g_mol, b_mol, final_a, PREDICT_OUTLINE_LIMIT, camera_origin, camera_forward, PREDICT_CONTOUR_SMOOTH)
+
+                        if track.preview_point ~= nil and track.eta ~= nil then
+                            local text_x, text_y = renderer.world_to_screen(track.preview_point.x, track.preview_point.y, track.preview_point.z + 6)
+                            if text_x and text_y then
+                                local time_text = string.format("%.1fs", math.max(track.eta, 0))
+                                local text_alpha = math.min(255, math.floor(final_a * 1.75))
+                                local blur_alpha = math.floor(text_alpha * 0.25)
+                                local text_width = renderer.measure_text(0, time_text)
+                                local icon_width = 10
+                                local icon_height = 14
+                                local icon_spacing = 4
+                                local total_width = icon_width + icon_spacing + text_width
+                                local icon_x = math.floor(text_x - (total_width * 0.5) + 0.5)
+                                local icon_y = math.floor(text_y - (icon_height * 0.5) + 0.5)
+                                local label_x = math.floor(icon_x + icon_width + icon_spacing + (text_width * 0.5) + 0.5)
+
+                                MOLOTOV_ICON:draw(icon_x, icon_y, icon_width, icon_height, 255, 255, 255, text_alpha)
+
+                                renderer.text(label_x - 1, text_y, 255, 255, 255, blur_alpha, "c", 0, time_text)
+                                renderer.text(label_x + 1, text_y, 255, 255, 255, blur_alpha, "c", 0, time_text)
+                                renderer.text(label_x, text_y - 1, 255, 255, 255, math.floor(blur_alpha * 0.65), "c", 0, time_text)
+                                renderer.text(label_x, text_y + 1, 255, 255, 255, math.floor(blur_alpha * 0.65), "c", 0, time_text)
+                                renderer.text(label_x, text_y, 255, 255, 255, text_alpha, "c", 0, time_text)
+                            end
+                        end
                     end
 
                 elseif track.type == 'smoke' then
