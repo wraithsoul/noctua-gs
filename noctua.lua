@@ -10792,6 +10792,28 @@ configs = {} do
         end
     end
 
+    local function set_element_color(element, value)
+        if type(element) == 'number' or type(value) ~= 'table' then
+            return
+        end
+
+        local color = element.color
+        if not color then
+            return
+        end
+
+        if type(color) == 'number' then
+            ui.set(color, unpack(value))
+            return
+        end
+
+        if color.set then
+            color:set(value)
+        end
+
+        color.value = value
+    end
+
     local function set_element_hotkey(element, mode_str, keycode)
         if not mode_str then
             return
@@ -10883,11 +10905,13 @@ configs = {} do
             if val ~= nil then
                 set_element_values(element, val)
             end
-            if type(element) ~= 'number' and element.color and type(val) == 'table' then element.color.value = val end
+            if type(val) == 'table' then
+                set_element_color(element, val)
+            end
 
             local cval = values[key .. '.color']
-            if type(element) ~= 'number' and element.color and type(cval) == 'table' then
-                element.color.value = cval
+            if type(cval) == 'table' then
+                set_element_color(element, cval)
             end
 
             local mode_idx = values[key .. '.hotkey_mode_idx']
