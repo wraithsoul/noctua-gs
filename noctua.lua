@@ -16253,6 +16253,24 @@ grenade_radius = {} do
         return is_valid_molotov_surface(trace.normal)
     end
 
+    local function get_molotov_thrower(idx)
+        local thrower = entity.get_prop(idx, "m_hThrower")
+        if thrower == nil then
+            thrower = entity.get_prop(idx, "m_hOwnerEntity")
+        end
+
+        return thrower
+    end
+
+    local function should_render_molotov_predict(idx, local_player)
+        local thrower = get_molotov_thrower(idx)
+        if thrower == nil then
+            return false
+        end
+
+        return thrower == local_player or entity.is_enemy(thrower)
+    end
+
     local function build_predicted_fire_circles(skip_ent, ignored_ent, point)
         local origin = resolve_ground_point(skip_ent, ignored_ent, point)
         if origin == nil then
@@ -16439,6 +16457,7 @@ grenade_radius = {} do
         local show_molotov_predict = show_molotov and interface.world.grenade_radius_molotov_predict:get()
         local frame_time = globals.frametime() * 6
         local cur_time_sec = globals.curtime()
+        local local_player = entity.get_local_player()
         local camera_x, camera_y, camera_z = client.camera_position()
         local camera_pitch, camera_yaw = client.camera_angles()
         local camera_origin = utils.new_vec(camera_x, camera_y, camera_z)
@@ -16513,6 +16532,12 @@ grenade_radius = {} do
             for i = 1, #projectiles do
                 local idx = projectiles[i]
                 local x, y, z = entity.get_prop(idx, "m_vecOrigin")
+
+                if not should_render_molotov_predict(idx, local_player) then
+                    tracks["molotov_predict_" .. idx] = nil
+                    goto continue_molotov_predict
+                end
+
                 active_predict_projectiles[idx] = true
 
                 if x and player.distance3d(camera_x, camera_y, camera_z, x, y, z) <= MAX_RENDER_DISTANCE then
@@ -16584,6 +16609,8 @@ grenade_radius = {} do
                 else
                     tracks["molotov_predict_" .. idx] = nil
                 end
+
+                ::continue_molotov_predict::
             end
             clear_missing_predict_runtime(active_predict_projectiles)
         else
