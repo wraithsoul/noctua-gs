@@ -489,6 +489,9 @@ sunlight = {} do
     sunlight.saved_x = cvar.cl_csm_rot_x:get_float()
     sunlight.saved_y = cvar.cl_csm_rot_y:get_float()
     sunlight.saved_z = cvar.cl_csm_rot_z:get_float()
+    sunlight.current_x = sunlight.saved_x
+    sunlight.current_y = sunlight.saved_y
+    sunlight.current_z = sunlight.saved_z
     sunlight.last_set_override = nil
     sunlight.last_set_x = nil
     sunlight.last_set_y = nil
@@ -504,6 +507,9 @@ sunlight = {} do
         cvar.cl_csm_rot_x:set_raw_float(sunlight.saved_x)
         cvar.cl_csm_rot_y:set_raw_float(sunlight.saved_y)
         cvar.cl_csm_rot_z:set_raw_float(sunlight.saved_z)
+        sunlight.current_x = sunlight.saved_x
+        sunlight.current_y = sunlight.saved_y
+        sunlight.current_z = sunlight.saved_z
         sunlight.last_set_override = sunlight.saved_override
         sunlight.last_set_x = sunlight.saved_x
         sunlight.last_set_y = sunlight.saved_y
@@ -525,18 +531,23 @@ sunlight = {} do
         local sun_x = interface.world.sunlight_x:get()
         local sun_y = interface.world.sunlight_y:get()
         local sun_z = interface.world.sunlight_z:get()
+        local frame_lerp = globals.frametime() * 8
 
-        if sunlight.last_set_x == nil or math.abs(sun_x - sunlight.last_set_x) > 0.001 then
-            cvar.cl_csm_rot_x:set_raw_float(sun_x)
-            sunlight.last_set_x = sun_x
+        sunlight.current_x = mathematic.lerp(sunlight.current_x, sun_x, frame_lerp)
+        sunlight.current_y = mathematic.lerp(sunlight.current_y, sun_y, frame_lerp)
+        sunlight.current_z = mathematic.lerp(sunlight.current_z, sun_z, frame_lerp)
+
+        if sunlight.last_set_x == nil or math.abs(sunlight.current_x - sunlight.last_set_x) > 0.001 then
+            cvar.cl_csm_rot_x:set_raw_float(sunlight.current_x)
+            sunlight.last_set_x = sunlight.current_x
         end
-        if sunlight.last_set_y == nil or math.abs(sun_y - sunlight.last_set_y) > 0.001 then
-            cvar.cl_csm_rot_y:set_raw_float(sun_y)
-            sunlight.last_set_y = sun_y
+        if sunlight.last_set_y == nil or math.abs(sunlight.current_y - sunlight.last_set_y) > 0.001 then
+            cvar.cl_csm_rot_y:set_raw_float(sunlight.current_y)
+            sunlight.last_set_y = sunlight.current_y
         end
-        if sunlight.last_set_z == nil or math.abs(sun_z - sunlight.last_set_z) > 0.001 then
-            cvar.cl_csm_rot_z:set_raw_float(sun_z)
-            sunlight.last_set_z = sun_z
+        if sunlight.last_set_z == nil or math.abs(sunlight.current_z - sunlight.last_set_z) > 0.001 then
+            cvar.cl_csm_rot_z:set_raw_float(sunlight.current_z)
+            sunlight.last_set_z = sunlight.current_z
         end
         sunlight.active = true
     end
@@ -544,6 +555,11 @@ end
 
 --@region: fog
 fog = {} do
+    local function parse_fog_color(value)
+        local red, green, blue = string.match(value or "", "(%d+)%s+(%d+)%s+(%d+)")
+        return tonumber(red) or 255, tonumber(green) or 255, tonumber(blue) or 255
+    end
+
     fog.saved = {
         override = client.get_cvar("fog_override") or "0",
         enable = client.get_cvar("fog_enable") or "0",
@@ -562,6 +578,11 @@ fog = {} do
         ["end"] = nil,
         density = nil
     }
+    local saved_red, saved_green, saved_blue = parse_fog_color(fog.saved.color)
+    fog.current_color = { saved_red, saved_green, saved_blue }
+    fog.current_start = tonumber(fog.saved.start) or 0
+    fog.current_end = tonumber(fog.saved["end"]) or 0
+    fog.current_density = tonumber(fog.saved.density) or 1
     fog.active = false
 
     local function set_fog_cvar(name, value)
@@ -585,6 +606,13 @@ fog = {} do
         client.set_cvar("fog_start", fog.saved.start)
         client.set_cvar("fog_end", fog.saved["end"])
         client.set_cvar("fog_maxdensity", fog.saved.density)
+        local saved_red, saved_green, saved_blue = parse_fog_color(fog.saved.color)
+        fog.current_color[1] = saved_red
+        fog.current_color[2] = saved_green
+        fog.current_color[3] = saved_blue
+        fog.current_start = tonumber(fog.saved.start) or 0
+        fog.current_end = tonumber(fog.saved["end"]) or 0
+        fog.current_density = tonumber(fog.saved.density) or 1
         fog.last_set.override = tostring(fog.saved.override)
         fog.last_set.enable = tostring(fog.saved.enable)
         fog.last_set.skybox = tostring(fog.saved.skybox)
@@ -602,16 +630,25 @@ fog = {} do
         end
 
         local color_value = interface.world.fog_color.color.value
-        local density = interface.world.fog_density:get() * 0.01
+        local target_start = interface.world.fog_start:get()
+        local target_end = interface.world.fog_end:get()
+        local target_density = interface.world.fog_density:get() * 0.01
+        local frame_lerp = globals.frametime() * 8
 
         reference.visuals.effects.remove_fog:override(false)
         set_fog_cvar("fog_override", 1)
         set_fog_cvar("fog_enable", 1)
         set_fog_cvar("fog_enableskybox", 1)
-        set_fog_cvar("fog_color", string.format("%d %d %d", color_value[1], color_value[2], color_value[3]))
-        set_fog_cvar("fog_start", interface.world.fog_start:get())
-        set_fog_cvar("fog_end", interface.world.fog_end:get())
-        set_fog_cvar("fog_maxdensity", density)
+        fog.current_color[1] = mathematic.lerp(fog.current_color[1], color_value[1], frame_lerp)
+        fog.current_color[2] = mathematic.lerp(fog.current_color[2], color_value[2], frame_lerp)
+        fog.current_color[3] = mathematic.lerp(fog.current_color[3], color_value[3], frame_lerp)
+        fog.current_start = mathematic.lerp(fog.current_start, target_start, frame_lerp)
+        fog.current_end = mathematic.lerp(fog.current_end, target_end, frame_lerp)
+        fog.current_density = mathematic.lerp(fog.current_density, target_density, frame_lerp)
+        set_fog_cvar("fog_color", string.format("%d %d %d", math.floor(fog.current_color[1]), math.floor(fog.current_color[2]), math.floor(fog.current_color[3])))
+        set_fog_cvar("fog_start", fog.current_start)
+        set_fog_cvar("fog_end", fog.current_end)
+        set_fog_cvar("fog_maxdensity", fog.current_density)
         fog.active = true
     end
 end
